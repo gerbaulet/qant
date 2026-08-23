@@ -7,13 +7,7 @@ import Testing
 struct PersistenceModelTests {
     @Test("Meal revisions and nutrients survive an in-memory SwiftData save")
     func modelGraphRoundTrip() throws {
-        let schema = Schema(NutritionSchemaV1.models)
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        let container = try ModelContainer(
-            for: schema,
-            migrationPlan: NutritionMigrationPlan.self,
-            configurations: [configuration]
-        )
+        let container = try NutritionModelContainerFactory.makeContainer(isStoredInMemoryOnly: true)
         let context = container.mainContext
 
         let energy = NutrientValue(
@@ -47,5 +41,26 @@ struct PersistenceModelTests {
         #expect(fetchedMeals.count == 1)
         #expect(fetchedMeals.first?.activeRevision?.mealName == "Chicken Curry mit Reis")
         #expect(fetchedMeals.first?.activeRevision?.nutrients.first?.value == 785)
+    }
+
+    @Test("CloudKit mode can validate the full schema without contacting iCloud")
+    func cloudSchemaValidation() throws {
+        let container = try NutritionModelContainerFactory.makeContainer(
+            mode: .cloudKit,
+            isStoredInMemoryOnly: true
+        )
+        #expect(container.mainContext.container === container)
+    }
+
+    @Test("Readiness audit keeps capability and file-backed photo blockers explicit")
+    func cloudReadinessAudit() {
+        #expect(CloudSyncReadinessAudit.issues(
+            mode: .local,
+            containsFileBackedImages: true
+        ) == [.capabilityNotEnabled, .fileBackedImagesNeedCloudAssetStorage])
+        #expect(CloudSyncReadinessAudit.issues(
+            mode: .cloudKit,
+            containsFileBackedImages: false
+        ).isEmpty)
     }
 }

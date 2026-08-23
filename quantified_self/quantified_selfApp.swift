@@ -11,18 +11,12 @@ import SwiftData
 @main
 struct quantified_selfApp: App {
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(NutritionSchemaV1.models)
         let usesEphemeralStore = ProcessInfo.processInfo.arguments.contains("--ui-testing")
-        let modelConfiguration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: usesEphemeralStore
-        )
 
         do {
-            let container = try ModelContainer(
-                for: schema,
-                migrationPlan: NutritionMigrationPlan.self,
-                configurations: [modelConfiguration]
+            let container = try NutritionModelContainerFactory.makeContainer(
+                mode: .current,
+                isStoredInMemoryOnly: usesEphemeralStore
             )
             try InitialDataSeeder.seedGoalsIfNeeded(in: container.mainContext)
 #if DEBUG

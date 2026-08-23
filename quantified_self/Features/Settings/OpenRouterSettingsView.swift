@@ -3,6 +3,7 @@ import SwiftUI
 
 struct OpenRouterSettingsView: View {
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
+    @Query private var mealImages: [MealImage]
     @State private var viewModel: OpenRouterSettingsViewModel
     @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
     @State private var weeklyReminderMessage: String?
@@ -87,6 +88,31 @@ struct OpenRouterSettingsView: View {
                 }
 
                 statusSection
+
+                Section("Datenspeicher") {
+                    LabeledContent("Mahlzeiten") {
+                        Label("Auf diesem Gerät", systemImage: "iphone")
+                    }
+                    LabeledContent("iCloud-Synchronisierung") {
+                        Text(NutritionStoreMode.current == .cloudKit ? "Aktiv" : "Vorbereitet")
+                            .foregroundStyle(NutritionStoreMode.current == .cloudKit ? Color.green : Color.secondary)
+                    }
+                    if CloudSyncReadinessAudit.issues(
+                        mode: .current,
+                        containsFileBackedImages: !mealImages.isEmpty
+                    ).contains(.fileBackedImagesNeedCloudAssetStorage) {
+                        Label(
+                            "Fotos bleiben derzeit ausschließlich auf diesem Gerät.",
+                            systemImage: "photo.badge.exclamationmark"
+                        )
+                        .foregroundStyle(.orange)
+                    }
+                    if NutritionStoreMode.current == .local {
+                        Text("Die CloudKit-Aktivierung ist bewusst ausgeschaltet, damit die App mit deinem Personal Team auf dem iPhone installiert werden kann. Später werden dafür eine iCloud-Berechtigung, ein Container und Cloud-Speicher für Fotos benötigt.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 Section("Datenschutz") {
                     Text("Für die spätere Analyse werden Mahlzeitenfotos und dein Kommentar an OpenRouter und den ausgewählten Modellanbieter gesendet.")
