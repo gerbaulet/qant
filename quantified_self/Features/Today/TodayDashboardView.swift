@@ -142,14 +142,7 @@ struct TodayDashboardView: View {
 
     private func mealRow(_ meal: TodayMealSummary) -> some View {
         HStack(spacing: 14) {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.secondary.opacity(0.12))
-                .frame(width: 64, height: 64)
-                .overlay {
-                    Image(systemName: meal.thumbnailStorageKey == nil ? "fork.knife" : "photo")
-                        .foregroundStyle(.secondary)
-                }
-                .accessibilityHidden(true)
+            StoredMealThumbnailView(storageKey: meal.thumbnailStorageKey)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(mealDisplayName(meal))

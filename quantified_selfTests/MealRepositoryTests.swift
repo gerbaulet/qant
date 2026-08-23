@@ -12,12 +12,27 @@ struct MealRepositoryTests {
         let repository = SwiftDataMealRepository(context: context)
         let timestamp = Date(timeIntervalSince1970: 1_787_500_000)
         let now = Date(timeIntervalSince1970: 1_787_500_100)
+        let firstImage = StoredMealImage(
+            id: UUID(),
+            imageStorageKey: "first/image.jpg",
+            thumbnailStorageKey: "first/thumbnail.jpg",
+            pixelWidth: 1_600,
+            pixelHeight: 1_200
+        )
+        let secondImage = StoredMealImage(
+            id: UUID(),
+            imageStorageKey: "second/image.jpg",
+            thumbnailStorageKey: "second/thumbnail.jpg",
+            pixelWidth: 900,
+            pixelHeight: 1_200
+        )
 
         let created = try repository.createMeal(
             from: MealDraft(
                 timestamp: timestamp,
                 comment: "  Große Portion, etwa 350 g  ",
-                category: .dinner
+                category: .dinner,
+                images: [firstImage, secondImage]
             ),
             now: now
         )
@@ -31,7 +46,14 @@ struct MealRepositoryTests {
         #expect(created.category == .dinner)
         #expect(created.mealState == .captured)
         #expect(created.analysisState == .pending)
-        #expect(created.images.isEmpty)
+        let images = created.images.sorted { $0.sortIndex < $1.sortIndex }
+        #expect(images.count == 2)
+        #expect(images[0].id == firstImage.id)
+        #expect(images[0].thumbnailStorageKey == firstImage.thumbnailStorageKey)
+        #expect(images[0].pixelWidth == 1_600)
+        #expect(images[1].id == secondImage.id)
+        #expect(images[1].sortIndex == 1)
+        #expect(images.allSatisfy { $0.meal?.id == created.id })
         #expect(created.analysisRevisions.isEmpty)
     }
 

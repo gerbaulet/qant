@@ -1,28 +1,40 @@
+import AVFoundation
+import PhotosUI
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct MealCaptureView: View {
+    private static let maximumImageCount = 6
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     private let classificationSchedule: MealClassificationSchedule
     private let calendar: Calendar
+    private let imageStorage: any ImageStorageProviding
 
     @State private var timestamp: Date
     @State private var comment = ""
     @State private var category: MealCategory
     @State private var usesAutomaticCategory = true
+    @State private var attachedImages: [PendingMealImage] = []
+    @State private var photoPickerItems: [PhotosPickerItem] = []
+    @State private var showsCamera = false
+    @State private var isImportingImages = false
     @State private var isSaving = false
-    @State private var errorMessage: String?
+    @State private var alert: CaptureAlert?
     @FocusState private var commentIsFocused: Bool
 
     init(
         now: Date = .now,
         classificationSchedule: MealClassificationSchedule = .default,
-        calendar: Calendar = .autoupdatingCurrent
+        calendar: Calendar = .autoupdatingCurrent,
+        imageStorage: any ImageStorageProviding = FileImageStorage()
     ) {
         self.classificationSchedule = classificationSchedule
         self.calendar = calendar
+        self.imageStorage = imageStorage
         _timestamp = State(initialValue: now)
         _category = State(initialValue: classificationSchedule.category(
             for: now,
@@ -33,6 +45,8 @@ struct MealCaptureView: View {
     var body: some View {
         NavigationStack {
             Form {
+                photosSection
+
                 Section("Zeitpunkt") {
                     DatePicker(
                         "Mahlzeit",
@@ -76,13 +90,8 @@ struct MealCaptureView: View {
                 } footer: {
                     Text("Gewicht, Portionsgröße oder besondere Zutaten helfen später bei der Analyse.")
                 }
-
-                Section {
-                    Label("Fotos können im nächsten Meilenstein hinzugefügt werden.", systemImage: "photo.on.rectangle.angled")
-                        .foregroundStyle(.secondary)
-                }
             }
-            .navigationTitle("Essen hinzufügen")
+            .navigationTitle("Neue Mahlzeit")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(isSaving)
             .toolbar {
@@ -96,7 +105,7 @@ struct MealCaptureView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Speichern", action: save)
                         .fontWeight(.semibold)
-                        .disabled(isSaving)
+                        .disabled(isSaving || isImportingImages)
                         .accessibilityIdentifier("meal.save")
                 }
 
@@ -112,12 +121,101 @@ struct MealCaptureView: View {
                     updateAutomaticCategory()
                 }
             }
-            .alert("Mahlzeit konnte nicht gespeichert werden", isPresented: showsError) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(errorMessage ?? "Unbekannter Fehler")
+            .onChange(of: photoPickerItems) { _, items in
+                guard !items.isEmpty else { return }
+                Task { await importPhotos(items) }
+            }
+            .fullScreenCover(isPresented: $showsCamera) {
+                CameraPicker { imageData in
+                    showsCamera = false
+                    addImageData(imageData)
+                } onCancel: {
+                    showsCamera = false
+                }
+                .ignoresSafeArea()
+            }
+            .alert(item: $alert) { alert in
+                if alert.offersSettings {
+                    Alert(
+                        title: Text(alert.title),
+                        message: Text(alert.message),
+                        primaryButton: .default(Text("Einstellungen öffnen"), action: openSettings),
+                        secondaryButton: .cancel(Text("Abbrechen"))
+                    )
+                } else {
+                    Alert(
+                        title: Text(alert.title),
+                        message: Text(alert.message),
+                        dismissButton: .default(Text("OK"))
+                    )
+                }
             }
         }
+    }
+
+    private var photosSection: some View {
+        Section {
+            if attachedImages.isEmpty {
+                Label("Noch keine Fotos ausgewählt", systemImage: "photo.on.rectangle.angled")
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 12) {
+                        ForEach(attachedImages) { image in
+                            PendingMealImageThumbnail(image: image) {
+                                attachedImages.removeAll { $0.id == image.id }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .scrollIndicators(.hidden)
+            }
+
+            HStack(spacing: 12) {
+                PhotosPicker(
+                    selection: $photoPickerItems,
+                    maxSelectionCount: remainingImageCapacity,
+                    matching: .images
+                ) {
+                    Label("Mediathek", systemImage: "photo.on.rectangle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canAddImages || isImportingImages || isSaving)
+                .accessibilityIdentifier("meal.photoLibrary")
+
+                Button(action: requestCamera) {
+                    Label("Kamera", systemImage: "camera")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canAddImages || isImportingImages || isSaving)
+                .accessibilityIdentifier("meal.camera")
+            }
+
+            if isImportingImages {
+                HStack {
+                    ProgressView()
+                    Text("Fotos werden vorbereitet …")
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Bis zu \(Self.maximumImageCount) Fotos, zum Beispiel Übersicht, Verpackung oder Nährwerttabelle.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Fotos")
+        }
+    }
+
+    private var canAddImages: Bool {
+        attachedImages.count < Self.maximumImageCount
+    }
+
+    private var remainingImageCapacity: Int {
+        max(1, Self.maximumImageCount - attachedImages.count)
     }
 
     private var categoryBinding: Binding<MealCategory> {
@@ -130,33 +228,93 @@ struct MealCaptureView: View {
         )
     }
 
-    private var showsError: Binding<Bool> {
-        Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )
-    }
-
     private func updateAutomaticCategory() {
         category = classificationSchedule.category(for: timestamp, calendar: calendar)
+    }
+
+    private func importPhotos(_ items: [PhotosPickerItem]) async {
+        isImportingImages = true
+        defer {
+            isImportingImages = false
+            photoPickerItems = []
+        }
+
+        for item in items.prefix(remainingImageCapacity) {
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    throw ImageStorageError.invalidImage
+                }
+                addImageData(data)
+            } catch {
+                alert = .imageImportFailed
+                return
+            }
+        }
+    }
+
+    private func addImageData(_ data: Data) {
+        guard canAddImages, UIImage(data: data) != nil else {
+            alert = .imageImportFailed
+            return
+        }
+        attachedImages.append(PendingMealImage(data: data))
+    }
+
+    private func requestCamera() {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            alert = .cameraUnavailable
+            return
+        }
+
+        Task {
+            switch AVCaptureDevice.authorizationStatus(for: .video) {
+            case .authorized:
+                showsCamera = true
+            case .notDetermined:
+                showsCamera = await AVCaptureDevice.requestAccess(for: .video)
+                if !showsCamera {
+                    alert = .cameraDenied
+                }
+            case .denied, .restricted:
+                alert = .cameraDenied
+            @unknown default:
+                alert = .cameraDenied
+            }
+        }
     }
 
     private func save() {
         guard !isSaving else { return }
         isSaving = true
-        defer { isSaving = false }
 
-        do {
-            let repository = SwiftDataMealRepository(context: modelContext)
-            try repository.createMeal(from: MealDraft(
-                timestamp: timestamp,
-                comment: comment,
-                category: category
-            ))
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
+        Task {
+            var storedImages: [StoredMealImage] = []
+            do {
+                for image in attachedImages {
+                    storedImages.append(try await imageStorage.storeImageData(image.data, id: image.id))
+                }
+
+                let repository = SwiftDataMealRepository(context: modelContext)
+                try repository.createMeal(from: MealDraft(
+                    timestamp: timestamp,
+                    comment: comment,
+                    category: category,
+                    images: storedImages
+                ))
+                dismiss()
+            } catch {
+                for image in storedImages {
+                    await imageStorage.deleteImage(image)
+                }
+                alert = .saveFailed(error.localizedDescription)
+                isSaving = false
+            }
         }
+    }
+
+    private func openSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 }
 

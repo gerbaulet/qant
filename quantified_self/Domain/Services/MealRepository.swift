@@ -5,6 +5,19 @@ struct MealDraft: Sendable {
     let timestamp: Date
     let comment: String
     let category: MealCategory
+    let images: [StoredMealImage]
+
+    init(
+        timestamp: Date,
+        comment: String,
+        category: MealCategory,
+        images: [StoredMealImage] = []
+    ) {
+        self.timestamp = timestamp
+        self.comment = comment
+        self.category = category
+        self.images = images
+    }
 }
 
 @MainActor
@@ -31,7 +44,17 @@ final class SwiftDataMealRepository: MealRepository {
             userComment: trimmedComment.isEmpty ? nil : trimmedComment,
             category: draft.category,
             mealState: .captured,
-            analysisState: .pending
+            analysisState: .pending,
+            images: draft.images.enumerated().map { index, image in
+                MealImage(
+                    id: image.id,
+                    sortIndex: index,
+                    imageStorageKey: image.imageStorageKey,
+                    thumbnailStorageKey: image.thumbnailStorageKey,
+                    pixelWidth: image.pixelWidth,
+                    pixelHeight: image.pixelHeight
+                )
+            }
         )
 
         context.insert(meal)

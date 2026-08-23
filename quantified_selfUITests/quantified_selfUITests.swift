@@ -23,11 +23,19 @@ final class quantified_selfUITests: XCTestCase {
         XCTAssertTrue(addFoodButton.waitForExistence(timeout: 3))
         addFoodButton.tap()
 
-        let captureNavigationBar = app.navigationBars["Essen hinzufügen"]
+        let captureNavigationBar = app.navigationBars["Neue Mahlzeit"]
         XCTAssertTrue(captureNavigationBar.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["meal.photoLibrary"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["meal.camera"].waitForExistence(timeout: 2))
+
+        let captureScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        captureScreenshot.name = "Meal capture"
+        captureScreenshot.lifetime = .keepAlways
+        add(captureScreenshot)
 
         let commentField = app.textFields["meal.comment"]
         XCTAssertTrue(commentField.waitForExistence(timeout: 2))
+        app.swipeUp()
         commentField.tap()
         commentField.typeText("UI-Test Mahlzeit")
 
