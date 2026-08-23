@@ -25,11 +25,7 @@ struct ContentView: View {
             }
 
             Tab("Trends", systemImage: "chart.xyaxis.line", value: .trends) {
-                FeaturePlaceholderView(
-                    title: "Trends",
-                    message: "Trends werden sichtbar, sobald Mahlzeiten erfasst sind.",
-                    systemImage: "chart.line.uptrend.xyaxis"
-                )
+                NutritionTrendsContainer()
             }
 
             Tab("Einstellungen", systemImage: "gearshape", value: .settings) {
@@ -79,23 +75,6 @@ private struct TodayDashboardContainer: View {
 
     private func openMeal(mealID: UUID) {
         selectedMeal = meals.first(where: { $0.id == mealID })
-    }
-}
-
-private struct FeaturePlaceholderView: View {
-    let title: LocalizedStringKey
-    let message: LocalizedStringKey
-    let systemImage: String
-
-    var body: some View {
-        NavigationStack {
-            ContentUnavailableView {
-                Label(title, systemImage: systemImage)
-            } description: {
-                Text(message)
-            }
-            .navigationTitle(title)
-        }
     }
 }
 
