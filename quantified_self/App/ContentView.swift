@@ -21,11 +21,7 @@ struct ContentView: View {
             }
 
             Tab("Mahlzeiten", systemImage: "fork.knife", value: .meals) {
-                FeaturePlaceholderView(
-                    title: "Mahlzeiten",
-                    message: "Der Mahlzeitenverlauf folgt nach der Erfassung.",
-                    systemImage: "list.bullet.rectangle"
-                )
+                MealsHistoryContainer()
             }
 
             Tab("Trends", systemImage: "chart.xyaxis.line", value: .trends) {
