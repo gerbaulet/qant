@@ -55,6 +55,12 @@ private struct TodayDashboardContainer: View {
                     goals: goals,
                     calendar: .autoupdatingCurrent
                 ),
+                weeklySummary: WeeklyNutritionSummaryBuilder.makeSummary(
+                    containing: context.date,
+                    meals: meals,
+                    goals: goals,
+                    calendar: .autoupdatingCurrent
+                ),
                 onAddFood: onAddFood,
                 onRetryMeal: retryAnalysis,
                 onOpenMeal: openMeal

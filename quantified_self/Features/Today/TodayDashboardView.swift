@@ -2,17 +2,20 @@ import SwiftUI
 
 struct TodayDashboardView: View {
     let snapshot: TodayDashboardSnapshot
+    let weeklySummary: WeeklyNutritionSummary?
     let onAddFood: () -> Void
     let onRetryMeal: (UUID) -> Void
     let onOpenMeal: (UUID) -> Void
 
     init(
         snapshot: TodayDashboardSnapshot,
+        weeklySummary: WeeklyNutritionSummary? = nil,
         onAddFood: @escaping () -> Void,
         onRetryMeal: @escaping (UUID) -> Void = { _ in },
         onOpenMeal: @escaping (UUID) -> Void = { _ in }
     ) {
         self.snapshot = snapshot
+        self.weeklySummary = weeklySummary
         self.onAddFood = onAddFood
         self.onRetryMeal = onRetryMeal
         self.onOpenMeal = onOpenMeal
@@ -142,9 +145,38 @@ struct TodayDashboardView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+
+            if let weeklySummary, weeklySummary.trackedDayCount > 0 {
+                Divider()
+                LabeledContent("Tagesdurchschnitt") {
+                    Text("\(wholeNumber(weeklySummary.averageEnergyKilocalories ?? 0)) kcal")
+                }
+                LabeledContent("Makros Ø") {
+                    Text(macroAverageText(weeklySummary))
+                        .multilineTextAlignment(.trailing)
+                }
+                LabeledContent("Tage im Ziel") {
+                    Text("\(weeklySummary.daysWithinEnergyTarget) von \(weeklySummary.trackedDayCount)")
+                }
+                if let change = weeklySummary.previousWeekAverageEnergyChangePercent {
+                    LabeledContent("Zur Vorwoche") {
+                        Text(change.formatted(.percent.scale(1).sign(strategy: .always()).precision(.fractionLength(0))))
+                    }
+                }
+                Text("Nur bestätigte Mahlzeiten; fehlende Tage zählen nicht als null.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(18)
         .background(.background, in: .rect(cornerRadius: 18))
+    }
+
+    private func macroAverageText(_ summary: WeeklyNutritionSummary) -> String {
+        let protein = wholeNumber(summary.averageProteinGrams ?? 0)
+        let carbohydrates = wholeNumber(summary.averageCarbohydratesGrams ?? 0)
+        let fat = wholeNumber(summary.averageFatGrams ?? 0)
+        return "P \(protein) · KH \(carbohydrates) · F \(fat) g"
     }
 
     private func weeklyRemainingText(target: Double) -> String {

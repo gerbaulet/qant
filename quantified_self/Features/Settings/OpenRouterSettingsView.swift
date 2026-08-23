@@ -4,6 +4,9 @@ import SwiftUI
 struct OpenRouterSettingsView: View {
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var viewModel: OpenRouterSettingsViewModel
+    @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
+    @State private var weeklyReminderMessage: String?
+    private let weeklyReminderScheduler = WeeklySummaryNotificationScheduler()
 
     init(viewModel: OpenRouterSettingsViewModel = OpenRouterSettingsViewModel()) {
         _viewModel = State(initialValue: viewModel)
@@ -13,6 +16,23 @@ struct OpenRouterSettingsView: View {
         NavigationStack {
             Form {
                 NutritionGoalSettingsSection(goals: goals)
+
+                Section {
+                    Toggle("Sonntags erinnern", isOn: Binding(
+                        get: { weeklyReminderEnabled },
+                        set: updateWeeklyReminder
+                    ))
+                    .accessibilityIdentifier("settings.weeklySummaryReminder")
+                    if let weeklyReminderMessage {
+                        Text(weeklyReminderMessage)
+                            .font(.footnote)
+                            .foregroundStyle(weeklyReminderEnabled ? Color.secondary : Color.orange)
+                    }
+                } header: {
+                    Text("Wochenübersicht")
+                } footer: {
+                    Text("Eine lokale Erinnerung erscheint sonntags gegen 20:00 Uhr. Die Übersicht wird erst beim Öffnen der App aus bestätigten Mahlzeiten berechnet.")
+                }
 
                 Section {
                     HStack {
@@ -75,6 +95,29 @@ struct OpenRouterSettingsView: View {
             }
             .navigationTitle("Einstellungen")
             .onAppear { viewModel.load() }
+        }
+    }
+
+    private func updateWeeklyReminder(_ enabled: Bool) {
+        if !enabled {
+            weeklyReminderScheduler.disable()
+            weeklyReminderEnabled = false
+            weeklyReminderMessage = "Erinnerung deaktiviert."
+            return
+        }
+
+        Task {
+            switch await weeklyReminderScheduler.enable() {
+            case .enabled:
+                weeklyReminderEnabled = true
+                weeklyReminderMessage = "Erinnerung für Sonntag, 20:00 Uhr aktiviert."
+            case .denied:
+                weeklyReminderEnabled = false
+                weeklyReminderMessage = "Mitteilungen sind nicht erlaubt. Du kannst sie in den iOS-Einstellungen freigeben."
+            case .failed:
+                weeklyReminderEnabled = false
+                weeklyReminderMessage = "Die Erinnerung konnte nicht eingerichtet werden. Bitte versuche es erneut."
+            }
         }
     }
 
