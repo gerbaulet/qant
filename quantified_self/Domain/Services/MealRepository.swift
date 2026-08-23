@@ -25,6 +25,9 @@ struct MealDraft: Sendable {
 protocol MealRepository {
     @discardableResult
     func createMeal(from draft: MealDraft, now: Date) throws -> Meal
+
+    @discardableResult
+    func deleteMeal(_ meal: Meal) throws -> [StoredMealImage]
 }
 
 @MainActor
@@ -66,6 +69,29 @@ final class SwiftDataMealRepository: MealRepository {
         } catch {
             context.delete(meal)
             AppLogger.persistence.error("Local meal save failed")
+            throw error
+        }
+    }
+
+    @discardableResult
+    func deleteMeal(_ meal: Meal) throws -> [StoredMealImage] {
+        let storedImages = meal.images.map {
+            StoredMealImage(
+                id: $0.id,
+                imageStorageKey: $0.imageStorageKey,
+                thumbnailStorageKey: $0.thumbnailStorageKey,
+                pixelWidth: $0.pixelWidth,
+                pixelHeight: $0.pixelHeight
+            )
+        }
+
+        context.delete(meal)
+        do {
+            try context.save()
+            AppLogger.persistence.info("Meal deleted locally")
+            return storedImages
+        } catch {
+            AppLogger.persistence.error("Local meal deletion failed")
             throw error
         }
     }

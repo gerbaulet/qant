@@ -73,6 +73,32 @@ struct MealRepositoryTests {
         #expect(created.userComment == nil)
     }
 
+    @Test("Deleting a meal persists its removal and returns its stored images")
+    func deleteMeal() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let repository = SwiftDataMealRepository(context: context)
+        let image = StoredMealImage(
+            id: UUID(),
+            imageStorageKey: "meal/image.jpg",
+            thumbnailStorageKey: "meal/thumbnail.jpg",
+            pixelWidth: 800,
+            pixelHeight: 600
+        )
+        let meal = try repository.createMeal(from: MealDraft(
+            timestamp: .now,
+            comment: "Delete me",
+            category: .lunch,
+            images: [image]
+        ))
+
+        let deletedImages = try repository.deleteMeal(meal)
+
+        #expect(deletedImages == [image])
+        #expect(try context.fetch(FetchDescriptor<Meal>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<MealImage>()).isEmpty)
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema(NutritionSchemaV1.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)

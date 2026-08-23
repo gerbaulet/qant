@@ -70,6 +70,11 @@ final class quantified_selfUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Neue Mahlzeit"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.textFields["meal.comment"].exists)
+        XCTAssertEqual(app.descendants(matching: .any)["meal.captureForm"].value as? String, "Kamera")
+
+        if app.alerts.buttons["OK"].waitForExistence(timeout: 1) {
+            app.alerts.buttons["OK"].tap()
+        }
 
         app.buttons["Abbrechen"].tap()
         XCTAssertTrue(app.buttons["today.addFood"].waitForExistence(timeout: 2))
@@ -120,6 +125,28 @@ final class quantified_selfUITests: XCTestCase {
 
         app.buttons["meal.confirm"].tap()
         XCTAssertTrue(app.staticTexts["Bestätigt"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testDeletesMealFromReview() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-confirmation",
+        ])
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+
+        XCTAssertTrue(app.buttons["meal.delete"].waitForExistence(timeout: 2))
+        app.buttons["meal.delete"].tap()
+        XCTAssertTrue(app.buttons["Mahlzeit löschen"].waitForExistence(timeout: 2))
+        app.buttons["Mahlzeit löschen"].tap()
+
+        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForNonExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Chicken Curry mit Reis"].exists)
     }
 
     @MainActor

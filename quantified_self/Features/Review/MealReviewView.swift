@@ -8,6 +8,7 @@ struct MealReviewView: View {
 
     private let analysisProvider: any NutritionAnalysisProviding
     private let imageStorage: any ImageStorageProviding
+    private let onDelete: (() -> Void)?
 
     @State private var clarificationAnswer = ""
     @State private var correctionText = ""
@@ -15,15 +16,18 @@ struct MealReviewView: View {
     @State private var alertMessage: String?
     @State private var showsMoreNutrients = false
     @State private var showsCorrectionEntry = false
+    @State private var showsDeleteConfirmation = false
 
     init(
         meal: Meal,
         analysisProvider: any NutritionAnalysisProviding = OpenRouterNutritionAnalysisService(),
-        imageStorage: any ImageStorageProviding = FileImageStorage()
+        imageStorage: any ImageStorageProviding = FileImageStorage(),
+        onDelete: (() -> Void)? = nil
     ) {
         self.meal = meal
         self.analysisProvider = analysisProvider
         self.imageStorage = imageStorage
+        self.onDelete = onDelete
     }
 
     var body: some View {
@@ -51,6 +55,15 @@ struct MealReviewView: View {
         .navigationTitle("Analyse prüfen")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if let onDelete {
+                ToolbarItem(placement: .destructiveAction) {
+                    Button("Löschen", systemImage: "trash", role: .destructive) {
+                        showsDeleteConfirmation = true
+                    }
+                    .disabled(isWorking)
+                    .accessibilityIdentifier("meal.delete")
+                }
+            }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Fertig") { dismiss() }
             }
@@ -60,6 +73,18 @@ struct MealReviewView: View {
         }
         .sheet(isPresented: $showsCorrectionEntry) {
             correctionEntry
+        }
+        .confirmationDialog(
+            "Mahlzeit löschen?",
+            isPresented: $showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Mahlzeit löschen", role: .destructive) {
+                onDelete?()
+            }
+            Button("Abbrechen", role: .cancel) {}
+        } message: {
+            Text("Die Mahlzeit, ihre Analyse und ihre Fotos werden dauerhaft gelöscht.")
         }
         .alert("Aktion nicht möglich", isPresented: alertBinding) {
             Button("OK", role: .cancel) {}

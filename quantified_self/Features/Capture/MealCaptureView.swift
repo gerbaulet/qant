@@ -15,6 +15,7 @@ struct MealCaptureView: View {
     private let calendar: Calendar
     private let imageStorage: any ImageStorageProviding
     private let analysisProvider: any NutritionAnalysisProviding
+    private let opensCameraOnAppear: Bool
 
     @State private var timestamp: Date
     @State private var comment = ""
@@ -26,6 +27,9 @@ struct MealCaptureView: View {
     @State private var isImportingImages = false
     @State private var isSaving = false
     @State private var alert: CaptureAlert?
+    @State private var showsTimestamp = false
+    @State private var showsMealCategory = false
+    @State private var hasAttemptedAutomaticCamera = false
     @FocusState private var commentIsFocused: Bool
 
     init(
@@ -33,12 +37,14 @@ struct MealCaptureView: View {
         classificationSchedule: MealClassificationSchedule = .default,
         calendar: Calendar = .autoupdatingCurrent,
         imageStorage: any ImageStorageProviding = FileImageStorage(),
-        analysisProvider: any NutritionAnalysisProviding = OpenRouterNutritionAnalysisService()
+        analysisProvider: any NutritionAnalysisProviding = OpenRouterNutritionAnalysisService(),
+        opensCameraOnAppear: Bool = false
     ) {
         self.classificationSchedule = classificationSchedule
         self.calendar = calendar
         self.imageStorage = imageStorage
         self.analysisProvider = analysisProvider
+        self.opensCameraOnAppear = opensCameraOnAppear
         _timestamp = State(initialValue: now)
         _category = State(initialValue: classificationSchedule.category(
             for: now,
@@ -50,35 +56,6 @@ struct MealCaptureView: View {
         NavigationStack {
             Form {
                 photosSection
-
-                Section("Zeitpunkt") {
-                    DatePicker(
-                        "Mahlzeit",
-                        selection: $timestamp,
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    .accessibilityIdentifier("meal.timestamp")
-                }
-
-                Section("Art der Mahlzeit") {
-                    Picker("Kategorie", selection: categoryBinding) {
-                        ForEach(MealCategory.allCases, id: \.self) { category in
-                            Text(category.captureTitle).tag(category)
-                        }
-                    }
-                    .accessibilityIdentifier("meal.category")
-
-                    if !usesAutomaticCategory {
-                        Button("Wieder automatisch bestimmen") {
-                            usesAutomaticCategory = true
-                            updateAutomaticCategory()
-                        }
-                    } else {
-                        Label("Automatisch nach Uhrzeit gewählt", systemImage: "clock.badge.checkmark")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
 
                 Section {
                     TextField(
@@ -94,7 +71,12 @@ struct MealCaptureView: View {
                 } footer: {
                     Text("Gewicht, Portionsgröße oder besondere Zutaten helfen später bei der Analyse.")
                 }
+
+                timestampSection
+                mealCategorySection
             }
+            .accessibilityIdentifier("meal.captureForm")
+            .accessibilityValue(opensCameraOnAppear ? "Kamera" : "Standard")
             .navigationTitle("Neue Mahlzeit")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(isSaving)
@@ -129,6 +111,13 @@ struct MealCaptureView: View {
                 guard !items.isEmpty else { return }
                 Task { await importPhotos(items) }
             }
+            .task {
+                guard opensCameraOnAppear, !hasAttemptedAutomaticCamera else { return }
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                hasAttemptedAutomaticCamera = true
+                requestCamera()
+            }
             .fullScreenCover(isPresented: $showsCamera) {
                 CameraPicker { imageData in
                     showsCamera = false
@@ -154,6 +143,45 @@ struct MealCaptureView: View {
                     )
                 }
             }
+        }
+    }
+
+    private var timestampSection: some View {
+        Section {
+            DisclosureGroup("Zeitpunkt", isExpanded: $showsTimestamp) {
+                DatePicker(
+                    "Mahlzeit",
+                    selection: $timestamp,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .accessibilityIdentifier("meal.timestamp")
+            }
+            .accessibilityIdentifier("meal.timestampDisclosure")
+        }
+    }
+
+    private var mealCategorySection: some View {
+        Section {
+            DisclosureGroup("Art der Mahlzeit", isExpanded: $showsMealCategory) {
+                Picker("Kategorie", selection: categoryBinding) {
+                    ForEach(MealCategory.allCases, id: \.self) { category in
+                        Text(category.captureTitle).tag(category)
+                    }
+                }
+                .accessibilityIdentifier("meal.category")
+
+                if !usesAutomaticCategory {
+                    Button("Wieder automatisch bestimmen") {
+                        usesAutomaticCategory = true
+                        updateAutomaticCategory()
+                    }
+                } else {
+                    Label("Automatisch nach Uhrzeit gewählt", systemImage: "clock.badge.checkmark")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("meal.categoryDisclosure")
         }
     }
 

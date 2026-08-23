@@ -1,3 +1,4 @@
+import OSLog
 import SwiftData
 import SwiftUI
 
@@ -9,8 +10,15 @@ struct ContentView: View {
         case settings
     }
 
+    private enum MealCaptureMode: Identifiable, Hashable {
+        case standard
+        case camera
+
+        var id: Self { self }
+    }
+
     @State private var selectedSection: AppSection = .today
-    @State private var showsMealCapture = false
+    @State private var mealCaptureMode: MealCaptureMode?
     @Environment(\.scenePhase) private var scenePhase
     private let quickCaptureRequests = QuickCaptureRequestStore()
 
@@ -18,7 +26,7 @@ struct ContentView: View {
         TabView(selection: $selectedSection) {
             Tab("Heute", systemImage: "sun.max.fill", value: .today) {
                 TodayDashboardContainer {
-                    showsMealCapture = true
+                    mealCaptureMode = .standard
                 }
             }
 
@@ -34,8 +42,8 @@ struct ContentView: View {
                 OpenRouterSettingsView()
             }
         }
-        .sheet(isPresented: $showsMealCapture) {
-            MealCaptureView()
+        .sheet(item: $mealCaptureMode) { mode in
+            MealCaptureView(opensCameraOnAppear: mode == .camera)
         }
         .onAppear(perform: presentRequestedQuickCapture)
         .onChange(of: scenePhase) { _, newPhase in
@@ -48,7 +56,7 @@ struct ContentView: View {
     private func presentRequestedQuickCapture() {
         guard quickCaptureRequests.consumeCaptureRequest() else { return }
         selectedSection = .today
-        showsMealCapture = true
+        mealCaptureMode = .camera
     }
 }
 
@@ -57,6 +65,7 @@ private struct TodayDashboardContainer: View {
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var selectedMeal: Meal?
+    private let imageStorage: any ImageStorageProviding = FileImageStorage()
 
     let onAddFood: () -> Void
 
@@ -82,7 +91,9 @@ private struct TodayDashboardContainer: View {
         }
         .sheet(item: $selectedMeal) { meal in
             NavigationStack {
-                MealReviewView(meal: meal)
+                MealReviewView(meal: meal) {
+                    deleteMeal(meal)
+                }
             }
         }
     }
@@ -95,6 +106,20 @@ private struct TodayDashboardContainer: View {
 
     private func openMeal(mealID: UUID) {
         selectedMeal = meals.first(where: { $0.id == mealID })
+    }
+
+    private func deleteMeal(_ meal: Meal) {
+        do {
+            let images = try SwiftDataMealRepository(context: modelContext).deleteMeal(meal)
+            selectedMeal = nil
+            Task {
+                for image in images {
+                    await imageStorage.deleteImage(image)
+                }
+            }
+        } catch {
+            AppLogger.persistence.error("Meal deletion failed")
+        }
     }
 }
 
