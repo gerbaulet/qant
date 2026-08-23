@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 
 @MainActor
@@ -12,14 +13,26 @@ final class MealAnalysisCoordinator {
 
     init(
         context: ModelContext,
-        provider: any NutritionAnalysisProviding = OpenRouterNutritionAnalysisService(),
-        imageStorage: any ImageStorageProviding = FileImageStorage(),
+        provider: any NutritionAnalysisProviding,
+        imageStorage: any ImageStorageProviding,
         now: @escaping () -> Date = Date.init
     ) {
         self.context = context
         self.provider = provider
         self.imageStorage = imageStorage
         self.now = now
+    }
+
+    convenience init(
+        context: ModelContext,
+        now: @escaping () -> Date = Date.init
+    ) {
+        self.init(
+            context: context,
+            provider: OpenRouterNutritionAnalysisService(),
+            imageStorage: FileImageStorage(),
+            now: now
+        )
     }
 
     func analyze(_ meal: Meal) async {
@@ -97,6 +110,7 @@ final class MealAnalysisCoordinator {
             nextClarificationCount < Self.maximumClarificationCount
 
         let requestDate = now()
+        AppLogger.nutritionAnalysis.info("Starting nutrition analysis")
         meal.analysisState = .analyzing
         meal.modifiedAt = requestDate
         do {
@@ -129,10 +143,12 @@ final class MealAnalysisCoordinator {
             )
             meal.clarificationCount = nextClarificationCount
             try context.save()
+            AppLogger.nutritionAnalysis.info("Nutrition analysis completed")
         } catch is CancellationError {
             meal.analysisState = previousMealState
             meal.modifiedAt = now()
             try? context.save()
+            AppLogger.nutritionAnalysis.info("Nutrition analysis cancelled")
         } catch {
             if trigger == .correction, let userCorrection {
                 persistCorrectionFailure(
@@ -145,6 +161,7 @@ final class MealAnalysisCoordinator {
             meal.analysisState = .failed
             meal.modifiedAt = now()
             try? context.save()
+            AppLogger.nutritionAnalysis.error("Nutrition analysis failed")
         }
     }
 

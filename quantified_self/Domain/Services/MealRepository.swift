@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 
 struct MealDraft: Sendable {
@@ -60,9 +61,11 @@ final class SwiftDataMealRepository: MealRepository {
         context.insert(meal)
         do {
             try context.save()
+            AppLogger.persistence.info("Meal saved locally")
             return meal
         } catch {
             context.delete(meal)
+            AppLogger.persistence.error("Local meal save failed")
             throw error
         }
     }

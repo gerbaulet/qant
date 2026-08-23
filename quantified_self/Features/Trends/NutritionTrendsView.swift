@@ -96,6 +96,8 @@ struct NutritionTrendsView: View {
                 }
                 .foregroundStyle(.blue)
                 .frame(height: 240)
+                .accessibilityLabel("Verlauf für \(nutrient.trendTitle)")
+                .accessibilityValue(chartAccessibilityValue)
             }
         }
         .padding(18)
@@ -169,6 +171,15 @@ struct NutritionTrendsView: View {
     private func formatted(_ value: Double?) -> String {
         guard let value else { return "–" }
         return value.formatted(.number.precision(.fractionLength(value < 10 ? 1 : 0)))
+    }
+
+    private var chartAccessibilityValue: String {
+        snapshot.points.map { point in
+            let date = point.date.formatted(
+                .dateTime.day().month().locale(Locale(identifier: "de_DE"))
+            )
+            return "\(date): \(formatted(point.value)) \(nutrient.trendUnit.rawValue)"
+        }.joined(separator: ", ")
     }
 }
 

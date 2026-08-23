@@ -27,6 +27,7 @@ struct PendingMealImageThumbnail: View {
                     .symbolRenderingMode(.palette)
                     .foregroundStyle(.white, .black.opacity(0.65))
             }
+            .frame(minWidth: 44, minHeight: 44)
             .padding(5)
             .accessibilityLabel("Foto entfernen")
         }
@@ -37,7 +38,7 @@ enum CaptureAlert: Identifiable {
     case imageImportFailed
     case cameraUnavailable
     case cameraDenied
-    case saveFailed(String)
+    case saveFailed
 
     var id: String {
         switch self {
@@ -65,8 +66,8 @@ enum CaptureAlert: Identifiable {
             "Auf diesem Gerät steht keine Kamera zur Verfügung."
         case .cameraDenied:
             "Erlaube den Kamerazugriff in den Einstellungen, um ein Foto aufzunehmen."
-        case .saveFailed(let message):
-            message
+        case .saveFailed:
+            "Deine Eingabe ist unverändert. Bitte prüfe den freien Speicher und versuche es erneut."
         }
     }
 

@@ -104,7 +104,7 @@ struct OpenRouterAPIClientTests {
         let session = makeSession { request in
             #expect(request.url?.path == "/api/v1/chat/completions")
             #expect(request.httpMethod == "POST")
-            #expect(request.httpBody == body)
+            #expect(Self.bodyData(for: request) == body)
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-secret")
             #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
             return Self.response(for: request, status: 200, json: #"{"choices":[]}"#)
@@ -140,6 +140,23 @@ struct OpenRouterAPIClientTests {
             headerFields: ["Content-Type": "application/json"]
         )!
         return (response, Data(json.utf8))
+    }
+
+    private nonisolated static func bodyData(for request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1_024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count >= 0 else { return nil }
+            if count == 0 { break }
+            data.append(buffer, count: count)
+        }
+        return data
     }
 }
 

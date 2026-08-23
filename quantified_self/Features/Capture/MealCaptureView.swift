@@ -1,4 +1,5 @@
 import AVFoundation
+import OSLog
 import PhotosUI
 import SwiftData
 import SwiftUI
@@ -315,7 +316,8 @@ struct MealCaptureView: View {
                 for image in storedImages {
                     await imageStorage.deleteImage(image)
                 }
-                alert = .saveFailed(error.localizedDescription)
+                AppLogger.persistence.error("Capture workflow could not save meal")
+                alert = .saveFailed
                 isSaving = false
             }
         }

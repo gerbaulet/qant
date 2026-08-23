@@ -115,13 +115,28 @@ struct OpenRouterSettingsView: View {
                 }
 
                 Section("Datenschutz") {
-                    Text("Für die spätere Analyse werden Mahlzeitenfotos und dein Kommentar an OpenRouter und den ausgewählten Modellanbieter gesendet.")
-                    Text("Anbieter können unterschiedliche Datenschutz- und Aufbewahrungsrichtlinien haben. Nur beim Start einer Analyse werden Mahlzeitendaten übertragen.")
+                    Label("Keine Werbung, Analytik-SDKs oder unnötige Tracker", systemImage: "hand.raised.fill")
+                    Text("Mahlzeiten, Ziele und Fotos werden lokal in der App gespeichert. Fotos bleiben erhalten, solange der zugehörige Eintrag gespeichert ist.")
+                    Text("Nur beim Start einer Analyse werden die zugehörigen Fotos und dein Kommentar an OpenRouter sowie den ausgewählten Modellanbieter gesendet.")
+                    Text("OpenRouter und einzelne Anbieter können unterschiedliche Datenschutz- und Aufbewahrungsrichtlinien haben. Die App sendet keine anderen Mahlzeiten und protokolliert weder API-Schlüssel noch Bild- oder Kommentarinhalt.")
+                }
+
+                Section("App") {
+                    LabeledContent("Version", value: appVersion)
+                    Text("Alle Auswertungen sind Schätzungen und keine medizinische Beratung.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Einstellungen")
             .onAppear { viewModel.load() }
         }
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–"
+        return "\(version) (\(build))"
     }
 
     private func updateWeeklyReminder(_ enabled: Bool) {

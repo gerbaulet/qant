@@ -20,6 +20,9 @@ struct quantified_selfApp: App {
             )
             try InitialDataSeeder.seedGoalsIfNeeded(in: container.mainContext)
 #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing-quick-capture") {
+                QuickCaptureRequestStore().requestCapture()
+            }
             try UITestDataSeeder.seedReviewMealIfRequested(
                 arguments: ProcessInfo.processInfo.arguments,
                 in: container.mainContext

@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 struct OpenRouterConfigurationCheck: Sendable, Equatable {
     let modelIdentifier: String
@@ -26,6 +27,7 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
     case invalidRequest
     case insufficientCredits
     case rateLimited
+    case timedOut
     case serverError
     case invalidResponse
     case transportFailure
@@ -46,6 +48,8 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
             "Das OpenRouter-Guthaben reicht für diese Analyse nicht aus."
         case .rateLimited:
             "OpenRouter hat zu viele Anfragen erhalten. Versuche es später erneut."
+        case .timedOut:
+            "Die Anfrage hat zu lange gedauert. Prüfe deine Verbindung und versuche es erneut."
         case .serverError:
             "OpenRouter ist momentan nicht verfügbar."
         case .invalidResponse:
@@ -153,9 +157,13 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterChatCompl
             (data, response) = try await session.data(for: request)
         } catch is CancellationError {
             throw CancellationError()
-        } catch let error as URLError where error.code == .cancelled {
-            throw CancellationError()
+        } catch let error as URLError {
+            if error.code == .cancelled { throw CancellationError() }
+            if error.code == .timedOut { throw OpenRouterClientError.timedOut }
+            AppLogger.nutritionAnalysis.error("OpenRouter transport request failed")
+            throw OpenRouterClientError.transportFailure
         } catch {
+            AppLogger.nutritionAnalysis.error("OpenRouter transport request failed")
             throw OpenRouterClientError.transportFailure
         }
 
@@ -164,6 +172,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterChatCompl
         }
         switch httpResponse.statusCode {
         case 200..<300:
+            AppLogger.nutritionAnalysis.debug("OpenRouter request succeeded")
             return data
         case 401:
             throw OpenRouterClientError.invalidAPIKey
@@ -180,6 +189,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterChatCompl
         case 500...599:
             throw OpenRouterClientError.serverError
         default:
+            AppLogger.nutritionAnalysis.error("OpenRouter returned an unexpected status code")
             throw OpenRouterClientError.invalidResponse
         }
     }

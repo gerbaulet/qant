@@ -321,6 +321,7 @@ struct TodayDashboardView: View {
         .padding(.vertical, 10)
         .background(.bar)
         .accessibilityHint("Öffnet die Erfassung einer neuen Mahlzeit")
+        .accessibilityIdentifier("today.addFood")
     }
 
     private var remainingEnergyText: String {

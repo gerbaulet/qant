@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import UserNotifications
 
 struct WeeklySummaryNotificationSchedule: Equatable, Sendable {
@@ -43,13 +44,16 @@ final class WeeklySummaryNotificationScheduler {
             )
             center.removePendingNotificationRequests(withIdentifiers: [WeeklySummaryNotificationSchedule.identifier])
             try await center.add(request)
+            AppLogger.notifications.info("Weekly summary reminder scheduled")
             return .enabled
         } catch {
+            AppLogger.notifications.error("Weekly summary reminder scheduling failed")
             return .failed
         }
     }
 
     func disable() {
         center.removePendingNotificationRequests(withIdentifiers: [WeeklySummaryNotificationSchedule.identifier])
+        AppLogger.notifications.info("Weekly summary reminder removed")
     }
 }

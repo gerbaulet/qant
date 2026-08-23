@@ -19,7 +19,7 @@ final class quantified_selfUITests: XCTestCase {
         app.launchArguments.append("--ui-testing")
         app.launch()
 
-        let addFoodButton = app.buttons["Essen hinzufügen"]
+        let addFoodButton = app.buttons["today.addFood"]
         XCTAssertTrue(addFoodButton.waitForExistence(timeout: 3))
         addFoodButton.tap()
 
@@ -60,6 +60,19 @@ final class quantified_selfUITests: XCTestCase {
         savedMealScreenshot.name = "Saved meal analysis failure and retry"
         savedMealScreenshot.lifetime = .keepAlways
         add(savedMealScreenshot)
+    }
+
+    @MainActor
+    func testQuickCaptureLaunchesDirectlyIntoCapture() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: ["--ui-testing", "--ui-testing-quick-capture"])
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Neue Mahlzeit"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["meal.comment"].exists)
+
+        app.buttons["Abbrechen"].tap()
+        XCTAssertTrue(app.buttons["today.addFood"].waitForExistence(timeout: 2))
     }
 
     @MainActor

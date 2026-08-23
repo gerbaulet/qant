@@ -1,5 +1,6 @@
 import Foundation
 import ImageIO
+import OSLog
 import UIKit
 
 struct StoredMealImage: Sendable, Equatable {
@@ -115,8 +116,10 @@ struct FileImageStorage: ImageStorageProviding, Sendable {
             )
             try fullData.write(to: imageURL, options: .atomic)
             try thumbnailData.write(to: thumbnailURL, options: .atomic)
+            AppLogger.imageStorage.info("Meal image and thumbnail stored")
         } catch {
             try? FileManager.default.removeItem(at: directory)
+            AppLogger.imageStorage.error("Meal image storage failed")
             throw error
         }
 
