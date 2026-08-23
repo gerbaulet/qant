@@ -37,11 +37,7 @@ struct ContentView: View {
             }
 
             Tab("Einstellungen", systemImage: "gearshape", value: .settings) {
-                FeaturePlaceholderView(
-                    title: "Einstellungen",
-                    message: "Ziele und KI-Einstellungen folgen in einem späteren Meilenstein.",
-                    systemImage: "gearshape"
-                )
+                OpenRouterSettingsView()
             }
         }
         .sheet(isPresented: $showsMealCapture) {

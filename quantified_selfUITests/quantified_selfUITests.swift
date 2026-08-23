@@ -49,6 +49,27 @@ final class quantified_selfUITests: XCTestCase {
         XCTAssertTrue(pendingMeal.waitForExistence(timeout: 2))
     }
 
+    @MainActor
+    func testPresentsSecureOpenRouterSettings() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let settingsTab = app.tabBars.buttons["Einstellungen"]
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: 3))
+        settingsTab.tap()
+
+        XCTAssertTrue(app.navigationBars["Einstellungen"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.secureTextFields["settings.openRouterAPIKey"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.textFields["settings.openRouterModel"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["settings.testOpenRouter"].waitForExistence(timeout: 2))
+
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "OpenRouter settings"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
 }
 
 private extension XCUIElement {
