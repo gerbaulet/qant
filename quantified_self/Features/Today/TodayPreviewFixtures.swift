@@ -19,6 +19,12 @@ extension TodayDashboardSnapshot {
                 target: 2_200,
                 unit: .kilocalorie
             ),
+            weeklyEnergy: NutrientProgress(
+                id: .energy,
+                consumed: 10_940,
+                target: 15_400,
+                unit: .kilocalorie
+            ),
             macros: [
                 NutrientProgress(id: .protein, consumed: 92, target: 130, unit: .gram),
                 NutrientProgress(id: .carbohydrates, consumed: 174, target: 240, unit: .gram),

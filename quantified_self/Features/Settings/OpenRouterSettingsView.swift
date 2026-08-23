@@ -1,6 +1,8 @@
+import SwiftData
 import SwiftUI
 
 struct OpenRouterSettingsView: View {
+    @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var viewModel: OpenRouterSettingsViewModel
 
     init(viewModel: OpenRouterSettingsViewModel = OpenRouterSettingsViewModel()) {
@@ -10,6 +12,8 @@ struct OpenRouterSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                NutritionGoalSettingsSection(goals: goals)
+
                 Section {
                     HStack {
                         Text("API-Schlüssel")

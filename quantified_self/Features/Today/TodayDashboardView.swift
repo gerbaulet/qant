@@ -24,6 +24,7 @@ struct TodayDashboardView: View {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     dateHeader
                     calorieCard
+                    weeklyCalorieCard
                     macroCard
                     mealsSection
                 }
@@ -112,6 +113,45 @@ struct TodayDashboardView: View {
         }
         .padding(20)
         .background(.background, in: .rect(cornerRadius: 22))
+    }
+
+    private var weeklyCalorieCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Diese Woche")
+                .font(.headline)
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(wholeNumber(snapshot.weeklyEnergy.consumed)) kcal")
+                    .font(.title3.bold().monospacedDigit())
+                Spacer()
+                if let target = snapshot.weeklyEnergy.target {
+                    Text("von \(wholeNumber(target)) kcal")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let target = snapshot.weeklyEnergy.target {
+                ProgressView(
+                    value: min(snapshot.weeklyEnergy.consumed, target),
+                    total: target
+                )
+                Text(weeklyRemainingText(target: target))
+                    .font(.subheadline)
+                    .foregroundStyle(snapshot.weeklyEnergy.consumed <= target ? .green : .orange)
+            } else {
+                Text("Für diese Woche ist kein vollständiges Kalorienziel verfügbar.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(18)
+        .background(.background, in: .rect(cornerRadius: 18))
+    }
+
+    private func weeklyRemainingText(target: Double) -> String {
+        let remaining = target - snapshot.weeklyEnergy.consumed
+        if remaining >= 0 {
+            return "\(wholeNumber(remaining)) kcal verbleibend"
+        }
+        return "\(wholeNumber(abs(remaining))) kcal über dem Wochenziel"
     }
 
     private func macroRow(_ progress: NutrientProgress) -> some View {

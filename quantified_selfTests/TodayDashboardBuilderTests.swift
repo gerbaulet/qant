@@ -6,7 +6,10 @@ import Testing
 struct TodayDashboardBuilderTests {
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "de_DE")
         calendar.timeZone = TimeZone(identifier: "Europe/Berlin")!
+        calendar.firstWeekday = 2
+        calendar.minimumDaysInFirstWeek = 4
         return calendar
     }
 
@@ -92,6 +95,37 @@ struct TodayDashboardBuilderTests {
         #expect(snapshot.energy.consumed == 650)
         #expect(snapshot.meals.first?.isProvisional == true)
         #expect(snapshot.hasProvisionalValues)
+    }
+
+    @Test("Weekly progress sums intake and effective-dated daily goals")
+    func weeklyProgress() {
+        let reference = date(2026, 8, 19, 12)
+        let monday = meal(at: date(2026, 8, 17, 12), state: .confirmed, energy: 2_000, protein: 100)
+        let wednesday = meal(at: date(2026, 8, 19, 12), state: .awaitingConfirmation, energy: 1_800, protein: 90)
+        let priorWeek = meal(at: date(2026, 8, 16, 12), state: .confirmed, energy: 3_000, protein: 100)
+        let oldGoal = NutritionGoalPeriod(
+            validFrom: date(2026, 8, 1),
+            validUntil: date(2026, 8, 20),
+            nutrientIdentifier: .energy,
+            targetValue: 2_200,
+            unit: .kilocalorie
+        )
+        let newGoal = NutritionGoalPeriod(
+            validFrom: date(2026, 8, 20),
+            nutrientIdentifier: .energy,
+            targetValue: 2_100,
+            unit: .kilocalorie
+        )
+
+        let snapshot = TodayDashboardBuilder.makeSnapshot(
+            for: reference,
+            meals: [monday, wednesday, priorWeek],
+            goals: [oldGoal, newGoal],
+            calendar: calendar
+        )
+
+        #expect(snapshot.weeklyEnergy.consumed == 3_800)
+        #expect(snapshot.weeklyEnergy.target == 15_000)
     }
 
     private func meal(

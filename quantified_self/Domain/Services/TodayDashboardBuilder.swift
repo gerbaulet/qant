@@ -29,6 +29,7 @@ struct TodayMealSummary: Identifiable, Sendable {
 struct TodayDashboardSnapshot: Sendable {
     let date: Date
     let energy: NutrientProgress
+    let weeklyEnergy: NutrientProgress
     let macros: [NutrientProgress]
     let meals: [TodayMealSummary]
     let hasProvisionalValues: Bool
@@ -69,6 +70,13 @@ enum TodayDashboardBuilder {
             return revision
         }
 
+        let weeklyEnergy = makeWeeklyEnergyProgress(
+            for: date,
+            meals: meals,
+            goals: goals,
+            calendar: calendar
+        )
+
         let energy = progress(
             for: .energy,
             unit: .kilocalorie,
@@ -105,6 +113,7 @@ enum TodayDashboardBuilder {
         return TodayDashboardSnapshot(
             date: date,
             energy: energy,
+            weeklyEnergy: weeklyEnergy,
             macros: macros,
             meals: summaries,
             hasProvisionalValues: includedRevisions.contains { $0.status != .confirmed }
@@ -149,6 +158,38 @@ enum TodayDashboardBuilder {
         }
     }
 
+    private static func makeWeeklyEnergyProgress(
+        for date: Date,
+        meals: [Meal],
+        goals: [NutritionGoalPeriod],
+        calendar: Calendar
+    ) -> NutrientProgress {
+        guard let week = calendar.dateInterval(of: .weekOfYear, for: date) else {
+            return NutrientProgress(id: .energy, consumed: 0, target: nil, unit: .kilocalorie)
+        }
+        let revisions = meals.compactMap { meal -> MealAnalysisRevision? in
+            guard meal.timestamp >= week.start,
+                  meal.timestamp < week.end,
+                  let revision = meal.activeRevision,
+                  isIncludedInProvisionalTotals(revision.status) else {
+                return nil
+            }
+            return revision
+        }
+        let target = (try? GoalHistory.weeklyTarget(
+            for: .energy,
+            containing: date,
+            calendar: calendar,
+            periods: goals
+        )) ?? nil
+        return NutrientProgress(
+            id: .energy,
+            consumed: nutrientTotal(for: .energy, unit: .kilocalorie, in: revisions),
+            target: target,
+            unit: .kilocalorie
+        )
+    }
+
     private static func emptySnapshot(
         for date: Date,
         goals: [NutritionGoalPeriod]
@@ -162,6 +203,17 @@ enum TodayDashboardBuilder {
                 id: .energy,
                 consumed: 0,
                 target: target(.energy, .kilocalorie),
+                unit: .kilocalorie
+            ),
+            weeklyEnergy: NutrientProgress(
+                id: .energy,
+                consumed: 0,
+                target: (try? GoalHistory.weeklyTarget(
+                    for: .energy,
+                    containing: date,
+                    calendar: .autoupdatingCurrent,
+                    periods: goals
+                )) ?? nil,
                 unit: .kilocalorie
             ),
             macros: macroIdentifiers.map {
