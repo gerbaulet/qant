@@ -26,6 +26,7 @@ struct TodayDashboardView: View {
                     calorieCard
                     weeklyCalorieCard
                     macroCard
+                    hintsSection
                     mealsSection
                 }
                 .padding(.horizontal)
@@ -191,6 +192,30 @@ struct TodayDashboardView: View {
                     mealRow(meal)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var hintsSection: some View {
+        let hints = NutritionHintBuilder.makeHints(
+            for: snapshot,
+            at: snapshot.date,
+            calendar: .autoupdatingCurrent
+        )
+        if !hints.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Hinweise")
+                    .font(.headline)
+                ForEach(hints) { hint in
+                    Label(hint.message, systemImage: hint.systemImage)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if hint.id != hints.last?.id {
+                        Divider()
+                    }
+                }
+            }
+            .padding(18)
+            .background(.blue.opacity(0.08), in: .rect(cornerRadius: 18))
         }
     }
 

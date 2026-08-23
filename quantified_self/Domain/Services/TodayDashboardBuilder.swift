@@ -31,6 +31,7 @@ struct TodayDashboardSnapshot: Sendable {
     let energy: NutrientProgress
     let weeklyEnergy: NutrientProgress
     let macros: [NutrientProgress]
+    let fiber: NutrientProgress
     let meals: [TodayMealSummary]
     let hasProvisionalValues: Bool
 }
@@ -93,6 +94,13 @@ enum TodayDashboardBuilder {
                 at: dayInterval.start
             )
         }
+        let fiber = progress(
+            for: .fiber,
+            unit: .gram,
+            revisions: includedRevisions,
+            goals: goals,
+            at: dayInterval.start
+        )
 
         let summaries = todaysMeals.map { meal in
             let revision = meal.activeRevision
@@ -115,6 +123,7 @@ enum TodayDashboardBuilder {
             energy: energy,
             weeklyEnergy: weeklyEnergy,
             macros: macros,
+            fiber: fiber,
             meals: summaries,
             hasProvisionalValues: includedRevisions.contains { $0.status != .confirmed }
         )
@@ -224,6 +233,12 @@ enum TodayDashboardBuilder {
                     unit: .gram
                 )
             },
+            fiber: NutrientProgress(
+                id: .fiber,
+                consumed: 0,
+                target: target(.fiber, .gram),
+                unit: .gram
+            ),
             meals: [],
             hasProvisionalValues: false
         )

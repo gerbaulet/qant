@@ -30,6 +30,7 @@ extension TodayDashboardSnapshot {
                 NutrientProgress(id: .carbohydrates, consumed: 174, target: 240, unit: .gram),
                 NutrientProgress(id: .fat, consumed: 61, target: 75, unit: .gram),
             ],
+            fiber: NutrientProgress(id: .fiber, consumed: 17, target: 30, unit: .gram),
             meals: [
                 TodayMealSummary(
                     id: UUID(),
