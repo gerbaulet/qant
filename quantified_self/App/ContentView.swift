@@ -11,6 +11,8 @@ struct ContentView: View {
 
     @State private var selectedSection: AppSection = .today
     @State private var showsMealCapture = false
+    @Environment(\.scenePhase) private var scenePhase
+    private let quickCaptureRequests = QuickCaptureRequestStore()
 
     var body: some View {
         TabView(selection: $selectedSection) {
@@ -35,6 +37,18 @@ struct ContentView: View {
         .sheet(isPresented: $showsMealCapture) {
             MealCaptureView()
         }
+        .onAppear(perform: presentRequestedQuickCapture)
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                presentRequestedQuickCapture()
+            }
+        }
+    }
+
+    private func presentRequestedQuickCapture() {
+        guard quickCaptureRequests.consumeCaptureRequest() else { return }
+        selectedSection = .today
+        showsMealCapture = true
     }
 }
 
