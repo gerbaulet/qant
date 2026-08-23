@@ -24,7 +24,12 @@ final class MealAnalysisCoordinator {
 
     func analyze(_ meal: Meal) async {
         guard meal.analysisState == .pending || meal.analysisState == .failed else { return }
-        await performAnalysis(meal, trigger: meal.analysisState == .failed ? .retry : .initial)
+        if meal.analysisState == .failed,
+           let correction = latestFailedCorrection(for: meal) {
+            await performAnalysis(meal, trigger: .correction, userCorrection: correction)
+        } else {
+            await performAnalysis(meal, trigger: meal.analysisState == .failed ? .retry : .initial)
+        }
     }
 
     func answerClarification(_ answer: String, for meal: Meal) async {
@@ -47,6 +52,20 @@ final class MealAnalysisCoordinator {
         await performAnalysis(meal, trigger: .bestEstimate)
     }
 
+    func correct(_ correction: String, for meal: Meal) async {
+        let trimmedCorrection = correction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            meal.analysisState == .awaitingConfirmation || meal.analysisState == .confirmed,
+            meal.activeRevision != nil,
+            !trimmedCorrection.isEmpty
+        else { return }
+        await performAnalysis(
+            meal,
+            trigger: .correction,
+            userCorrection: trimmedCorrection
+        )
+    }
+
     func confirm(_ meal: Meal) throws {
         guard
             meal.analysisState == .awaitingConfirmation,
@@ -65,7 +84,8 @@ final class MealAnalysisCoordinator {
     private func performAnalysis(
         _ meal: Meal,
         trigger: AnalysisTrigger,
-        clarificationAnswer: String? = nil
+        clarificationAnswer: String? = nil,
+        userCorrection: String? = nil
     ) async {
         let previousMealState = meal.analysisState
         let previousAnalysis = meal.activeRevision.map(makeAnalysisResult)
@@ -73,6 +93,7 @@ final class MealAnalysisCoordinator {
             ? meal.clarificationCount + 1
             : meal.clarificationCount
         let allowsClarification = trigger != .bestEstimate &&
+            trigger != .correction &&
             nextClarificationCount < Self.maximumClarificationCount
 
         let requestDate = now()
@@ -93,6 +114,7 @@ final class MealAnalysisCoordinator {
                 userComment: meal.userComment,
                 previousAnalysis: previousAnalysis,
                 clarificationAnswer: clarificationAnswer,
+                userCorrection: userCorrection,
                 requestsBestEstimate: trigger == .bestEstimate,
                 allowsClarification: allowsClarification
             ))
@@ -102,6 +124,7 @@ final class MealAnalysisCoordinator {
                 requestedAt: requestDate,
                 trigger: trigger,
                 clarificationAnswer: clarificationAnswer,
+                userCorrection: userCorrection,
                 for: meal
             )
             meal.clarificationCount = nextClarificationCount
@@ -111,10 +134,50 @@ final class MealAnalysisCoordinator {
             meal.modifiedAt = now()
             try? context.save()
         } catch {
+            if trigger == .correction, let userCorrection {
+                persistCorrectionFailure(
+                    userCorrection,
+                    requestedAt: requestDate,
+                    error: error,
+                    for: meal
+                )
+            }
             meal.analysisState = .failed
             meal.modifiedAt = now()
             try? context.save()
         }
+    }
+
+    private func latestFailedCorrection(for meal: Meal) -> String? {
+        meal.analysisRevisions
+            .filter { $0.status == .failed && $0.trigger == .correction }
+            .sorted { $0.createdAt > $1.createdAt }
+            .first?
+            .userCorrection
+    }
+
+    private func persistCorrectionFailure(
+        _ correction: String,
+        requestedAt requestDate: Date,
+        error: Error,
+        for meal: Meal
+    ) {
+        guard let previousRevision = meal.activeRevision else { return }
+        meal.analysisRevisions.append(MealAnalysisRevision(
+            createdAt: now(),
+            requestDate: requestDate,
+            modelIdentifier: previousRevision.modelIdentifier,
+            providerIdentifier: previousRevision.providerIdentifier,
+            promptVersion: NutritionAnalysisPrompt.currentVersion,
+            trigger: .correction,
+            status: .failed,
+            mealName: previousRevision.mealName,
+            estimatedTotalWeightGrams: previousRevision.estimatedTotalWeightGrams,
+            confidence: previousRevision.confidence,
+            uncertaintySummary: previousRevision.uncertaintySummary,
+            userCorrection: correction,
+            failureMessage: error.localizedDescription
+        ))
     }
 
     private func persist(
@@ -122,6 +185,7 @@ final class MealAnalysisCoordinator {
         requestedAt requestDate: Date,
         trigger: AnalysisTrigger,
         clarificationAnswer: String?,
+        userCorrection: String?,
         for meal: Meal
     ) {
         let status: AnalysisState = result.clarificationQuestion?.isEmpty == false
@@ -141,6 +205,7 @@ final class MealAnalysisCoordinator {
             uncertaintySummary: result.uncertaintySummary,
             clarificationQuestion: result.clarificationQuestion,
             clarificationAnswer: clarificationAnswer,
+            userCorrection: userCorrection,
             components: result.components.enumerated().map { index, component in
                 FoodComponent(
                     sortIndex: index,

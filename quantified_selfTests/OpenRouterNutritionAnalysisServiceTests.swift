@@ -107,6 +107,32 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(userText.contains("best estimate"))
     }
 
+    @Test("Correction requests include the user's correction and demand a complete estimate")
+    func correctionContext() async throws {
+        let client = ChatClientStub(responseData: try Self.chatResponseData())
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "secret"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/model"),
+            client: client
+        )
+
+        _ = try await service.analyze(NutritionAnalysisRequest(
+            images: [],
+            userComment: "Große Portion",
+            previousAnalysis: NutritionAnalysisValidatorTests.validResult(),
+            userCorrection: "Es waren nur 100 g Reis.",
+            allowsClarification: false
+        ))
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        let userContent = try #require(messages.last?["content"] as? [[String: Any]])
+        let userText = try #require(userContent.first?["text"] as? String)
+        #expect(userText.contains("User correction: Es waren nur 100 g Reis."))
+        #expect(userText.contains("complete revised structured estimate"))
+    }
+
     private static func chatResponseData(
         clarificationQuestion: Any = NSNull()
     ) throws -> Data {

@@ -172,6 +172,81 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.receivedRequest?.allowsClarification == false)
     }
 
+    @Test("A correction creates a complete new revision and preserves history")
+    func correctsWithRevisionHistory() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let previousRevision = makeRevision(status: .confirmed)
+        let meal = Meal(
+            analysisState: .confirmed,
+            activeRevisionID: previousRevision.id,
+            analysisRevisions: [previousRevision]
+        )
+        context.insert(meal)
+        try context.save()
+        let provider = AnalysisProviderStub(result: NutritionAnalysisValidatorTests.validResult())
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.correct("  Es waren nur 100 g Reis.  ", for: meal)
+
+        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisRevisions.count == 2)
+        #expect(previousRevision.status == .confirmed)
+        #expect(meal.activeRevision?.id != previousRevision.id)
+        #expect(meal.activeRevision?.trigger == .correction)
+        #expect(meal.activeRevision?.userCorrection == "Es waren nur 100 g Reis.")
+        #expect(provider.receivedRequest?.previousAnalysis?.mealName == "Vorherige Schätzung")
+        #expect(provider.receivedRequest?.userCorrection == "Es waren nur 100 g Reis.")
+        #expect(provider.receivedRequest?.allowsClarification == false)
+    }
+
+    @Test("A failed correction remains retryable with its original text")
+    func retriesFailedCorrection() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let previousRevision = makeRevision(status: .confirmed)
+        let meal = Meal(
+            analysisState: .confirmed,
+            activeRevisionID: previousRevision.id,
+            analysisRevisions: [previousRevision]
+        )
+        context.insert(meal)
+        try context.save()
+        let storage = AnalysisImageStorage(dataByKey: [:])
+        let failingCoordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: AnalysisProviderStub(error: OpenRouterClientError.serverError),
+            imageStorage: storage
+        )
+
+        await failingCoordinator.correct("Es waren nur 100 g Reis.", for: meal)
+
+        #expect(meal.analysisState == .failed)
+        #expect(meal.activeRevision?.id == previousRevision.id)
+        #expect(meal.analysisRevisions.count == 2)
+        let failedRevision = try #require(meal.analysisRevisions.first { $0.status == .failed })
+        #expect(failedRevision.trigger == .correction)
+        #expect(failedRevision.userCorrection == "Es waren nur 100 g Reis.")
+
+        let retryProvider = AnalysisProviderStub(result: NutritionAnalysisValidatorTests.validResult())
+        let retryCoordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: retryProvider,
+            imageStorage: storage
+        )
+        await retryCoordinator.analyze(meal)
+
+        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisRevisions.count == 3)
+        #expect(meal.activeRevision?.trigger == .correction)
+        #expect(meal.activeRevision?.userCorrection == "Es waren nur 100 g Reis.")
+        #expect(retryProvider.receivedRequest?.userCorrection == "Es waren nur 100 g Reis.")
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema(NutritionSchemaV1.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)

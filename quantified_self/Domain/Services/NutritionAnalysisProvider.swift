@@ -15,6 +15,7 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
     let userComment: String?
     let previousAnalysis: NutritionAnalysisResult?
     let clarificationAnswer: String?
+    let userCorrection: String?
     let requestsBestEstimate: Bool
     let allowsClarification: Bool
 
@@ -23,6 +24,7 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
         userComment: String?,
         previousAnalysis: NutritionAnalysisResult? = nil,
         clarificationAnswer: String? = nil,
+        userCorrection: String? = nil,
         requestsBestEstimate: Bool = false,
         allowsClarification: Bool = true
     ) {
@@ -30,6 +32,7 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
         self.userComment = userComment
         self.previousAnalysis = previousAnalysis
         self.clarificationAnswer = clarificationAnswer
+        self.userCorrection = userCorrection
         self.requestsBestEstimate = requestsBestEstimate
         self.allowsClarification = allowsClarification
     }

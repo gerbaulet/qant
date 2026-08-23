@@ -176,8 +176,7 @@ struct TodayDashboardView: View {
 
                     Spacer(minLength: 8)
 
-                    if meal.analysisState != .failed,
-                       let energy = meal.energyKilocalories {
+                    if let energy = meal.energyKilocalories {
                         Text("\(meal.isProvisional ? "~" : "")\(wholeNumber(energy)) kcal")
                             .font(.subheadline.weight(.semibold).monospacedDigit())
                     }

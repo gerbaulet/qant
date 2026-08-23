@@ -10,9 +10,11 @@ struct MealReviewView: View {
     private let imageStorage: any ImageStorageProviding
 
     @State private var clarificationAnswer = ""
+    @State private var correctionText = ""
     @State private var isWorking = false
     @State private var alertMessage: String?
     @State private var showsMoreNutrients = false
+    @State private var showsCorrectionEntry = false
 
     init(
         meal: Meal,
@@ -36,6 +38,7 @@ struct MealReviewView: View {
                     clarificationSection(revision)
                     componentsSection(revision)
                     additionalNutrientsSection(revision)
+                    revisionHistorySection
                     revisionFootnote(revision)
                 } else {
                     unavailableState
@@ -54,6 +57,9 @@ struct MealReviewView: View {
         }
         .safeAreaInset(edge: .bottom) {
             bottomAction
+        }
+        .sheet(isPresented: $showsCorrectionEntry) {
+            correctionEntry
         }
         .alert("Aktion nicht möglich", isPresented: alertBinding) {
             Button("OK", role: .cancel) {}
@@ -255,6 +261,61 @@ struct MealReviewView: View {
             .frame(maxWidth: .infinity, alignment: .center)
     }
 
+    @ViewBuilder
+    private var revisionHistorySection: some View {
+        if meal.analysisRevisions.count > 1 {
+            DisclosureGroup("Analyseverlauf") {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(sortedRevisions) { revision in
+                        revisionHistoryRow(revision)
+                        if revision.id != sortedRevisions.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+                .padding(.top, 10)
+            }
+            .padding(18)
+            .background(.background, in: .rect(cornerRadius: 18))
+        }
+    }
+
+    private func revisionHistoryRow(_ revision: MealAnalysisRevision) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label(revision.trigger.reviewTitle, systemImage: revision.trigger.reviewSystemImage)
+                    .font(.subheadline.bold())
+                Spacer()
+                if revision.id == meal.activeRevisionID {
+                    Text("AKTIV")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.tint)
+                }
+            }
+            HStack {
+                Text(revision.createdAt, format: .dateTime.day().month().hour().minute())
+                Spacer()
+                Text(nutrientText(.energy, in: revision, estimated: true))
+                    .font(.subheadline.monospacedDigit())
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if let correction = revision.userCorrection, !correction.isEmpty {
+                Text("„\(correction)“")
+                    .font(.footnote)
+            } else if let answer = revision.clarificationAnswer, !answer.isEmpty {
+                Text("Antwort: „\(answer)“")
+                    .font(.footnote)
+            }
+        }
+        .padding(.vertical, 10)
+    }
+
+    private var sortedRevisions: [MealAnalysisRevision] {
+        meal.analysisRevisions.sorted { $0.createdAt > $1.createdAt }
+    }
+
     private var unavailableState: some View {
         ContentUnavailableView(
             meal.analysisState == .failed ? "Analyse fehlgeschlagen" : "Analyse läuft",
@@ -273,14 +334,24 @@ struct MealReviewView: View {
     private var bottomAction: some View {
         if meal.analysisState == .awaitingConfirmation {
             actionBar {
-                Button(action: confirm) {
-                    Label("Schätzung bestätigen", systemImage: "checkmark.seal.fill")
-                        .frame(maxWidth: .infinity)
+                VStack(spacing: 10) {
+                    Button(action: confirm) {
+                        Label("Schätzung bestätigen", systemImage: "checkmark.seal.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(isWorking)
+                    .accessibilityIdentifier("meal.confirm")
+
+                    Button(action: { showsCorrectionEntry = true }) {
+                        Label("Schätzung korrigieren", systemImage: "pencil")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isWorking)
+                    .accessibilityIdentifier("meal.correct")
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(isWorking)
-                .accessibilityIdentifier("meal.confirm")
             }
         } else if meal.analysisState == .needsClarification {
             actionBar {
@@ -313,10 +384,58 @@ struct MealReviewView: View {
             }
         } else if meal.analysisState == .confirmed {
             actionBar {
-                Label("Bestätigt", systemImage: "checkmark.seal.fill")
-                    .font(.headline)
-                    .foregroundStyle(.green)
-                    .frame(maxWidth: .infinity)
+                VStack(spacing: 10) {
+                    Label("Bestätigt", systemImage: "checkmark.seal.fill")
+                        .font(.headline)
+                        .foregroundStyle(.green)
+                        .frame(maxWidth: .infinity)
+                    Button(action: { showsCorrectionEntry = true }) {
+                        Label("Nachträglich korrigieren", systemImage: "pencil")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isWorking)
+                    .accessibilityIdentifier("meal.correct")
+                }
+            }
+        } else if meal.analysisState == .failed {
+            actionBar {
+                Button(action: retryAnalysis) {
+                    Label("Analyse erneut versuchen", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(isWorking)
+                .accessibilityIdentifier("meal.retryAnalysis")
+            }
+        }
+    }
+
+    private var correctionEntry: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $correctionText)
+                        .frame(minHeight: 120)
+                        .accessibilityIdentifier("meal.correctionText")
+                } header: {
+                    Text("Was stimmt nicht?")
+                } footer: {
+                    Text("Beschreibe die Korrektur frei, zum Beispiel: „Es waren nur etwa 100 g Reis.“ Die KI erstellt daraus eine vollständige neue Schätzung; die vorherige Analyse bleibt erhalten.")
+                }
+            }
+            .navigationTitle("Schätzung korrigieren")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Abbrechen") { showsCorrectionEntry = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Neu analysieren", action: submitCorrection)
+                        .disabled(correctionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("meal.submitCorrection")
+                }
             }
         }
     }
@@ -360,6 +479,25 @@ struct MealReviewView: View {
         isWorking = true
         Task {
             await makeCoordinator().useBestEstimate(for: meal)
+            isWorking = false
+        }
+    }
+
+    private func submitCorrection() {
+        let correction = correctionText
+        showsCorrectionEntry = false
+        isWorking = true
+        Task {
+            await makeCoordinator().correct(correction, for: meal)
+            correctionText = ""
+            isWorking = false
+        }
+    }
+
+    private func retryAnalysis() {
+        isWorking = true
+        Task {
+            await makeCoordinator().analyze(meal)
             isWorking = false
         }
     }
@@ -466,6 +604,28 @@ private extension NutrientIdentifier {
         case .sodium: "Natrium"
         case .salt: "Salz"
         default: rawValue
+        }
+    }
+}
+
+private extension AnalysisTrigger {
+    var reviewTitle: LocalizedStringKey {
+        switch self {
+        case .initial: "Erste Analyse"
+        case .retry: "Erneuter Versuch"
+        case .clarification: "Nach Rückfrage"
+        case .correction: "Nach Korrektur"
+        case .bestEstimate: "Beste Schätzung"
+        }
+    }
+
+    var reviewSystemImage: String {
+        switch self {
+        case .initial: "sparkles"
+        case .retry: "arrow.clockwise"
+        case .clarification: "questionmark.bubble"
+        case .correction: "pencil"
+        case .bestEstimate: "wand.and.stars"
         }
     }
 }

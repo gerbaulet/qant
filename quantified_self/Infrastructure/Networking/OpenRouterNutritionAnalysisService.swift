@@ -151,6 +151,10 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         if let answer = request.clarificationAnswer {
             lines.append("User's clarification answer: \(answer)")
         }
+        if let correction = request.userCorrection {
+            lines.append("User correction: \(correction)")
+            lines.append("Generate a complete revised structured estimate. Apply the correction consistently across the meal name, components, total weight, and every nutrient.")
+        }
         if request.requestsBestEstimate {
             lines.append("The user chose to use the best estimate without further questions.")
         }
