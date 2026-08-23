@@ -13,6 +13,7 @@ struct MealCaptureView: View {
     private let classificationSchedule: MealClassificationSchedule
     private let calendar: Calendar
     private let imageStorage: any ImageStorageProviding
+    private let analysisProvider: any NutritionAnalysisProviding
 
     @State private var timestamp: Date
     @State private var comment = ""
@@ -30,11 +31,13 @@ struct MealCaptureView: View {
         now: Date = .now,
         classificationSchedule: MealClassificationSchedule = .default,
         calendar: Calendar = .autoupdatingCurrent,
-        imageStorage: any ImageStorageProviding = FileImageStorage()
+        imageStorage: any ImageStorageProviding = FileImageStorage(),
+        analysisProvider: any NutritionAnalysisProviding = OpenRouterNutritionAnalysisService()
     ) {
         self.classificationSchedule = classificationSchedule
         self.calendar = calendar
         self.imageStorage = imageStorage
+        self.analysisProvider = analysisProvider
         _timestamp = State(initialValue: now)
         _category = State(initialValue: classificationSchedule.category(
             for: now,
@@ -295,13 +298,19 @@ struct MealCaptureView: View {
                 }
 
                 let repository = SwiftDataMealRepository(context: modelContext)
-                try repository.createMeal(from: MealDraft(
+                let meal = try repository.createMeal(from: MealDraft(
                     timestamp: timestamp,
                     comment: comment,
                     category: category,
                     images: storedImages
                 ))
+                let coordinator = MealAnalysisCoordinator(
+                    context: modelContext,
+                    provider: analysisProvider,
+                    imageStorage: imageStorage
+                )
                 dismiss()
+                await coordinator.analyze(meal)
             } catch {
                 for image in storedImages {
                     await imageStorage.deleteImage(image)

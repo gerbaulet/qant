@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import quantified_self
 
+@Suite(.serialized)
 @MainActor
 struct OpenRouterAPIClientTests {
     @Test("Configuration check validates the key and model capabilities")
@@ -95,6 +96,27 @@ struct OpenRouterAPIClientTests {
                 modelIdentifier: "missing-provider"
             )
         }
+    }
+
+    @Test("Chat completions use the authenticated JSON endpoint")
+    func chatCompletionRequest() async throws {
+        let body = Data(#"{"model":"example/model"}"#.utf8)
+        let session = makeSession { request in
+            #expect(request.url?.path == "/api/v1/chat/completions")
+            #expect(request.httpMethod == "POST")
+            #expect(request.httpBody == body)
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-secret")
+            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            return Self.response(for: request, status: 200, json: #"{"choices":[]}"#)
+        }
+        let client = OpenRouterAPIClient(
+            session: session,
+            baseURL: URL(string: "https://example.test/api/v1")!
+        )
+
+        let response = try await client.sendChatCompletion(apiKey: "test-secret", body: body)
+
+        #expect(String(decoding: response, as: UTF8.self) == #"{"choices":[]}"#)
     }
 
     private func makeSession(

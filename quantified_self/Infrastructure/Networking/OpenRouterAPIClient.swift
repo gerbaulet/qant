@@ -14,11 +14,17 @@ protocol OpenRouterConfigurationChecking {
     ) async throws -> OpenRouterConfigurationCheck
 }
 
+protocol OpenRouterChatCompleting {
+    func sendChatCompletion(apiKey: String, body: Data) async throws -> Data
+}
+
 enum OpenRouterClientError: Error, LocalizedError, Equatable {
     case invalidAPIKey
     case accessForbidden
     case invalidModelIdentifier
     case modelNotFound
+    case invalidRequest
+    case insufficientCredits
     case rateLimited
     case serverError
     case invalidResponse
@@ -34,6 +40,10 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
             "Gib eine Modell-ID im Format anbieter/modell ein."
         case .modelNotFound:
             "Das konfigurierte OpenRouter-Modell wurde nicht gefunden."
+        case .invalidRequest:
+            "OpenRouter konnte die Analyseanfrage nicht verarbeiten."
+        case .insufficientCredits:
+            "Das OpenRouter-Guthaben reicht für diese Analyse nicht aus."
         case .rateLimited:
             "OpenRouter hat zu viele Anfragen erhalten. Versuche es später erneut."
         case .serverError:
@@ -46,7 +56,7 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
     }
 }
 
-struct OpenRouterAPIClient: OpenRouterConfigurationChecking {
+struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterChatCompleting {
     private struct ModelResponse: Decodable {
         struct Model: Decodable {
             struct Architecture: Decodable {
@@ -109,11 +119,33 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking {
         )
     }
 
-    private func performRequest(url: URL, apiKey: String) async throws -> Data {
-        var request = URLRequest(url: url, timeoutInterval: 20)
-        request.httpMethod = "GET"
+    func sendChatCompletion(apiKey: String, body: Data) async throws -> Data {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { throw OpenRouterClientError.invalidAPIKey }
+        return try await performRequest(
+            url: baseURL.appending(path: "chat/completions"),
+            apiKey: trimmedKey,
+            method: "POST",
+            body: body,
+            timeout: 90
+        )
+    }
+
+    private func performRequest(
+        url: URL,
+        apiKey: String,
+        method: String = "GET",
+        body: Data? = nil,
+        timeout: TimeInterval = 20
+    ) async throws -> Data {
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = method
+        request.httpBody = body
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
 
         let data: Data
         let response: URLResponse
@@ -139,6 +171,10 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking {
             throw OpenRouterClientError.accessForbidden
         case 404:
             throw OpenRouterClientError.modelNotFound
+        case 400, 422:
+            throw OpenRouterClientError.invalidRequest
+        case 402:
+            throw OpenRouterClientError.insufficientCredits
         case 429:
             throw OpenRouterClientError.rateLimited
         case 500...599:

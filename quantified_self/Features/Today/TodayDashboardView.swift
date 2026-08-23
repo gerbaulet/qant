@@ -3,6 +3,17 @@ import SwiftUI
 struct TodayDashboardView: View {
     let snapshot: TodayDashboardSnapshot
     let onAddFood: () -> Void
+    let onRetryMeal: (UUID) -> Void
+
+    init(
+        snapshot: TodayDashboardSnapshot,
+        onAddFood: @escaping () -> Void,
+        onRetryMeal: @escaping (UUID) -> Void = { _ in }
+    ) {
+        self.snapshot = snapshot
+        self.onAddFood = onAddFood
+        self.onRetryMeal = onRetryMeal
+    }
 
     var body: some View {
         NavigationStack {
@@ -158,14 +169,22 @@ struct TodayDashboardView: View {
 
             Spacer(minLength: 8)
 
-            if let energy = meal.energyKilocalories {
+            if meal.analysisState == .failed {
+                Button {
+                    onRetryMeal(meal.id)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Analyse erneut versuchen")
+                .accessibilityIdentifier("meal.retry.\(meal.id.uuidString)")
+            } else if let energy = meal.energyKilocalories {
                 Text("\(meal.isProvisional ? "~" : "")\(wholeNumber(energy)) kcal")
                     .font(.subheadline.weight(.semibold).monospacedDigit())
             }
         }
         .padding(14)
         .background(.background, in: .rect(cornerRadius: 18))
-        .accessibilityElement(children: .combine)
     }
 
     private func analysisStateLabel(_ meal: TodayMealSummary) -> some View {

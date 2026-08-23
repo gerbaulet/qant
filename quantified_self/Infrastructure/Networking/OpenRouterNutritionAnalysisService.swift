@@ -1,0 +1,212 @@
+import Foundation
+
+struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
+    private struct ChatResponse: Decodable {
+        struct Choice: Decodable {
+            struct Message: Decodable {
+                let content: String
+            }
+
+            let message: Message
+        }
+
+        let choices: [Choice]
+        let model: String?
+        let provider: String?
+    }
+
+    private struct AnalysisPayload: Decodable {
+        let mealName: String
+        let estimatedTotalWeightGrams: Double?
+        let confidence: EstimateConfidence
+        let uncertaintySummary: String?
+        let clarificationQuestion: String?
+        let nutrients: [AnalyzedNutrient]
+        let components: [AnalyzedFoodComponent]
+    }
+
+    private let secretStore: any SecretStoring
+    private let settingsStore: any OpenRouterSettingsStoring
+    private let client: any OpenRouterChatCompleting
+
+    init(
+        secretStore: any SecretStoring = KeychainSecretStore(),
+        settingsStore: any OpenRouterSettingsStoring = UserDefaultsOpenRouterSettingsStore(),
+        client: any OpenRouterChatCompleting = OpenRouterAPIClient()
+    ) {
+        self.secretStore = secretStore
+        self.settingsStore = settingsStore
+        self.client = client
+    }
+
+    func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult {
+        let apiKey = try secretStore.secret(for: .openRouterAPIKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelIdentifier = settingsStore.modelIdentifier
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let apiKey, !apiKey.isEmpty, !modelIdentifier.isEmpty else {
+            throw NutritionAnalysisError.missingConfiguration
+        }
+
+        let requestBody: Data
+        do {
+            requestBody = try JSONSerialization.data(withJSONObject: makeRequestBody(
+                request,
+                modelIdentifier: modelIdentifier
+            ))
+        } catch {
+            throw NutritionAnalysisError.malformedResponse
+        }
+
+        let responseData = try await client.sendChatCompletion(apiKey: apiKey, body: requestBody)
+        let decoder = JSONDecoder()
+        guard
+            let response = try? decoder.decode(ChatResponse.self, from: responseData),
+            let content = response.choices.first?.message.content,
+            let contentData = content.data(using: .utf8),
+            let payload = try? decoder.decode(AnalysisPayload.self, from: contentData)
+        else {
+            throw NutritionAnalysisError.malformedResponse
+        }
+
+        let result = NutritionAnalysisResult(
+            mealName: payload.mealName,
+            estimatedTotalWeightGrams: payload.estimatedTotalWeightGrams,
+            confidence: payload.confidence,
+            uncertaintySummary: payload.uncertaintySummary,
+            clarificationQuestion: payload.clarificationQuestion,
+            nutrients: payload.nutrients,
+            components: payload.components,
+            modelIdentifier: response.model ?? modelIdentifier,
+            providerIdentifier: response.provider
+        )
+        try NutritionAnalysisValidator.validate(result)
+        return result
+    }
+
+    private func makeRequestBody(
+        _ request: NutritionAnalysisRequest,
+        modelIdentifier: String
+    ) -> [String: Any] {
+        var content: [[String: Any]] = [[
+            "type": "text",
+            "text": userPrompt(comment: request.userComment),
+        ]]
+        content.append(contentsOf: request.images.map { image in
+            [
+                "type": "image_url",
+                "image_url": [
+                    "url": "data:\(image.mediaType);base64,\(image.data.base64EncodedString())",
+                ],
+            ]
+        })
+
+        return [
+            "model": modelIdentifier,
+            "temperature": 0.2,
+            "messages": [
+                [
+                    "role": "system",
+                    "content": systemPrompt,
+                ],
+                [
+                    "role": "user",
+                    "content": content,
+                ],
+            ],
+            "response_format": [
+                "type": "json_schema",
+                "json_schema": [
+                    "name": "nutrition_analysis_v\(NutritionAnalysisPrompt.currentVersion)",
+                    "strict": true,
+                    "schema": responseSchema,
+                ],
+            ],
+        ]
+    }
+
+    private var systemPrompt: String {
+        """
+        Analyze the meal using every supplied image and the user's comment. Inspect packaging and nutrition labels explicitly. Prefer readable label values over visual estimates. Return realistic estimates without false precision. Always include energy, protein, carbohydrates, fat, fiber, sugar, saturatedFat, and sodium; include every additional listed micronutrient that can be responsibly estimated. Nutrient provenance must distinguish label, calculatedFromLabel, visualEstimate, textProvidedByUser, mixedEstimate, or unknown. Ask at most one concise clarification question, and only when its answer could materially change the calorie estimate. Return only the JSON object required by the schema.
+        """
+    }
+
+    private func userPrompt(comment: String?) -> String {
+        let trimmedComment = comment?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedComment, !trimmedComment.isEmpty {
+            return "User comment: \(trimmedComment)"
+        }
+        return "No user comment was provided."
+    }
+
+    private var responseSchema: [String: Any] {
+        [
+            "type": "object",
+            "additionalProperties": false,
+            "properties": [
+                "mealName": ["type": "string"],
+                "estimatedTotalWeightGrams": nullableNumberSchema,
+                "confidence": enumSchema(EstimateConfidence.allCases.map(\.rawValue)),
+                "uncertaintySummary": nullableStringSchema,
+                "clarificationQuestion": nullableStringSchema,
+                "nutrients": [
+                    "type": "array",
+                    "minItems": 8,
+                    "items": nutrientSchema,
+                ],
+                "components": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": [
+                            "name": ["type": "string"],
+                            "estimatedWeightGrams": nullableNumberSchema,
+                            "nutrients": [
+                                "type": "array",
+                                "items": nutrientSchema,
+                            ],
+                        ],
+                        "required": ["name", "estimatedWeightGrams", "nutrients"],
+                    ],
+                ],
+            ],
+            "required": [
+                "mealName",
+                "estimatedTotalWeightGrams",
+                "confidence",
+                "uncertaintySummary",
+                "clarificationQuestion",
+                "nutrients",
+                "components",
+            ],
+        ]
+    }
+
+    private var nutrientSchema: [String: Any] {
+        [
+            "type": "object",
+            "additionalProperties": false,
+            "properties": [
+                "identifier": enumSchema(NutrientIdentifier.allCases.map(\.rawValue)),
+                "value": ["type": "number", "minimum": 0],
+                "unit": enumSchema(NutrientUnit.allCases.map(\.rawValue)),
+                "confidence": enumSchema(EstimateConfidence.allCases.map(\.rawValue)),
+                "provenance": enumSchema(NutrientProvenance.allCases.map(\.rawValue)),
+            ],
+            "required": ["identifier", "value", "unit", "confidence", "provenance"],
+        ]
+    }
+
+    private var nullableNumberSchema: [String: Any] {
+        ["type": ["number", "null"], "minimum": 0]
+    }
+
+    private var nullableStringSchema: [String: Any] {
+        ["type": ["string", "null"]]
+    }
+
+    private func enumSchema(_ values: [String]) -> [String: Any] {
+        ["type": "string", "enum": values]
+    }
+}

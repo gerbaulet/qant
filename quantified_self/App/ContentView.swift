@@ -47,6 +47,7 @@ struct ContentView: View {
 }
 
 private struct TodayDashboardContainer: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
 
@@ -61,9 +62,16 @@ private struct TodayDashboardContainer: View {
                     goals: goals,
                     calendar: .autoupdatingCurrent
                 ),
-                onAddFood: onAddFood
+                onAddFood: onAddFood,
+                onRetryMeal: retryAnalysis
             )
         }
+    }
+
+    private func retryAnalysis(mealID: UUID) {
+        guard let meal = meals.first(where: { $0.id == mealID }) else { return }
+        let coordinator = MealAnalysisCoordinator(context: modelContext)
+        Task { await coordinator.analyze(meal) }
     }
 }
 

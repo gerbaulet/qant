@@ -43,10 +43,23 @@ final class quantified_selfUITests: XCTestCase {
         XCTAssertTrue(captureNavigationBar.waitForNonExistence(timeout: 2))
 
         app.swipeUp()
-        let pendingMeal = app.staticTexts
-            .matching(NSPredicate(format: "label CONTAINS %@", "Ausstehend"))
+        let savedMealState = app.staticTexts
+            .matching(NSPredicate(
+                format: "label IN %@",
+                ["Ausstehend", "Wird analysiert", "Fehlgeschlagen", "Zu bestätigen", "Rückfrage"]
+            ))
             .firstMatch
-        XCTAssertTrue(pendingMeal.waitForExistence(timeout: 2))
+        XCTAssertTrue(savedMealState.waitForExistence(timeout: 2))
+
+        let retryButton = app.buttons
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "meal.retry."))
+            .firstMatch
+        XCTAssertTrue(retryButton.waitForExistence(timeout: 2))
+
+        let savedMealScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        savedMealScreenshot.name = "Saved meal analysis failure and retry"
+        savedMealScreenshot.lifetime = .keepAlways
+        add(savedMealScreenshot)
     }
 
     @MainActor
