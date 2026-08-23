@@ -4,15 +4,18 @@ struct TodayDashboardView: View {
     let snapshot: TodayDashboardSnapshot
     let onAddFood: () -> Void
     let onRetryMeal: (UUID) -> Void
+    let onOpenMeal: (UUID) -> Void
 
     init(
         snapshot: TodayDashboardSnapshot,
         onAddFood: @escaping () -> Void,
-        onRetryMeal: @escaping (UUID) -> Void = { _ in }
+        onRetryMeal: @escaping (UUID) -> Void = { _ in },
+        onOpenMeal: @escaping (UUID) -> Void = { _ in }
     ) {
         self.snapshot = snapshot
         self.onAddFood = onAddFood
         self.onRetryMeal = onRetryMeal
+        self.onOpenMeal = onOpenMeal
     }
 
     var body: some View {
@@ -153,21 +156,36 @@ struct TodayDashboardView: View {
 
     private func mealRow(_ meal: TodayMealSummary) -> some View {
         HStack(spacing: 14) {
-            StoredMealThumbnailView(storageKey: meal.thumbnailStorageKey)
+            Button {
+                onOpenMeal(meal.id)
+            } label: {
+                HStack(spacing: 14) {
+                    StoredMealThumbnailView(storageKey: meal.thumbnailStorageKey)
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text(mealDisplayName(meal))
-                    .font(.headline)
-                    .lineLimit(1)
-                HStack(spacing: 8) {
-                    Text(meal.timestamp, format: .dateTime.hour().minute())
-                    analysisStateLabel(meal)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(mealDisplayName(meal))
+                            .font(.headline)
+                            .lineLimit(1)
+                        HStack(spacing: 8) {
+                            Text(meal.timestamp, format: .dateTime.hour().minute())
+                            analysisStateLabel(meal)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    if meal.analysisState != .failed,
+                       let energy = meal.energyKilocalories {
+                        Text("\(meal.isProvisional ? "~" : "")\(wholeNumber(energy)) kcal")
+                            .font(.subheadline.weight(.semibold).monospacedDigit())
+                    }
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
-
-            Spacer(minLength: 8)
+            .buttonStyle(.plain)
+            .accessibilityHint("Öffnet die Analyse dieser Mahlzeit")
+            .accessibilityIdentifier("meal.open.\(meal.id.uuidString)")
 
             if meal.analysisState == .failed {
                 Button {
@@ -178,9 +196,6 @@ struct TodayDashboardView: View {
                 .buttonStyle(.bordered)
                 .accessibilityLabel("Analyse erneut versuchen")
                 .accessibilityIdentifier("meal.retry.\(meal.id.uuidString)")
-            } else if let energy = meal.energyKilocalories {
-                Text("\(meal.isProvisional ? "~" : "")\(wholeNumber(energy)) kcal")
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
             }
         }
         .padding(14)

@@ -64,7 +64,8 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             let response = try? decoder.decode(ChatResponse.self, from: responseData),
             let content = response.choices.first?.message.content,
             let contentData = content.data(using: .utf8),
-            let payload = try? decoder.decode(AnalysisPayload.self, from: contentData)
+            let payload = try? decoder.decode(AnalysisPayload.self, from: contentData),
+            request.allowsClarification || payload.clarificationQuestion?.isEmpty != false
         else {
             throw NutritionAnalysisError.malformedResponse
         }
@@ -90,7 +91,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
     ) -> [String: Any] {
         var content: [[String: Any]] = [[
             "type": "text",
-            "text": userPrompt(comment: request.userComment),
+            "text": userPrompt(request),
         ]]
         content.append(contentsOf: request.images.map { image in
             [
@@ -107,7 +108,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             "messages": [
                 [
                     "role": "system",
-                    "content": systemPrompt,
+                    "content": systemPrompt(allowsClarification: request.allowsClarification),
                 ],
                 [
                     "role": "user",
@@ -125,18 +126,35 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         ]
     }
 
-    private var systemPrompt: String {
-        """
-        Analyze the meal using every supplied image and the user's comment. Inspect packaging and nutrition labels explicitly. Prefer readable label values over visual estimates. Return realistic estimates without false precision. Always include energy, protein, carbohydrates, fat, fiber, sugar, saturatedFat, and sodium; include every additional listed micronutrient that can be responsibly estimated. Nutrient provenance must distinguish label, calculatedFromLabel, visualEstimate, textProvidedByUser, mixedEstimate, or unknown. Ask at most one concise clarification question, and only when its answer could materially change the calorie estimate. Return only the JSON object required by the schema.
+    private func systemPrompt(allowsClarification: Bool) -> String {
+        let clarificationRule = allowsClarification
+            ? "Ask at most one concise clarification question, and only when its answer could materially change the calorie estimate."
+            : "Do not ask another clarification question. Return the best complete estimate from the available evidence."
+        return """
+        Analyze the meal using every supplied image and the user's comment. Inspect packaging and nutrition labels explicitly. Prefer readable label values over visual estimates. Return realistic estimates without false precision. Always include energy, protein, carbohydrates, fat, fiber, sugar, saturatedFat, and sodium; include every additional listed micronutrient that can be responsibly estimated. Nutrient provenance must distinguish label, calculatedFromLabel, visualEstimate, textProvidedByUser, mixedEstimate, or unknown. Return only the JSON object required by the schema.
+        \(clarificationRule)
         """
     }
 
-    private func userPrompt(comment: String?) -> String {
-        let trimmedComment = comment?.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func userPrompt(_ request: NutritionAnalysisRequest) -> String {
+        let trimmedComment = request.userComment?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var lines: [String] = []
         if let trimmedComment, !trimmedComment.isEmpty {
-            return "User comment: \(trimmedComment)"
+            lines.append("Original user comment: \(trimmedComment)")
+        } else {
+            lines.append("No original user comment was provided.")
         }
-        return "No user comment was provided."
+        if let previousAnalysis = request.previousAnalysis,
+           let data = try? JSONEncoder().encode(previousAnalysis) {
+            lines.append("Previous structured analysis: \(String(decoding: data, as: UTF8.self))")
+        }
+        if let answer = request.clarificationAnswer {
+            lines.append("User's clarification answer: \(answer)")
+        }
+        if request.requestsBestEstimate {
+            lines.append("The user chose to use the best estimate without further questions.")
+        }
+        return lines.joined(separator: "\n")
     }
 
     private var responseSchema: [String: Any] {

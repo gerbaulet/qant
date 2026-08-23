@@ -83,6 +83,55 @@ final class quantified_selfUITests: XCTestCase {
         add(screenshot)
     }
 
+    @MainActor
+    func testReviewsAndConfirmsNutritionEstimate() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-confirmation",
+        ])
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+
+        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["~785 kcal"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["meal.confirm"].waitForExistence(timeout: 2))
+
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "Nutrition analysis review"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        app.buttons["meal.confirm"].tap()
+        XCTAssertTrue(app.staticTexts["Bestätigt"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testPresentsClarificationChoices() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-clarification",
+        ])
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+
+        XCTAssertTrue(app.textFields["meal.clarificationAnswer"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["meal.bestEstimate"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["meal.submitClarification"].isEnabled)
+
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "Nutrition clarification"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
 }
 
 private extension XCUIElement {

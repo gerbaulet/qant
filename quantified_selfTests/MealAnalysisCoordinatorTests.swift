@@ -83,6 +83,95 @@ struct MealAnalysisCoordinatorTests {
         #expect(try context.fetch(FetchDescriptor<Meal>()).count == 1)
     }
 
+    @Test("Confirmation finalizes only the active awaiting revision")
+    func confirmsActiveRevision() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let revision = makeRevision(status: .awaitingConfirmation)
+        let meal = Meal(
+            analysisState: .awaitingConfirmation,
+            activeRevisionID: revision.id,
+            analysisRevisions: [revision]
+        )
+        context.insert(meal)
+        try context.save()
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: AnalysisProviderStub(error: OpenRouterClientError.serverError),
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        try coordinator.confirm(meal)
+
+        #expect(meal.analysisState == .confirmed)
+        #expect(revision.status == .confirmed)
+    }
+
+    @Test("A clarification answer creates a new revision with prior context")
+    func answersClarificationWithRevisionHistory() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let previousRevision = makeRevision(
+            status: .needsClarification,
+            question: "Wie viel Dressing wurde verwendet?"
+        )
+        let meal = Meal(
+            userComment: "Große Portion",
+            analysisState: .needsClarification,
+            activeRevisionID: previousRevision.id,
+            analysisRevisions: [previousRevision]
+        )
+        context.insert(meal)
+        try context.save()
+        let provider = AnalysisProviderStub(result: NutritionAnalysisValidatorTests.validResult())
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.answerClarification("  Etwa zwei Esslöffel  ", for: meal)
+
+        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisRevisions.count == 2)
+        #expect(meal.clarificationCount == 1)
+        #expect(meal.activeRevision?.id != previousRevision.id)
+        #expect(meal.activeRevision?.trigger == .clarification)
+        #expect(meal.activeRevision?.clarificationAnswer == "Etwa zwei Esslöffel")
+        #expect(provider.receivedRequest?.previousAnalysis?.mealName == "Vorherige Schätzung")
+        #expect(provider.receivedRequest?.clarificationAnswer == "Etwa zwei Esslöffel")
+        #expect(provider.receivedRequest?.allowsClarification == true)
+    }
+
+    @Test("Best estimate reruns without permitting another question")
+    func usesBestEstimate() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let previousRevision = makeRevision(
+            status: .needsClarification,
+            question: "Wie viel Öl wurde verwendet?"
+        )
+        let meal = Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: previousRevision.id,
+            analysisRevisions: [previousRevision]
+        )
+        context.insert(meal)
+        try context.save()
+        let provider = AnalysisProviderStub(result: NutritionAnalysisValidatorTests.validResult())
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.useBestEstimate(for: meal)
+
+        #expect(meal.activeRevision?.trigger == .bestEstimate)
+        #expect(provider.receivedRequest?.requestsBestEstimate == true)
+        #expect(provider.receivedRequest?.allowsClarification == false)
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema(NutritionSchemaV1.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
@@ -90,6 +179,30 @@ struct MealAnalysisCoordinatorTests {
             for: schema,
             migrationPlan: NutritionMigrationPlan.self,
             configurations: [configuration]
+        )
+    }
+
+    private func makeRevision(
+        status: AnalysisState,
+        question: String? = nil
+    ) -> MealAnalysisRevision {
+        MealAnalysisRevision(
+            modelIdentifier: "example/vision-model",
+            status: status,
+            mealName: "Vorherige Schätzung",
+            estimatedTotalWeightGrams: 450,
+            confidence: .medium,
+            uncertaintySummary: "Menge des Öls",
+            clarificationQuestion: question,
+            nutrients: NutritionAnalysisValidatorTests.coreNutrients.map { nutrient in
+                NutrientValue(
+                    identifier: nutrient.identifier,
+                    value: nutrient.value,
+                    unit: nutrient.unit,
+                    confidence: nutrient.confidence,
+                    provenance: nutrient.provenance
+                )
+            }
         )
     }
 }

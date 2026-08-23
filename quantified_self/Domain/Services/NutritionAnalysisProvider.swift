@@ -13,6 +13,26 @@ struct NutritionAnalysisImage: Sendable, Equatable {
 struct NutritionAnalysisRequest: Sendable, Equatable {
     let images: [NutritionAnalysisImage]
     let userComment: String?
+    let previousAnalysis: NutritionAnalysisResult?
+    let clarificationAnswer: String?
+    let requestsBestEstimate: Bool
+    let allowsClarification: Bool
+
+    init(
+        images: [NutritionAnalysisImage],
+        userComment: String?,
+        previousAnalysis: NutritionAnalysisResult? = nil,
+        clarificationAnswer: String? = nil,
+        requestsBestEstimate: Bool = false,
+        allowsClarification: Bool = true
+    ) {
+        self.images = images
+        self.userComment = userComment
+        self.previousAnalysis = previousAnalysis
+        self.clarificationAnswer = clarificationAnswer
+        self.requestsBestEstimate = requestsBestEstimate
+        self.allowsClarification = allowsClarification
+    }
 }
 
 struct AnalyzedNutrient: Codable, Sendable, Equatable {
@@ -49,6 +69,7 @@ enum NutritionAnalysisError: Error, LocalizedError, Equatable {
     case missingConfiguration
     case malformedResponse
     case invalidResult(String)
+    case invalidState
 
     var errorDescription: String? {
         switch self {
@@ -58,6 +79,8 @@ enum NutritionAnalysisError: Error, LocalizedError, Equatable {
             "Die Ernährungsanalyse konnte nicht gelesen werden."
         case .invalidResult:
             "Die Ernährungsanalyse enthielt ungültige Werte."
+        case .invalidState:
+            "Diese Aktion ist im aktuellen Analysestatus nicht möglich."
         }
     }
 }

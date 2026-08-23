@@ -25,6 +25,12 @@ struct quantified_selfApp: App {
                 configurations: [modelConfiguration]
             )
             try InitialDataSeeder.seedGoalsIfNeeded(in: container.mainContext)
+#if DEBUG
+            try UITestDataSeeder.seedReviewMealIfRequested(
+                arguments: ProcessInfo.processInfo.arguments,
+                in: container.mainContext
+            )
+#endif
             return container
         } catch {
             fatalError("Could not create ModelContainer: \(error)")

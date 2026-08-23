@@ -50,6 +50,7 @@ private struct TodayDashboardContainer: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
+    @State private var selectedMeal: Meal?
 
     let onAddFood: () -> Void
 
@@ -63,8 +64,14 @@ private struct TodayDashboardContainer: View {
                     calendar: .autoupdatingCurrent
                 ),
                 onAddFood: onAddFood,
-                onRetryMeal: retryAnalysis
+                onRetryMeal: retryAnalysis,
+                onOpenMeal: openMeal
             )
+        }
+        .sheet(item: $selectedMeal) { meal in
+            NavigationStack {
+                MealReviewView(meal: meal)
+            }
         }
     }
 
@@ -72,6 +79,10 @@ private struct TodayDashboardContainer: View {
         guard let meal = meals.first(where: { $0.id == mealID }) else { return }
         let coordinator = MealAnalysisCoordinator(context: modelContext)
         Task { await coordinator.analyze(meal) }
+    }
+
+    private func openMeal(mealID: UUID) {
+        selectedMeal = meals.first(where: { $0.id == mealID })
     }
 }
 

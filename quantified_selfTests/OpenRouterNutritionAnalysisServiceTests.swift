@@ -71,13 +71,51 @@ struct OpenRouterNutritionAnalysisServiceTests {
         }
     }
 
-    private static func chatResponseData() throws -> Data {
+    @Test("Best-estimate requests include prior context and reject another question")
+    func bestEstimateContextAndQuestionLimit() async throws {
+        let response = try Self.chatResponseData(
+            clarificationQuestion: "Noch eine Frage?"
+        )
+        let client = ChatClientStub(responseData: response)
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "secret"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/model"),
+            client: client
+        )
+        let previous = NutritionAnalysisValidatorTests.validResult(
+            clarificationQuestion: "Wie viel Öl wurde verwendet?"
+        )
+
+        await #expect(throws: NutritionAnalysisError.malformedResponse) {
+            try await service.analyze(NutritionAnalysisRequest(
+                images: [],
+                userComment: "Große Portion",
+                previousAnalysis: previous,
+                requestsBestEstimate: true,
+                allowsClarification: false
+            ))
+        }
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        let systemText = try #require(messages.first?["content"] as? String)
+        #expect(systemText.contains("Do not ask another clarification question"))
+        let userContent = try #require(messages.last?["content"] as? [[String: Any]])
+        let userText = try #require(userContent.first?["text"] as? String)
+        #expect(userText.contains("Previous structured analysis"))
+        #expect(userText.contains("best estimate"))
+    }
+
+    private static func chatResponseData(
+        clarificationQuestion: Any = NSNull()
+    ) throws -> Data {
         let payload: [String: Any] = [
             "mealName": "Gemüsecurry mit Reis",
             "estimatedTotalWeightGrams": 480,
             "confidence": "medium",
             "uncertaintySummary": "Menge des verwendeten Öls",
-            "clarificationQuestion": NSNull(),
+            "clarificationQuestion": clarificationQuestion,
             "nutrients": NutritionAnalysisValidatorTests.coreNutrients.map { nutrient in
                 [
                     "identifier": nutrient.identifier.rawValue,
