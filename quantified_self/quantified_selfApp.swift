@@ -15,11 +15,13 @@ struct quantified_selfApp: App {
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {
-            return try ModelContainer(
+            let container = try ModelContainer(
                 for: schema,
                 migrationPlan: NutritionMigrationPlan.self,
                 configurations: [modelConfiguration]
             )
+            try InitialDataSeeder.seedGoalsIfNeeded(in: container.mainContext)
+            return container
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
