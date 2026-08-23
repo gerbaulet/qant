@@ -12,7 +12,11 @@ import SwiftData
 struct quantified_selfApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema(NutritionSchemaV1.models)
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let usesEphemeralStore = ProcessInfo.processInfo.arguments.contains("--ui-testing")
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: usesEphemeralStore
+        )
 
         do {
             let container = try ModelContainer(

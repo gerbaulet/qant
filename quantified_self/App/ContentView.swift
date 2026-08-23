@@ -10,13 +10,13 @@ struct ContentView: View {
     }
 
     @State private var selectedSection: AppSection = .today
-    @State private var showsCaptureMilestoneNotice = false
+    @State private var showsMealCapture = false
 
     var body: some View {
         TabView(selection: $selectedSection) {
             Tab("Heute", systemImage: "sun.max.fill", value: .today) {
                 TodayDashboardContainer {
-                    showsCaptureMilestoneNotice = true
+                    showsMealCapture = true
                 }
             }
 
@@ -44,10 +44,8 @@ struct ContentView: View {
                 )
             }
         }
-        .alert("Erfassung folgt als Nächstes", isPresented: $showsCaptureMilestoneNotice) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Der nächste Meilenstein speichert Mahlzeit, Zeitpunkt und Kommentar sofort lokal.")
+        .sheet(isPresented: $showsMealCapture) {
+            MealCaptureView()
         }
     }
 }
