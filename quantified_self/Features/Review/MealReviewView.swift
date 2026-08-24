@@ -303,7 +303,7 @@ struct MealReviewView: View {
 
     @ViewBuilder
     private var revisionHistorySection: some View {
-        if meal.analysisRevisions.count > 1 {
+        if meal.analysisRevisions.count > 1 || sortedRevisions.contains(where: hasInitialRunSummaries) {
             DisclosureGroup("Analyseverlauf") {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(sortedRevisions) { revision in
@@ -348,12 +348,46 @@ struct MealReviewView: View {
                 Text("Antwort: „\(answer)“")
                     .font(.footnote)
             }
+
+            let runs = InitialAnalysisRunMetadata.decode(revision.providerMetadata)
+            if !runs.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Einzelne Modelläufe")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    ForEach(runs) { run in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("Lauf \(run.runNumber)")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(run.modelIdentifier)
+                                    .font(.caption)
+                                    .lineLimit(2)
+                                if let provider = run.providerIdentifier, !provider.isEmpty {
+                                    Text(provider)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            Spacer(minLength: 8)
+                            Text("~\(wholeNumber(run.energyKilocalories)) kcal")
+                                .font(.caption.bold().monospacedDigit())
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
         }
         .padding(.vertical, 10)
     }
 
     private var sortedRevisions: [MealAnalysisRevision] {
         meal.analysisRevisions.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private func hasInitialRunSummaries(_ revision: MealAnalysisRevision) -> Bool {
+        !InitialAnalysisRunMetadata.decode(revision.providerMetadata).isEmpty
     }
 
     private var unavailableState: some View {

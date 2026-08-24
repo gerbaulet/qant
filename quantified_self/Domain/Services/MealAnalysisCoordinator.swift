@@ -133,16 +133,18 @@ final class MealAnalysisCoordinator {
                 allowsClarification: allowsClarification
             )
             let result: NutritionAnalysisResult
+            let initialResults: [NutritionAnalysisResult]
             if trigger == .initial {
                 async let firstAnalysis = provider.analyze(request)
                 async let secondAnalysis = provider.analyze(request)
                 async let thirdAnalysis = provider.analyze(request)
-                let initialResults = try await [firstAnalysis, secondAnalysis, thirdAnalysis]
+                initialResults = try await [firstAnalysis, secondAnalysis, thirdAnalysis]
                 for candidate in initialResults {
                     try NutritionAnalysisValidator.validate(candidate)
                 }
                 result = try NutritionAnalysisConsensus.combine(initialResults)
             } else {
+                initialResults = []
                 result = try await provider.analyze(request)
             }
             try NutritionAnalysisValidator.validate(result)
@@ -152,6 +154,7 @@ final class MealAnalysisCoordinator {
                 trigger: trigger,
                 clarificationAnswer: clarificationAnswer,
                 userCorrection: userCorrection,
+                initialResults: initialResults,
                 for: meal
             )
             meal.clarificationCount = nextClarificationCount
@@ -216,6 +219,7 @@ final class MealAnalysisCoordinator {
         trigger: AnalysisTrigger,
         clarificationAnswer: String?,
         userCorrection: String?,
+        initialResults: [NutritionAnalysisResult],
         for meal: Meal
     ) {
         let status: AnalysisState = result.clarificationQuestion?.isEmpty == false
@@ -226,6 +230,7 @@ final class MealAnalysisCoordinator {
             requestDate: requestDate,
             modelIdentifier: result.modelIdentifier,
             providerIdentifier: result.providerIdentifier,
+            providerMetadata: InitialAnalysisRunMetadata.encode(initialResults),
             promptVersion: NutritionAnalysisPrompt.currentVersion,
             trigger: trigger,
             status: status,

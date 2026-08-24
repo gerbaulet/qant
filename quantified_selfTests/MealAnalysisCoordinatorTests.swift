@@ -39,6 +39,11 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.receivedRequest?.userComment == "Große Portion")
         #expect(provider.receivedRequest?.images.first?.data == Data([7, 8, 9]))
         #expect(provider.requestCount == 3)
+        let runs = InitialAnalysisRunMetadata.decode(meal.activeRevision?.providerMetadata)
+        #expect(runs.count == 3)
+        #expect(runs.map(\.runNumber) == [1, 2, 3])
+        #expect(runs.allSatisfy { $0.modelIdentifier == "example/vision-model" })
+        #expect(runs.allSatisfy { $0.energyKilocalories == 640 })
     }
 
     @Test("A material clarification question changes the persisted state")
