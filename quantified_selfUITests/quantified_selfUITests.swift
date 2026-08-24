@@ -91,11 +91,16 @@ final class quantified_selfUITests: XCTestCase {
         settingsTab.tap()
 
         XCTAssertTrue(app.navigationBars["Einstellungen"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.secureTextFields["settings.openRouterAPIKey"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["settings.createWeeklySummaryTestReminder"].waitForExistence(timeout: 2))
         app.swipeUp()
+        XCTAssertTrue(app.secureTextFields["settings.openRouterAPIKey"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["settings.openRouterModelPicker"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["settings.loadOpenRouterModels"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["settings.testOpenRouter"].waitForExistence(timeout: 2))
+        let testConnectionButton = app.buttons["settings.testOpenRouter"]
+        for _ in 0..<3 where !testConnectionButton.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(testConnectionButton.waitForExistence(timeout: 2))
 
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "OpenRouter settings"

@@ -7,6 +7,8 @@ struct OpenRouterSettingsView: View {
     @State private var viewModel: OpenRouterSettingsViewModel
     @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
     @State private var weeklyReminderMessage: String?
+    @State private var weeklyReminderMessageIsError = false
+    @State private var isSchedulingTestReminder = false
     private let weeklyReminderScheduler = WeeklySummaryNotificationScheduler()
 
     init(viewModel: OpenRouterSettingsViewModel = OpenRouterSettingsViewModel()) {
@@ -24,10 +26,25 @@ struct OpenRouterSettingsView: View {
                         set: updateWeeklyReminder
                     ))
                     .accessibilityIdentifier("settings.weeklySummaryReminder")
+
+                    Button {
+                        scheduleTestReminder()
+                    } label: {
+                        HStack {
+                            Text("Test-Erinnerung erstellen")
+                            Spacer()
+                            if isSchedulingTestReminder {
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(isSchedulingTestReminder)
+                    .accessibilityIdentifier("settings.createWeeklySummaryTestReminder")
+
                     if let weeklyReminderMessage {
                         Text(weeklyReminderMessage)
                             .font(.footnote)
-                            .foregroundStyle(weeklyReminderEnabled ? Color.secondary : Color.orange)
+                            .foregroundStyle(weeklyReminderMessageIsError ? Color.orange : Color.secondary)
                     }
                 } header: {
                     Text("Wochenübersicht")
@@ -217,6 +234,7 @@ struct OpenRouterSettingsView: View {
             weeklyReminderScheduler.disable()
             weeklyReminderEnabled = false
             weeklyReminderMessage = "Erinnerung deaktiviert."
+            weeklyReminderMessageIsError = false
             return
         }
 
@@ -225,13 +243,34 @@ struct OpenRouterSettingsView: View {
             case .enabled:
                 weeklyReminderEnabled = true
                 weeklyReminderMessage = "Erinnerung für Sonntag, 20:00 Uhr aktiviert."
+                weeklyReminderMessageIsError = false
             case .denied:
                 weeklyReminderEnabled = false
                 weeklyReminderMessage = "Mitteilungen sind nicht erlaubt. Du kannst sie in den iOS-Einstellungen freigeben."
+                weeklyReminderMessageIsError = true
             case .failed:
                 weeklyReminderEnabled = false
                 weeklyReminderMessage = "Die Erinnerung konnte nicht eingerichtet werden. Bitte versuche es erneut."
+                weeklyReminderMessageIsError = true
             }
+        }
+    }
+
+    private func scheduleTestReminder() {
+        isSchedulingTestReminder = true
+        Task {
+            switch await weeklyReminderScheduler.scheduleTestNotification() {
+            case .enabled:
+                weeklyReminderMessage = "Test-Erinnerung erstellt. Sie erscheint in etwa 5 Sekunden, wenn Qant im Hintergrund ist."
+                weeklyReminderMessageIsError = false
+            case .denied:
+                weeklyReminderMessage = "Mitteilungen sind nicht erlaubt. Du kannst sie in den iOS-Einstellungen freigeben."
+                weeklyReminderMessageIsError = true
+            case .failed:
+                weeklyReminderMessage = "Die Test-Erinnerung konnte nicht erstellt werden. Bitte versuche es erneut."
+                weeklyReminderMessageIsError = true
+            }
+            isSchedulingTestReminder = false
         }
     }
 

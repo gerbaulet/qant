@@ -65,6 +65,12 @@ struct WeeklyNutritionSummaryBuilderTests {
         #expect(components.timeZone == .autoupdatingCurrent)
     }
 
+    @Test("Test reminder uses a separate one-time schedule")
+    func testReminderSchedule() {
+        #expect(WeeklySummaryNotificationSchedule.testIdentifier != WeeklySummaryNotificationSchedule.identifier)
+        #expect(WeeklySummaryNotificationSchedule.testDelay == 5)
+    }
+
     @Test("Weekly tips adapt a familiar breakfast to low fiber and protein")
     func personalizedWeeklyTips() throws {
         let calendar = berlinCalendar
