@@ -52,11 +52,44 @@ struct OpenRouterSettingsView: View {
                         .textContentType(.password)
                         .accessibilityIdentifier("settings.openRouterAPIKey")
 
-                    TextField("anbieter/modell", text: $viewModel.modelIdentifier)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .accessibilityLabel("OpenRouter Modell-ID")
-                        .accessibilityIdentifier("settings.openRouterModel")
+                    LabeledContent("Modell") {
+                        Menu {
+                            if viewModel.modelOptions.isEmpty {
+                                Text("Zuerst Modelle laden")
+                            }
+                            ForEach(viewModel.modelOptions) { model in
+                                Button(model.name) {
+                                    viewModel.modelIdentifier = model.id
+                                }
+                            }
+                        } label: {
+                            Text(selectedModelName)
+                                .lineLimit(1)
+                        }
+                        .accessibilityIdentifier("settings.openRouterModelPicker")
+                    }
+
+                    Button {
+                        Task { await viewModel.loadModelOptions() }
+                    } label: {
+                        HStack {
+                            Text(viewModel.modelOptions.isEmpty ? "Passende Modelle laden" : "Modellliste aktualisieren")
+                            Spacer()
+                            if viewModel.isLoadingModels {
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(viewModel.isLoadingModels || !viewModel.hasStoredAPIKey)
+                    .accessibilityIdentifier("settings.loadOpenRouterModels")
+
+                    DisclosureGroup("Erweiterte Modellauswahl") {
+                        TextField("anbieter/modell", text: $viewModel.modelIdentifier)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityLabel("OpenRouter Modell-ID")
+                            .accessibilityIdentifier("settings.openRouterModel")
+                    }
 
                     Button("Konfiguration speichern") {
                         viewModel.save()
@@ -84,7 +117,7 @@ struct OpenRouterSettingsView: View {
                 } header: {
                     Text("OpenRouter")
                 } footer: {
-                    Text("Der API-Schlüssel liegt ausschließlich im iOS-Schlüsselbund. Die Modell-ID enthält keine Zugangsdaten.")
+                    Text("Der API-Schlüssel liegt ausschließlich im iOS-Schlüsselbund. Für eine neue Mahlzeit werden drei parallele Analysen berechnet; dadurch können ungefähr dreifache API-Kosten entstehen.")
                 }
 
                 statusSection
@@ -117,7 +150,7 @@ struct OpenRouterSettingsView: View {
                 Section("Datenschutz") {
                     Label("Keine Werbung, Analytik-SDKs oder unnötige Tracker", systemImage: "hand.raised.fill")
                     Text("Mahlzeiten, Ziele und Fotos werden lokal in der App gespeichert. Fotos bleiben erhalten, solange der zugehörige Eintrag gespeichert ist.")
-                    Text("Nur beim Start einer Analyse werden die zugehörigen Fotos und dein Kommentar an OpenRouter sowie den ausgewählten Modellanbieter gesendet.")
+                    Text("Nur bei einer Analyse werden die zugehörigen Fotos und dein Kommentar an OpenRouter sowie den ausgewählten Modellanbieter gesendet. Für die erste Schätzung geschieht dies dreimal parallel.")
                     Text("OpenRouter und einzelne Anbieter können unterschiedliche Datenschutz- und Aufbewahrungsrichtlinien haben. Die App sendet keine anderen Mahlzeiten und protokolliert weder API-Schlüssel noch Bild- oder Kommentarinhalt.")
                 }
 
@@ -129,7 +162,12 @@ struct OpenRouterSettingsView: View {
                 }
             }
             .navigationTitle("Einstellungen")
-            .onAppear { viewModel.load() }
+            .task {
+                viewModel.load()
+                if viewModel.hasStoredAPIKey {
+                    await viewModel.loadModelOptions()
+                }
+            }
         }
     }
 
@@ -137,6 +175,13 @@ struct OpenRouterSettingsView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–"
         return "\(version) (\(build))"
+    }
+
+    private var selectedModelName: String {
+        if let selected = viewModel.modelOptions.first(where: { $0.id == viewModel.modelIdentifier }) {
+            return selected.name
+        }
+        return viewModel.modelIdentifier.isEmpty ? "Bitte auswählen" : viewModel.modelIdentifier
     }
 
     private func updateWeeklyReminder(_ enabled: Bool) {

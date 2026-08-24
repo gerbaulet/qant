@@ -123,7 +123,7 @@ final class MealAnalysisCoordinator {
                         data: try await imageStorage.data(forStorageKey: image.imageStorageKey)
                     )
                 }
-            let result = try await provider.analyze(NutritionAnalysisRequest(
+            let request = NutritionAnalysisRequest(
                 images: images,
                 userComment: meal.userComment,
                 previousAnalysis: previousAnalysis,
@@ -131,7 +131,20 @@ final class MealAnalysisCoordinator {
                 userCorrection: userCorrection,
                 requestsBestEstimate: trigger == .bestEstimate,
                 allowsClarification: allowsClarification
-            ))
+            )
+            let result: NutritionAnalysisResult
+            if trigger == .initial {
+                async let firstAnalysis = provider.analyze(request)
+                async let secondAnalysis = provider.analyze(request)
+                async let thirdAnalysis = provider.analyze(request)
+                let initialResults = try await [firstAnalysis, secondAnalysis, thirdAnalysis]
+                for candidate in initialResults {
+                    try NutritionAnalysisValidator.validate(candidate)
+                }
+                result = try NutritionAnalysisConsensus.combine(initialResults)
+            } else {
+                result = try await provider.analyze(request)
+            }
             try NutritionAnalysisValidator.validate(result)
             persist(
                 result,

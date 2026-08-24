@@ -119,6 +119,28 @@ struct OpenRouterAPIClientTests {
         #expect(String(decoding: response, as: UTF8.self) == #"{"choices":[]}"#)
     }
 
+    @Test("Model catalog returns image models with structured output")
+    func compatibleModelCatalog() async throws {
+        let session = makeSession { request in
+            #expect(request.url?.path == "/api/v1/models")
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+            #expect(query?.contains(URLQueryItem(name: "input_modalities", value: "image")) == true)
+            return Self.response(
+                for: request,
+                status: 200,
+                json: #"{"data":[{"id":"vision/compatible","name":"Compatible Vision","architecture":{"input_modalities":["text","image"]},"supported_parameters":["response_format"]},{"id":"text/only","name":"Text Only","architecture":{"input_modalities":["text"]},"supported_parameters":["response_format"]}]}"#
+            )
+        }
+        let client = OpenRouterAPIClient(
+            session: session,
+            baseURL: URL(string: "https://example.test/api/v1")!
+        )
+
+        let models = try await client.compatibleModels(apiKey: "test-secret")
+
+        #expect(models == [OpenRouterModelOption(id: "vision/compatible", name: "Compatible Vision")])
+    }
+
     private func makeSession(
         handler: @escaping @Sendable (URLRequest) -> (HTTPURLResponse, Data)
     ) -> URLSession {

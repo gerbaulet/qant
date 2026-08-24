@@ -38,6 +38,7 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.activeRevision?.status == .awaitingConfirmation)
         #expect(provider.receivedRequest?.userComment == "Große Portion")
         #expect(provider.receivedRequest?.images.first?.data == Data([7, 8, 9]))
+        #expect(provider.requestCount == 3)
     }
 
     @Test("A material clarification question changes the persisted state")
@@ -287,6 +288,7 @@ private final class AnalysisProviderStub: NutritionAnalysisProviding {
     let result: NutritionAnalysisResult?
     let error: Error?
     var receivedRequest: NutritionAnalysisRequest?
+    var requestCount = 0
 
     init(result: NutritionAnalysisResult) {
         self.result = result
@@ -299,6 +301,7 @@ private final class AnalysisProviderStub: NutritionAnalysisProviding {
     }
 
     func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult {
+        requestCount += 1
         receivedRequest = request
         if let error { throw error }
         return result!

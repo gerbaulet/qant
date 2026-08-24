@@ -1,5 +1,9 @@
 import Foundation
 
+extension Notification.Name {
+    static let quickCaptureRequested = Notification.Name("quickCapture.requested")
+}
+
 struct QuickCaptureRequestStore {
     private static let requestKey = "quickCapture.pendingRequest"
     private let defaults: UserDefaults
@@ -10,6 +14,7 @@ struct QuickCaptureRequestStore {
 
     func requestCapture() {
         defaults.set(true, forKey: Self.requestKey)
+        NotificationCenter.default.post(name: .quickCaptureRequested, object: nil)
     }
 
     /// Returns true once for a pending request, then clears it so normal app

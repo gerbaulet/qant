@@ -92,7 +92,9 @@ final class quantified_selfUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Einstellungen"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.secureTextFields["settings.openRouterAPIKey"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.textFields["settings.openRouterModel"].waitForExistence(timeout: 2))
+        app.swipeUp()
+        XCTAssertTrue(app.buttons["settings.openRouterModelPicker"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["settings.loadOpenRouterModels"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["settings.testOpenRouter"].waitForExistence(timeout: 2))
 
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
@@ -147,6 +149,27 @@ final class quantified_selfUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForNonExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Chicken Curry mit Reis"].exists)
+    }
+
+    @MainActor
+    func testQuickCaptureDismissesMealReviewAndOpensCamera() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-confirmation",
+            "--ui-testing-quick-capture-from-review",
+        ])
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForExistence(timeout: 2))
+
+        let captureForm = app.descendants(matching: .any)["meal.captureForm"]
+        XCTAssertTrue(captureForm.waitForExistence(timeout: 4))
+        XCTAssertEqual(captureForm.value as? String, "Kamera")
+        XCTAssertFalse(app.navigationBars["Analyse prüfen"].exists)
     }
 
     @MainActor

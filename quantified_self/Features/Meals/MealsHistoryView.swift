@@ -43,6 +43,10 @@ struct MealsHistoryContainer: View {
         } message: { _ in
             Text("Die Mahlzeit, ihre Analyse und ihre Fotos werden dauerhaft gelöscht.")
         }
+        .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
+            selectedMeal = nil
+            mealPendingDeletion = nil
+        }
     }
 
     private func openMeal(_ id: UUID) {

@@ -17,6 +17,9 @@ struct MealReviewView: View {
     @State private var showsMoreNutrients = false
     @State private var showsCorrectionEntry = false
     @State private var showsDeleteConfirmation = false
+#if DEBUG
+    @State private var hasTriggeredUITestQuickCapture = false
+#endif
 
     init(
         meal: Meal,
@@ -90,6 +93,18 @@ struct MealReviewView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(alertMessage ?? "Unbekannter Fehler")
+        }
+        .task {
+#if DEBUG
+            guard
+                ProcessInfo.processInfo.arguments.contains("--ui-testing-quick-capture-from-review"),
+                !hasTriggeredUITestQuickCapture
+            else { return }
+            hasTriggeredUITestQuickCapture = true
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            QuickCaptureRequestStore().requestCapture()
+#endif
         }
     }
 
@@ -348,7 +363,9 @@ struct MealReviewView: View {
             description: Text(
                 meal.analysisState == .failed
                     ? "Die Mahlzeit und ihre Fotos sind sicher gespeichert."
-                    : "Du kannst diese Ansicht schließen und die App weiterverwenden."
+                    : meal.analysisRevisions.isEmpty
+                        ? "Drei unabhängige Schätzungen werden verglichen. Du kannst diese Ansicht schließen und die App weiterverwenden."
+                        : "Du kannst diese Ansicht schließen und die App weiterverwenden."
             )
         )
         .frame(maxWidth: .infinity)

@@ -11,23 +11,28 @@ final class OpenRouterSettingsViewModel {
 
     var replacementAPIKey = ""
     var modelIdentifier = ""
+    private(set) var modelOptions: [OpenRouterModelOption] = []
     private(set) var hasStoredAPIKey = false
     private(set) var isTesting = false
+    private(set) var isLoadingModels = false
     private(set) var statusMessage: String?
     private(set) var testState: TestState = .idle
 
     private let secretStore: any SecretStoring
     private let settingsStore: any OpenRouterSettingsStoring
     private let configurationChecker: any OpenRouterConfigurationChecking
+    private let modelCatalog: any OpenRouterModelCatalogProviding
 
     init(
         secretStore: any SecretStoring = KeychainSecretStore(),
         settingsStore: any OpenRouterSettingsStoring = UserDefaultsOpenRouterSettingsStore(),
-        configurationChecker: any OpenRouterConfigurationChecking = OpenRouterAPIClient()
+        configurationChecker: any OpenRouterConfigurationChecking = OpenRouterAPIClient(),
+        modelCatalog: any OpenRouterModelCatalogProviding = OpenRouterAPIClient()
     ) {
         self.secretStore = secretStore
         self.settingsStore = settingsStore
         self.configurationChecker = configurationChecker
+        self.modelCatalog = modelCatalog
     }
 
     func load() {
@@ -67,6 +72,28 @@ final class OpenRouterSettingsViewModel {
                 modelIdentifier: settingsStore.modelIdentifier
             )
             testState = .success(result)
+        } catch {
+            testState = .failure(error.localizedDescription)
+        }
+    }
+
+    func loadModelOptions() async {
+        guard !isLoadingModels else { return }
+        isLoadingModels = true
+        statusMessage = nil
+        defer { isLoadingModels = false }
+
+        do {
+            guard let apiKey = try secretStore.secret(for: .openRouterAPIKey) else {
+                throw OpenRouterClientError.invalidAPIKey
+            }
+            modelOptions = try await modelCatalog.compatibleModels(apiKey: apiKey)
+            if modelIdentifier.isEmpty, let firstModel = modelOptions.first {
+                modelIdentifier = firstModel.id
+            }
+            if modelOptions.isEmpty {
+                testState = .failure("OpenRouter hat keine passenden Bildmodelle zurückgegeben.")
+            }
         } catch {
             testState = .failure(error.localizedDescription)
         }

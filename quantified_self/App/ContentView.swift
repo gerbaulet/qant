@@ -19,6 +19,7 @@ struct ContentView: View {
 
     @State private var selectedSection: AppSection = .today
     @State private var mealCaptureMode: MealCaptureMode?
+    @State private var activeQuickCaptureRequestID: UUID?
     @Environment(\.scenePhase) private var scenePhase
     private let quickCaptureRequests = QuickCaptureRequestStore()
 
@@ -46,6 +47,9 @@ struct ContentView: View {
             MealCaptureView(opensCameraOnAppear: mode == .camera)
         }
         .onAppear(perform: presentRequestedQuickCapture)
+        .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
+            presentRequestedQuickCapture()
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 presentRequestedQuickCapture()
@@ -55,8 +59,15 @@ struct ContentView: View {
 
     private func presentRequestedQuickCapture() {
         guard quickCaptureRequests.consumeCaptureRequest() else { return }
+        let requestID = UUID()
+        activeQuickCaptureRequestID = requestID
         selectedSection = .today
-        mealCaptureMode = .camera
+        mealCaptureMode = nil
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            guard activeQuickCaptureRequestID == requestID else { return }
+            mealCaptureMode = .camera
+        }
     }
 }
 
@@ -95,6 +106,9 @@ private struct TodayDashboardContainer: View {
                     deleteMeal(meal)
                 }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
+            selectedMeal = nil
         }
     }
 

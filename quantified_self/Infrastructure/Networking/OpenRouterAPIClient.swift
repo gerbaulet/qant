@@ -8,11 +8,20 @@ struct OpenRouterConfigurationCheck: Sendable, Equatable {
     let supportsStructuredOutput: Bool
 }
 
+struct OpenRouterModelOption: Identifiable, Sendable, Equatable {
+    let id: String
+    let name: String
+}
+
 protocol OpenRouterConfigurationChecking {
     func checkConfiguration(
         apiKey: String,
         modelIdentifier: String
     ) async throws -> OpenRouterConfigurationCheck
+}
+
+protocol OpenRouterModelCatalogProviding {
+    func compatibleModels(apiKey: String) async throws -> [OpenRouterModelOption]
 }
 
 protocol OpenRouterChatCompleting {
@@ -60,7 +69,7 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
     }
 }
 
-struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterChatCompleting {
+struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCatalogProviding, OpenRouterChatCompleting {
     private struct ModelResponse: Decodable {
         struct Model: Decodable {
             struct Architecture: Decodable {
@@ -74,6 +83,21 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterChatCompl
         }
 
         let data: Model
+    }
+
+    private struct ModelsResponse: Decodable {
+        struct Model: Decodable {
+            struct Architecture: Decodable {
+                let inputModalities: [String]
+            }
+
+            let id: String
+            let name: String
+            let architecture: Architecture?
+            let supportedParameters: [String]?
+        }
+
+        let data: [Model]
     }
 
     private let session: URLSession
@@ -119,7 +143,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterChatCompl
             modelIdentifier: response.data.id,
             modelName: response.data.name,
             supportsImageInput: response.data.architecture?.inputModalities.contains("image") == true,
-            supportsStructuredOutput: response.data.supportedParameters?.contains("response_format") == true
+            supportsStructuredOutput: supportsStructuredOutput(response.data.supportedParameters)
         )
     }
 
@@ -133,6 +157,40 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterChatCompl
             body: body,
             timeout: 90
         )
+    }
+
+    func compatibleModels(apiKey: String) async throws -> [OpenRouterModelOption] {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { throw OpenRouterClientError.invalidAPIKey }
+
+        var components = URLComponents(
+            url: baseURL.appending(path: "models"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [
+            URLQueryItem(name: "input_modalities", value: "image"),
+            URLQueryItem(name: "sort", value: "most-popular"),
+        ]
+        guard let url = components?.url else { throw OpenRouterClientError.invalidResponse }
+
+        let data = try await performRequest(url: url, apiKey: trimmedKey)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let response = try? decoder.decode(ModelsResponse.self, from: data) else {
+            throw OpenRouterClientError.invalidResponse
+        }
+
+        return response.data
+            .filter { model in
+                model.architecture?.inputModalities.contains("image") == true &&
+                    supportsStructuredOutput(model.supportedParameters)
+            }
+            .map { OpenRouterModelOption(id: $0.id, name: $0.name) }
+    }
+
+    private func supportsStructuredOutput(_ parameters: [String]?) -> Bool {
+        parameters?.contains("response_format") == true ||
+            parameters?.contains("structured_outputs") == true
     }
 
     private func performRequest(
