@@ -17,6 +17,22 @@ struct NutritionHint: Identifiable, Sendable, Equatable {
     let systemImage: String
 
     var id: NutritionHintKind { kind }
+    var importanceScore: Int { kind.importanceScore }
+}
+
+private extension NutritionHintKind {
+    var importanceScore: Int {
+        switch self {
+        case .calorieTargetExceeded: 100
+        case .proteinLow: 90
+        case .fiberLow: 85
+        case .fatHigh: 80
+        case .carbohydratesLow: 75
+        case .calorieTargetNear: 60
+        case .proteinTargetReached: 40
+        case .fiberTargetReached: 35
+        }
+    }
 }
 
 enum NutritionHintBuilder {
@@ -76,7 +92,7 @@ enum NutritionHintBuilder {
         }
 
         guard calendar.component(.hour, from: date) >= 18 else {
-            return hints
+            return mostImportantHints(from: hints)
         }
 
         if let protein = snapshot.macros.first(where: { $0.id == .protein }),
@@ -108,6 +124,12 @@ enum NutritionHintBuilder {
             ))
         }
 
-        return Array(hints.prefix(2))
+        return mostImportantHints(from: hints)
+    }
+
+    private static func mostImportantHints(from hints: [NutritionHint]) -> [NutritionHint] {
+        Array(hints
+            .sorted { $0.importanceScore > $1.importanceScore }
+            .prefix(2))
     }
 }

@@ -39,8 +39,8 @@ struct NutritionHintBuilderTests {
         #expect(evening.map(\.kind) == [.proteinLow, .fiberLow])
     }
 
-    @Test("Near-target calories take priority and hints stay compact")
-    func caloriePriority() {
+    @Test("Actionable evening deficits outrank calorie target proximity")
+    func actionableDeficitPriority() {
         let hints = NutritionHintBuilder.makeHints(
             for: snapshot(mealCount: 3, energy: 2_050, protein: 40, fiber: 8),
             at: date(hour: 20),
@@ -48,8 +48,7 @@ struct NutritionHintBuilderTests {
         )
 
         #expect(hints.count == 2)
-        #expect(hints.first?.kind == .calorieTargetNear)
-        #expect(hints.last?.kind == .proteinLow)
+        #expect(hints.map(\.kind) == [.proteinLow, .fiberLow])
     }
 
     @Test("A calorie overage needs a clear ten-percent margin")
@@ -127,6 +126,26 @@ struct NutritionHintBuilderTests {
 
         #expect(!belowThreshold.map(\.kind).contains(.fatHigh))
         #expect(atThreshold.map(\.kind) == [.fatHigh])
+    }
+
+    @Test("Only the two highest-scoring hints are returned")
+    func importanceRanking() {
+        let hints = NutritionHintBuilder.makeHints(
+            for: snapshot(
+                mealCount: 3,
+                energy: 1_500,
+                protein: 130,
+                carbohydrates: 200,
+                fat: 90,
+                fiber: 30
+            ),
+            at: date(hour: 15),
+            calendar: calendar
+        )
+
+        #expect(hints.map(\.kind) == [.fatHigh, .proteinTargetReached])
+        #expect(hints.count == 2)
+        #expect(hints[0].importanceScore > hints[1].importanceScore)
     }
 
     private func snapshot(
