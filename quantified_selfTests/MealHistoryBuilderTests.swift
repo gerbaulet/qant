@@ -28,6 +28,9 @@ struct MealHistoryBuilderTests {
         #expect(sections[1].entries.map(\.id) == [dinner.id, breakfast.id])
         #expect(sections[1].entries.first?.category == .dinner)
         #expect(sections[1].entries.first?.energyKilocalories == 780)
+        #expect(sections[0].totalEnergyKilocalories == 650)
+        #expect(sections[1].totalEnergyKilocalories == 1_200)
+        #expect(sections.allSatisfy { !$0.containsProvisionalEnergy })
     }
 
     @Test("Week and month grouping use calendar intervals and exclude archived meals")
@@ -53,17 +56,39 @@ struct MealHistoryBuilderTests {
         #expect(weekSections[1].entries.count == 2)
         #expect(monthSections.count == 2)
         #expect(monthSections[1].entries.count == 2)
+        #expect(monthSections[1].totalEnergyKilocalories == 1_100)
         #expect(monthSections.flatMap(\.entries).contains { $0.id == archived.id } == false)
+    }
+
+    @Test("Section totals identify provisional energy")
+    func provisionalSectionTotal() {
+        let confirmed = meal(at: date(2026, 8, 22, 8), category: .breakfast, energy: 420)
+        let provisional = meal(
+            at: date(2026, 8, 22, 12),
+            category: .lunch,
+            energy: 610,
+            status: .awaitingConfirmation
+        )
+
+        let section = MealHistoryBuilder.makeSections(
+            meals: [confirmed, provisional],
+            grouping: .day,
+            calendar: calendar
+        ).first
+
+        #expect(section?.totalEnergyKilocalories == 1_030)
+        #expect(section?.containsProvisionalEnergy == true)
     }
 
     private func meal(
         at timestamp: Date,
         category: MealCategory,
-        energy: Double
+        energy: Double,
+        status: AnalysisState = .confirmed
     ) -> Meal {
         let revision = MealAnalysisRevision(
             modelIdentifier: "test/model",
-            status: .confirmed,
+            status: status,
             mealName: "Testmahlzeit",
             confidence: .medium,
             nutrients: [NutrientValue(
@@ -77,7 +102,7 @@ struct MealHistoryBuilderTests {
         return Meal(
             timestamp: timestamp,
             category: category,
-            analysisState: .confirmed,
+            analysisState: status,
             activeRevisionID: revision.id,
             analysisRevisions: [revision]
         )

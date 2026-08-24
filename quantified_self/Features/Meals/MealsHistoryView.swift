@@ -117,7 +117,7 @@ struct MealsHistoryView: View {
                     } else {
                         List {
                             ForEach(sections) { section in
-                                Section(sectionTitle(section)) {
+                                Section {
                                     ForEach(section.entries) { entry in
                                         mealRow(entry)
                                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -129,6 +129,8 @@ struct MealsHistoryView: View {
                                                 .accessibilityIdentifier("meal.delete.\(entry.id)")
                                             }
                                     }
+                                } header: {
+                                    sectionHeader(section)
                                 }
                             }
                         }
@@ -186,6 +188,20 @@ struct MealsHistoryView: View {
         case .month:
             section.interval.start.formatted(.dateTime.month(.wide).year())
         }
+    }
+
+    private func sectionHeader(_ section: MealHistorySection) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(sectionTitle(section))
+            Spacer(minLength: 12)
+            if let total = section.totalEnergyKilocalories {
+                Text("\(section.containsProvisionalEnergy ? "~" : "")\(wholeNumber(total)) kcal")
+                    .monospacedDigit()
+            } else {
+                Text("— kcal")
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func wholeNumber(_ value: Double) -> String {

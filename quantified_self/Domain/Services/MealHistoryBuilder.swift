@@ -23,6 +23,16 @@ struct MealHistorySection: Identifiable, Sendable {
     let id: Date
     let interval: DateInterval
     let entries: [MealHistoryEntry]
+
+    var totalEnergyKilocalories: Double? {
+        let values = entries.compactMap(\.energyKilocalories)
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +)
+    }
+
+    var containsProvisionalEnergy: Bool {
+        entries.contains { $0.energyKilocalories != nil && $0.isProvisional }
+    }
 }
 
 @MainActor
