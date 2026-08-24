@@ -299,8 +299,12 @@ struct TodayDashboardView: View {
     }
 
     private func analysisStateLabel(_ meal: TodayMealSummary) -> some View {
-        Label(meal.analysisState.dashboardTitle, systemImage: meal.analysisState.dashboardSystemImage)
-            .foregroundStyle(meal.analysisState.dashboardColor)
+        Group {
+            if meal.analysisState != .confirmed {
+                Label(meal.analysisState.dashboardTitle, systemImage: meal.analysisState.dashboardSystemImage)
+                    .foregroundStyle(meal.analysisState.dashboardColor)
+            }
+        }
     }
 
     private func mealDisplayName(_ meal: TodayMealSummary) -> String {

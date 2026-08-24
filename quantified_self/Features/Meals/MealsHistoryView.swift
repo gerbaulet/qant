@@ -154,8 +154,10 @@ struct MealsHistoryView: View {
                         HStack(spacing: 7) {
                             Text(entry.timestamp, format: .dateTime.hour().minute())
                             Text(entry.category.historyTitle)
-                            Label(entry.analysisState.historyTitle, systemImage: entry.analysisState.historySystemImage)
-                                .foregroundStyle(entry.analysisState.historyColor)
+                            if entry.analysisState != .confirmed {
+                                Label(entry.analysisState.historyTitle, systemImage: entry.analysisState.historySystemImage)
+                                    .foregroundStyle(entry.analysisState.historyColor)
+                            }
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
