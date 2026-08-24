@@ -20,8 +20,10 @@ struct ContentView: View {
     @State private var selectedSection: AppSection = .today
     @State private var mealCaptureMode: MealCaptureMode?
     @State private var activeQuickCaptureRequestID: UUID?
+    @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
     @Environment(\.scenePhase) private var scenePhase
     private let quickCaptureRequests = QuickCaptureRequestStore()
+    private let weeklyReminderScheduler = WeeklySummaryNotificationScheduler()
 
     var body: some View {
         TabView(selection: $selectedSection) {
@@ -47,6 +49,11 @@ struct ContentView: View {
             MealCaptureView(opensCameraOnAppear: mode == .camera)
         }
         .onAppear(perform: presentRequestedQuickCapture)
+        .task {
+            if weeklyReminderEnabled {
+                _ = await weeklyReminderScheduler.enable()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
             presentRequestedQuickCapture()
         }

@@ -6,7 +6,9 @@ struct WeeklySummaryNotificationSchedule: Equatable, Sendable {
     static let identifier = "weekly-nutrition-summary"
 
     static var sundayEvening: DateComponents {
-        DateComponents(calendar: .autoupdatingCurrent, timeZone: .autoupdatingCurrent, hour: 20, minute: 0, weekday: 1)
+        // Temporary test cadence: omitting the weekday makes the unchanged
+        // Sunday reminder repeat every evening.
+        DateComponents(calendar: .autoupdatingCurrent, timeZone: .autoupdatingCurrent, hour: 20, minute: 0)
     }
 }
 
