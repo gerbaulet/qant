@@ -349,6 +349,12 @@ struct MealReviewView: View {
                     .font(.footnote)
             }
 
+            if let question = revision.clarificationQuestion, !question.isEmpty {
+                Text("Rückfrage: „\(question)“")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             let runs = InitialAnalysisRunMetadata.decode(revision.providerMetadata)
             if !runs.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {

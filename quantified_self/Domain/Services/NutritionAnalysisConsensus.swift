@@ -3,6 +3,7 @@ import Foundation
 struct NutritionAnalysisConsensus {
     static let initialSampleCount = 3
     static let maximumRelativeSpread = 0.35
+    static let minimumAbsoluteEnergySpreadKilocalories = 10.0
 
     private static let comparisonNutrients: [NutrientIdentifier] = [
         .energy,
@@ -20,12 +21,8 @@ struct NutritionAnalysisConsensus {
         }
 
         let representative = representativeResult(in: results)
-        let weightValues = results.compactMap(\.estimatedTotalWeightGrams)
-        let weightDiverges = !weightValues.isEmpty &&
-            hasStrongDeviation(values: weightValues, requiredCount: results.count)
-        let resultsDivergeStrongly = comparisonNutrients.contains { identifier in
-            hasStrongDeviation(values: nutrientValues(identifier, in: results))
-        } || weightDiverges
+        let energyValues = nutrientValues(.energy, in: results)
+        let resultsDivergeStrongly = hasSignificantEnergyDeviation(values: energyValues)
 
         let averagedNutrients = representative.nutrients.map { nutrient in
             let matching = results.compactMap { result in
@@ -43,10 +40,10 @@ struct NutritionAnalysisConsensus {
 
         let modelQuestion = majorityClarificationQuestion(in: results)
         let clarificationQuestion = resultsDivergeStrongly
-            ? "Die drei Analysen weichen deutlich voneinander ab. Bitte beschreibe Zutaten, Mengen und Portionsgröße genauer."
+            ? "Die drei kcal-Schätzungen weichen um mindestens 35 % und 10 kcal voneinander ab. Bitte beschreibe Zutaten, Mengen und Portionsgröße genauer."
             : modelQuestion
         let uncertaintySummary = resultsDivergeStrongly
-            ? "Die drei unabhängigen Schätzungen waren nicht ausreichend konsistent."
+            ? "Die drei unabhängigen kcal-Schätzungen waren nicht ausreichend konsistent."
             : representative.uncertaintySummary
 
         return NutritionAnalysisResult(
@@ -95,14 +92,18 @@ struct NutritionAnalysisConsensus {
         }
     }
 
-    private static func hasStrongDeviation(
-        values: [Double],
-        requiredCount: Int = initialSampleCount
-    ) -> Bool {
-        guard values.count == requiredCount, let minimum = values.min(), let maximum = values.max() else {
+    private static func hasSignificantEnergyDeviation(values: [Double]) -> Bool {
+        guard
+            values.count == initialSampleCount,
+            let minimum = values.min(),
+            let maximum = values.max()
+        else {
             return true
         }
-        return (maximum - minimum) / max(abs(values.average), 1) > maximumRelativeSpread
+        let absoluteSpread = maximum - minimum
+        let relativeSpread = absoluteSpread / max(abs(values.average), 1)
+        return absoluteSpread >= minimumAbsoluteEnergySpreadKilocalories &&
+            relativeSpread >= maximumRelativeSpread
     }
 
     private static func averagedOptional(_ values: [Double?]) -> Double? {
