@@ -104,6 +104,23 @@ final class quantified_selfUITests: XCTestCase {
     }
 
     @MainActor
+    func testMealsTitleStaysAboveGroupingControl() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let mealsTab = app.tabBars.buttons["Mahlzeiten"]
+        XCTAssertTrue(mealsTab.waitForExistence(timeout: 3))
+        mealsTab.tap()
+
+        let navigationBar = app.navigationBars["Mahlzeiten"]
+        let daySegment = app.buttons["Tag"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 2))
+        XCTAssertTrue(daySegment.waitForExistence(timeout: 2))
+        XCTAssertLessThanOrEqual(navigationBar.frame.maxY, daySegment.frame.minY)
+    }
+
+    @MainActor
     func testReviewsAndConfirmsNutritionEstimate() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [

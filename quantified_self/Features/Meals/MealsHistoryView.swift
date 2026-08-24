@@ -94,36 +94,7 @@ struct MealsHistoryView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if sections.isEmpty {
-                    ContentUnavailableView(
-                        "Noch keine Mahlzeiten",
-                        systemImage: "fork.knife",
-                        description: Text("Erfasste Mahlzeiten erscheinen hier in deinem Verlauf.")
-                    )
-                } else {
-                    List {
-                        ForEach(sections) { section in
-                            Section(sectionTitle(section)) {
-                                ForEach(section.entries) { entry in
-                                    mealRow(entry)
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                            Button(role: .destructive) {
-                                                onDeleteMeal(entry.id)
-                                            } label: {
-                                                Label("Löschen", systemImage: "trash")
-                                            }
-                                            .accessibilityIdentifier("meal.delete.\(entry.id)")
-                                        }
-                                }
-                            }
-                        }
-                    }
-                    .listStyle(.insetGrouped)
-                }
-            }
-            .navigationTitle("Mahlzeiten")
-            .safeAreaInset(edge: .top) {
+            VStack(spacing: 0) {
                 Picker("Gruppierung", selection: $grouping) {
                     Text("Tag").tag(MealHistoryGrouping.day)
                     Text("Woche").tag(MealHistoryGrouping.week)
@@ -134,7 +105,38 @@ struct MealsHistoryView: View {
                 .padding(.vertical, 8)
                 .background(.bar)
                 .accessibilityIdentifier("meals.grouping")
+
+                Group {
+                    if sections.isEmpty {
+                        ContentUnavailableView(
+                            "Noch keine Mahlzeiten",
+                            systemImage: "fork.knife",
+                            description: Text("Erfasste Mahlzeiten erscheinen hier in deinem Verlauf.")
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        List {
+                            ForEach(sections) { section in
+                                Section(sectionTitle(section)) {
+                                    ForEach(section.entries) { entry in
+                                        mealRow(entry)
+                                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                                Button(role: .destructive) {
+                                                    onDeleteMeal(entry.id)
+                                                } label: {
+                                                    Label("Löschen", systemImage: "trash")
+                                                }
+                                                .accessibilityIdentifier("meal.delete.\(entry.id)")
+                                            }
+                                    }
+                                }
+                            }
+                        }
+                        .listStyle(.insetGrouped)
+                    }
+                }
             }
+            .navigationTitle("Mahlzeiten")
         }
     }
 
