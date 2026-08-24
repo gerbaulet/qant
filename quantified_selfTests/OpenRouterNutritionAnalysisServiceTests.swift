@@ -133,6 +133,32 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(userText.contains("complete revised structured estimate"))
     }
 
+    @Test("German device language localizes every user-facing analysis field")
+    func requestsGermanUserFacingText() async throws {
+        let client = ChatClientStub(responseData: try Self.chatResponseData())
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "secret"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/model"),
+            client: client,
+            preferredLanguageIdentifier: "de-DE"
+        )
+
+        _ = try await service.analyze(NutritionAnalysisRequest(
+            images: [],
+            userComment: nil
+        ))
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        let systemText = try #require(messages.first?["content"] as? String)
+        #expect(systemText.contains("German (de-DE)"))
+        #expect(systemText.contains("mealName"))
+        #expect(systemText.contains("components[].name"))
+        #expect(systemText.contains("uncertaintySummary"))
+        #expect(systemText.contains("clarificationQuestion"))
+    }
+
     private static func chatResponseData(
         clarificationQuestion: Any = NSNull()
     ) throws -> Data {

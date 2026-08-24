@@ -28,15 +28,18 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
     private let secretStore: any SecretStoring
     private let settingsStore: any OpenRouterSettingsStoring
     private let client: any OpenRouterChatCompleting
+    private let preferredLanguageIdentifier: String
 
     init(
         secretStore: any SecretStoring = KeychainSecretStore(),
         settingsStore: any OpenRouterSettingsStoring = UserDefaultsOpenRouterSettingsStore(),
-        client: any OpenRouterChatCompleting = OpenRouterAPIClient()
+        client: any OpenRouterChatCompleting = OpenRouterAPIClient(),
+        preferredLanguageIdentifier: String = Locale.preferredLanguages.first ?? Locale.autoupdatingCurrent.identifier
     ) {
         self.secretStore = secretStore
         self.settingsStore = settingsStore
         self.client = client
+        self.preferredLanguageIdentifier = preferredLanguageIdentifier
     }
 
     func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult {
@@ -132,8 +135,20 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             : "Do not ask another clarification question. Return the best complete estimate from the available evidence."
         return """
         Analyze the meal using every supplied image and the user's comment. Inspect packaging and nutrition labels explicitly. Prefer readable label values over visual estimates. Return realistic estimates without false precision. Always include energy, protein, carbohydrates, fat, fiber, sugar, saturatedFat, and sodium; include every additional listed micronutrient that can be responsibly estimated. Nutrient provenance must distinguish label, calculatedFromLabel, visualEstimate, textProvidedByUser, mixedEstimate, or unknown. Return only the JSON object required by the schema.
+        \(outputLanguageRule)
         \(clarificationRule)
         """
+    }
+
+    private var outputLanguageRule: String {
+        let normalizedIdentifier = preferredLanguageIdentifier
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: "-")
+        let identifier = normalizedIdentifier.isEmpty ? "de" : normalizedIdentifier
+        let language = identifier.lowercased().hasPrefix("de")
+            ? "German (\(identifier))"
+            : "the language identified by BCP-47 tag \(identifier)"
+        return "Write all user-facing text in \(language). This includes mealName, every components[].name, uncertaintySummary, and clarificationQuestion. Keep product and brand names unchanged. Keep schema keys and enum values exactly as specified."
     }
 
     private func userPrompt(_ request: NutritionAnalysisRequest) -> String {

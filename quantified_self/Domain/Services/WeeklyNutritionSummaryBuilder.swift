@@ -301,27 +301,36 @@ enum WeeklyNutritionSummaryBuilder {
     }
 
     private static func fiberRecommendation(for descriptions: String) -> String {
-        if containsAny(["joghurt", "yogurt", "musli", "muesli", "hafer", "porridge"], in: descriptions) {
+        if containsAny([
+            "joghurt", "yogurt", "yoghurt", "musli", "muesli", "hafer",
+            "oats", "oatmeal", "porridge", "granola", "cereal",
+        ], in: descriptions) {
             return "Ergänze dein gewohntes Joghurt oder Müsli mit Haferflocken, Beeren oder einem Löffel Samen."
         }
-        if containsAny(["reis", "nudel", "pasta", "brot", "brotchen", "wrap"], in: descriptions) {
+        if containsAny([
+            "reis", "rice", "nudel", "noodle", "pasta", "brot", "brotchen",
+            "bread", "bun", "roll", "wrap", "tortilla",
+        ], in: descriptions) {
             return "Tausche bei einer deiner gewohnten Reis-, Nudel- oder Brotmahlzeiten einen Teil gegen Vollkorn oder Hülsenfrüchte."
         }
         return "Ergänze eine deiner gewohnten Mahlzeiten um eine Handvoll Gemüse, Obst oder Hülsenfrüchte."
     }
 
     private static func proteinRecommendation(for descriptions: String) -> String {
-        if containsAny(["joghurt", "yogurt", "musli", "muesli", "porridge"], in: descriptions) {
+        if containsAny([
+            "joghurt", "yogurt", "yoghurt", "musli", "muesli", "hafer",
+            "oats", "oatmeal", "porridge", "granola", "cereal",
+        ], in: descriptions) {
             return "Wähle bei deinem gewohnten Frühstück häufiger Skyr oder einen proteinreichen Joghurt."
         }
-        if containsAny(["salat", "suppe"], in: descriptions) {
+        if containsAny(["salat", "salad", "suppe", "soup"], in: descriptions) {
             return "Ergänze deine gewohnten Salate oder Suppen um Ei, Bohnen, Tofu oder eine andere einfache Proteinquelle."
         }
         return "Ergänze eine deiner gewohnten Mahlzeiten um eine handtellergroße Proteinquelle, zum Beispiel Bohnen, Tofu, Ei, Fisch oder Geflügel."
     }
 
     private static func fatRecommendation(for descriptions: String) -> String {
-        if containsAny(["curry", "sauce", "kase", "pizza", "burger"], in: descriptions) {
+        if containsAny(["curry", "sauce", "kase", "cheese", "pizza", "burger"], in: descriptions) {
             return "Nimm bei einem deiner gewohnten Gerichte etwas weniger Sauce, Käse oder Öl; der Rest der Mahlzeit kann gleich bleiben."
         }
         return "Reduziere bei einer gewohnten Mahlzeit zuerst Öl, Dressing oder eine cremige Beilage, statt das ganze Gericht zu ändern."
