@@ -45,6 +45,7 @@ enum UITestDataSeeder {
             category: .dinner,
             analysisState: status,
             activeRevisionID: revision.id,
+            clarificationCount: wantsConfirmation ? 1 : 0,
             analysisRevisions: [revision]
         )
         context.insert(meal)

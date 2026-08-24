@@ -5,7 +5,7 @@ import Testing
 
 @MainActor
 struct MealAnalysisCoordinatorTests {
-    @Test("Successful analysis persists a complete active revision")
+    @Test("Successful analysis without questions is confirmed automatically")
     func persistsSuccessfulAnalysis() async throws {
         let container = try makeContainer()
         let context = container.mainContext
@@ -31,11 +31,11 @@ struct MealAnalysisCoordinatorTests {
 
         await coordinator.analyze(meal)
 
-        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisState == .confirmed)
         #expect(meal.activeRevision?.mealName == "Gemüsecurry mit Reis")
         #expect(meal.activeRevision?.modelIdentifier == "example/vision-model")
         #expect(meal.activeRevision?.nutrients.count == 8)
-        #expect(meal.activeRevision?.status == .awaitingConfirmation)
+        #expect(meal.activeRevision?.status == .confirmed)
         #expect(provider.receivedRequest?.userComment == "Große Portion")
         #expect(provider.receivedRequest?.images.first?.data == Data([7, 8, 9]))
         #expect(provider.requestCount == 3)
@@ -173,6 +173,7 @@ struct MealAnalysisCoordinatorTests {
 
         await coordinator.useBestEstimate(for: meal)
 
+        #expect(meal.analysisState == .awaitingConfirmation)
         #expect(meal.activeRevision?.trigger == .bestEstimate)
         #expect(provider.receivedRequest?.requestsBestEstimate == true)
         #expect(provider.receivedRequest?.allowsClarification == false)
@@ -199,7 +200,7 @@ struct MealAnalysisCoordinatorTests {
 
         await coordinator.correct("  Es waren nur 100 g Reis.  ", for: meal)
 
-        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisState == .confirmed)
         #expect(meal.analysisRevisions.count == 2)
         #expect(previousRevision.status == .confirmed)
         #expect(meal.activeRevision?.id != previousRevision.id)
@@ -246,7 +247,7 @@ struct MealAnalysisCoordinatorTests {
         )
         await retryCoordinator.analyze(meal)
 
-        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisState == .confirmed)
         #expect(meal.analysisRevisions.count == 3)
         #expect(meal.activeRevision?.trigger == .correction)
         #expect(meal.activeRevision?.userCorrection == "Es waren nur 100 g Reis.")

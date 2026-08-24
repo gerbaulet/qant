@@ -222,9 +222,18 @@ final class MealAnalysisCoordinator {
         initialResults: [NutritionAnalysisResult],
         for meal: Meal
     ) {
-        let status: AnalysisState = result.clarificationQuestion?.isEmpty == false
-            ? .needsClarification
-            : .awaitingConfirmation
+        let asksClarification = result.clarificationQuestion?.isEmpty == false
+        let hasClarificationHistory = meal.clarificationCount > 0 || meal.analysisRevisions.contains {
+            $0.clarificationQuestion?.isEmpty == false
+        }
+        let status: AnalysisState
+        if asksClarification {
+            status = .needsClarification
+        } else if hasClarificationHistory {
+            status = .awaitingConfirmation
+        } else {
+            status = .confirmed
+        }
         let revision = MealAnalysisRevision(
             createdAt: now(),
             requestDate: requestDate,
