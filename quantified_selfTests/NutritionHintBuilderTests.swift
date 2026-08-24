@@ -52,10 +52,89 @@ struct NutritionHintBuilderTests {
         #expect(hints.last?.kind == .proteinLow)
     }
 
+    @Test("A calorie overage needs a clear ten-percent margin")
+    func calorieTargetExceeded() {
+        let belowThreshold = NutritionHintBuilder.makeHints(
+            for: snapshot(mealCount: 3, energy: 2_419, protein: 100, fiber: 25),
+            at: date(hour: 15),
+            calendar: calendar
+        )
+        let atThreshold = NutritionHintBuilder.makeHints(
+            for: snapshot(mealCount: 3, energy: 2_420, protein: 100, fiber: 25),
+            at: date(hour: 15),
+            calendar: calendar
+        )
+
+        #expect(!belowThreshold.map(\.kind).contains(.calorieTargetExceeded))
+        #expect(atThreshold.map(\.kind) == [.calorieTargetExceeded])
+    }
+
+    @Test("Reached protein and fiber targets produce positive hints")
+    func reachedTargets() {
+        let proteinHints = NutritionHintBuilder.makeHints(
+            for: snapshot(mealCount: 2, energy: 1_000, protein: 130, fiber: 25),
+            at: date(hour: 15),
+            calendar: calendar
+        )
+        let fiberHints = NutritionHintBuilder.makeHints(
+            for: snapshot(mealCount: 2, energy: 1_000, protein: 100, fiber: 30),
+            at: date(hour: 15),
+            calendar: calendar
+        )
+
+        #expect(proteinHints.map(\.kind) == [.proteinTargetReached])
+        #expect(fiberHints.map(\.kind) == [.fiberTargetReached])
+    }
+
+    @Test("Low carbohydrates wait until evening")
+    func carbohydratesTiming() {
+        let current = snapshot(
+            mealCount: 2,
+            energy: 1_000,
+            protein: 100,
+            carbohydrates: 100,
+            fat: 70,
+            fiber: 25
+        )
+
+        let afternoon = NutritionHintBuilder.makeHints(
+            for: current,
+            at: date(hour: 15),
+            calendar: calendar
+        )
+        let evening = NutritionHintBuilder.makeHints(
+            for: current,
+            at: date(hour: 20),
+            calendar: calendar
+        )
+
+        #expect(afternoon.isEmpty)
+        #expect(evening.map(\.kind) == [.carbohydratesLow])
+    }
+
+    @Test("A high-fat hint needs a fifteen-percent margin")
+    func fatHigh() {
+        let belowThreshold = NutritionHintBuilder.makeHints(
+            for: snapshot(mealCount: 2, energy: 1_000, protein: 100, fat: 86.24, fiber: 25),
+            at: date(hour: 15),
+            calendar: calendar
+        )
+        let atThreshold = NutritionHintBuilder.makeHints(
+            for: snapshot(mealCount: 2, energy: 1_000, protein: 100, fat: 86.25, fiber: 25),
+            at: date(hour: 15),
+            calendar: calendar
+        )
+
+        #expect(!belowThreshold.map(\.kind).contains(.fatHigh))
+        #expect(atThreshold.map(\.kind) == [.fatHigh])
+    }
+
     private func snapshot(
         mealCount: Int,
         energy: Double,
         protein: Double,
+        carbohydrates: Double = 100,
+        fat: Double = 40,
         fiber: Double
     ) -> TodayDashboardSnapshot {
         TodayDashboardSnapshot(
@@ -64,8 +143,8 @@ struct NutritionHintBuilderTests {
             weeklyEnergy: NutrientProgress(id: .energy, consumed: energy, target: 15_400, unit: .kilocalorie),
             macros: [
                 NutrientProgress(id: .protein, consumed: protein, target: 130, unit: .gram),
-                NutrientProgress(id: .carbohydrates, consumed: 100, target: 240, unit: .gram),
-                NutrientProgress(id: .fat, consumed: 40, target: 75, unit: .gram),
+                NutrientProgress(id: .carbohydrates, consumed: carbohydrates, target: 240, unit: .gram),
+                NutrientProgress(id: .fat, consumed: fat, target: 75, unit: .gram),
             ],
             fiber: NutrientProgress(id: .fiber, consumed: fiber, target: 30, unit: .gram),
             meals: (0..<mealCount).map { index in

@@ -2,8 +2,13 @@ import Foundation
 
 enum NutritionHintKind: String, Sendable {
     case calorieTargetNear
+    case calorieTargetExceeded
     case proteinLow
+    case proteinTargetReached
     case fiberLow
+    case fiberTargetReached
+    case carbohydratesLow
+    case fatHigh
 }
 
 struct NutritionHint: Identifiable, Sendable, Equatable {
@@ -25,13 +30,48 @@ enum NutritionHintBuilder {
         guard !snapshot.meals.isEmpty else { return [] }
 
         var hints: [NutritionHint] = []
-        if let fraction = snapshot.energy.fractionCompleted,
-           fraction >= 0.9,
-           fraction <= 1 {
+        if let fraction = snapshot.energy.fractionCompleted {
+            if fraction >= 1.1 {
+                hints.append(NutritionHint(
+                    kind: .calorieTargetExceeded,
+                    message: "Du liegst heute deutlich über deinem Kalorienziel.",
+                    systemImage: "gauge.with.dots.needle.100percent"
+                ))
+            } else if fraction >= 0.9, fraction <= 1 {
+                hints.append(NutritionHint(
+                    kind: .calorieTargetNear,
+                    message: "Du hast dein heutiges Kalorienziel fast erreicht.",
+                    systemImage: "gauge.with.dots.needle.67percent"
+                ))
+            }
+        }
+
+        if let protein = snapshot.macros.first(where: { $0.id == .protein }),
+           let fraction = protein.fractionCompleted,
+           fraction >= 1 {
             hints.append(NutritionHint(
-                kind: .calorieTargetNear,
-                message: "Du hast dein heutiges Kalorienziel fast erreicht.",
-                systemImage: "gauge.with.dots.needle.67percent"
+                kind: .proteinTargetReached,
+                message: "Dein Proteinziel ist heute erreicht.",
+                systemImage: "checkmark.circle"
+            ))
+        }
+
+        if let fraction = snapshot.fiber.fractionCompleted,
+           fraction >= 1 {
+            hints.append(NutritionHint(
+                kind: .fiberTargetReached,
+                message: "Dein Ballaststoffziel ist heute erreicht.",
+                systemImage: "leaf.circle"
+            ))
+        }
+
+        if let fat = snapshot.macros.first(where: { $0.id == .fat }),
+           let fraction = fat.fractionCompleted,
+           fraction >= 1.15 {
+            hints.append(NutritionHint(
+                kind: .fatHigh,
+                message: "Fett liegt heute deutlich über deinem Ziel.",
+                systemImage: "drop.triangle"
             ))
         }
 
@@ -55,6 +95,16 @@ enum NutritionHintBuilder {
                 kind: .fiberLow,
                 message: "Deine Ballaststoffzufuhr ist heute noch niedrig.",
                 systemImage: "leaf"
+            ))
+        }
+
+        if let carbohydrates = snapshot.macros.first(where: { $0.id == .carbohydrates }),
+           let fraction = carbohydrates.fractionCompleted,
+           fraction < 0.6 {
+            hints.append(NutritionHint(
+                kind: .carbohydratesLow,
+                message: "Kohlenhydrate liegen heute noch deutlich unter deinem Ziel.",
+                systemImage: "chart.bar.fill"
             ))
         }
 
