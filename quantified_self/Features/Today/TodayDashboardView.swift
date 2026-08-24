@@ -27,9 +27,9 @@ struct TodayDashboardView: View {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     dateHeader
                     calorieCard
+                    hintsSection
                     weeklyCalorieCard
                     macroCard
-                    hintsSection
                     mealsSection
                 }
                 .padding(.horizontal)
