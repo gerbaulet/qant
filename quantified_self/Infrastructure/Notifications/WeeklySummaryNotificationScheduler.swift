@@ -31,7 +31,7 @@ final class WeeklySummaryNotificationScheduler {
 
             let content = UNMutableNotificationContent()
             content.title = "Deine Wochenübersicht ist bereit"
-            content.body = "Öffne die App für deine lokal berechnete Ernährungsübersicht."
+            content.body = "Öffne die App für deine lokal berechnete Ernährungsübersicht und passende Tipps für nächste Woche."
             content.sound = .default
 
             let request = UNNotificationRequest(
