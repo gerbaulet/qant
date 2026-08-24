@@ -181,7 +181,10 @@ struct MealReviewView: View {
                 GridRow {
                     macroTile("Protein", identifier: .protein, revision: revision)
                     macroTile("Kohlenhydrate", identifier: .carbohydrates, revision: revision)
+                }
+                GridRow {
                     macroTile("Fett", identifier: .fat, revision: revision)
+                    macroTile("Ballaststoffe", identifier: .fiber, revision: revision)
                 }
             }
         }
@@ -204,6 +207,8 @@ struct MealReviewView: View {
                 .font(.headline.monospacedDigit())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("meal.nutrient.\(identifier.rawValue)")
     }
 
     private func confidenceSection(_ revision: MealAnalysisRevision) -> some View {
@@ -604,7 +609,7 @@ struct MealReviewView: View {
     }
 
     private func additionalNutrients(in revision: MealAnalysisRevision) -> [NutrientValue] {
-        let primary: Set<NutrientIdentifier> = [.energy, .protein, .carbohydrates, .fat]
+        let primary: Set<NutrientIdentifier> = [.energy, .protein, .carbohydrates, .fat, .fiber]
         return revision.nutrients
             .filter { nutrient in
                 guard let identifier = nutrient.knownIdentifier else { return true }

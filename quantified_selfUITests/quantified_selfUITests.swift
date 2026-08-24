@@ -166,6 +166,26 @@ final class quantified_selfUITests: XCTestCase {
     }
 
     @MainActor
+    func testShowsFiberOnTodayAndMealDetails() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-confirmation",
+        ])
+        app.launch()
+
+        let dailyFiber = app.descendants(matching: .any)["today.nutrient.fiber"]
+        XCTAssertTrue(dailyFiber.waitForExistence(timeout: 3))
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+
+        let mealFiber = app.descendants(matching: .any)["meal.nutrient.fiber"]
+        XCTAssertTrue(mealFiber.waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     func testDeletesMealFromReview() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [

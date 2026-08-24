@@ -111,7 +111,7 @@ struct TodayDashboardView: View {
 
     private var macroCard: some View {
         VStack(spacing: 18) {
-            ForEach(snapshot.macros) { progress in
+            ForEach(snapshot.macros + [snapshot.fiber]) { progress in
                 macroRow(progress)
             }
         }
@@ -203,6 +203,7 @@ struct TodayDashboardView: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("today.nutrient.\(progress.id.rawValue)")
     }
 
     private var mealsSection: some View {
