@@ -122,30 +122,7 @@ struct OpenRouterSettingsView: View {
 
                 statusSection
 
-                Section("Datenspeicher") {
-                    LabeledContent("Mahlzeiten") {
-                        Label("Auf diesem Gerät", systemImage: "iphone")
-                    }
-                    LabeledContent("iCloud-Synchronisierung") {
-                        Text(NutritionStoreMode.current == .cloudKit ? "Aktiv" : "Vorbereitet")
-                            .foregroundStyle(NutritionStoreMode.current == .cloudKit ? Color.green : Color.secondary)
-                    }
-                    if CloudSyncReadinessAudit.issues(
-                        mode: .current,
-                        containsFileBackedImages: !mealImages.isEmpty
-                    ).contains(.fileBackedImagesNeedCloudAssetStorage) {
-                        Label(
-                            "Fotos bleiben derzeit ausschließlich auf diesem Gerät.",
-                            systemImage: "photo.badge.exclamationmark"
-                        )
-                        .foregroundStyle(.orange)
-                    }
-                    if NutritionStoreMode.current == .local {
-                        Text("Die CloudKit-Aktivierung ist bewusst ausgeschaltet, damit die App mit deinem Personal Team auf dem iPhone installiert werden kann. Später werden dafür eine iCloud-Berechtigung, ein Container und Cloud-Speicher für Fotos benötigt.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                storageSection
 
                 Section("Datenschutz") {
                     Label("Keine Werbung, Analytik-SDKs oder unnötige Tracker", systemImage: "hand.raised.fill")
@@ -182,6 +159,57 @@ struct OpenRouterSettingsView: View {
             return selected.name
         }
         return viewModel.modelIdentifier.isEmpty ? "Bitte auswählen" : viewModel.modelIdentifier
+    }
+
+    private var storageSection: some View {
+        Section("Datenspeicher") {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 12) {
+                    Text("Mahlzeiten")
+                    Spacer(minLength: 12)
+                    Label("Auf diesem Gerät", systemImage: "iphone")
+                }
+                .padding(.vertical, 10)
+
+                Divider()
+
+                HStack(spacing: 12) {
+                    Text("iCloud-Synchronisierung")
+                    Spacer(minLength: 12)
+                    Text(NutritionStoreMode.current == .cloudKit ? "Aktiv" : "Vorbereitet")
+                        .foregroundStyle(NutritionStoreMode.current == .cloudKit ? Color.green : Color.secondary)
+                }
+                .padding(.vertical, 10)
+
+                if photosNeedCloudAssetStorage {
+                    Divider()
+                    Label(
+                        "Fotos bleiben derzeit ausschließlich auf diesem Gerät.",
+                        systemImage: "photo.badge.exclamationmark"
+                    )
+                    .foregroundStyle(.orange)
+                    .padding(.vertical, 10)
+                }
+
+                if NutritionStoreMode.current == .local {
+                    Divider()
+                    Text("Die CloudKit-Aktivierung ist bewusst ausgeschaltet, damit die App mit deinem Personal Team auf dem iPhone installiert werden kann. Später werden dafür eine iCloud-Berechtigung, ein Container und Cloud-Speicher für Fotos benötigt.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 10)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("settings.storageSection")
+        }
+    }
+
+    private var photosNeedCloudAssetStorage: Bool {
+        CloudSyncReadinessAudit.issues(
+            mode: .current,
+            containsFileBackedImages: !mealImages.isEmpty
+        ).contains(.fileBackedImagesNeedCloudAssetStorage)
     }
 
     private func updateWeeklyReminder(_ enabled: Bool) {

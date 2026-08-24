@@ -104,6 +104,25 @@ final class quantified_selfUITests: XCTestCase {
     }
 
     @MainActor
+    func testStorageSectionUsesCompactHeight() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let settingsTab = app.tabBars.buttons["Einstellungen"]
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: 3))
+        settingsTab.tap()
+
+        let storageSection = app.otherElements["settings.storageSection"]
+        for _ in 0..<5 where !storageSection.isHittable {
+            app.swipeUp()
+        }
+
+        XCTAssertTrue(storageSection.waitForExistence(timeout: 2))
+        XCTAssertLessThan(storageSection.frame.height, app.frame.height * 0.5)
+    }
+
+    @MainActor
     func testMealsTitleStaysAboveGroupingControl() throws {
         let app = XCUIApplication()
         app.launchArguments.append("--ui-testing")
