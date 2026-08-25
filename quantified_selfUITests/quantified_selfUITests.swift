@@ -68,8 +68,9 @@ final class quantified_selfUITests: XCTestCase {
         app.launchArguments.append(contentsOf: ["--ui-testing", "--ui-testing-quick-capture"])
         app.launch()
 
-        XCTAssertTrue(app.navigationBars["Neue Mahlzeit"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.textFields["meal.comment"].exists)
+        XCTAssertTrue(app.navigationBars["Schnellaufnahme"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.textFields["meal.comment"].exists)
+        XCTAssertFalse(app.buttons["meal.save"].exists)
         XCTAssertEqual(app.descendants(matching: .any)["meal.captureForm"].value as? String, "Kamera")
 
         if app.alerts.buttons["OK"].waitForExistence(timeout: 1) {

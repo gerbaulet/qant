@@ -55,29 +55,39 @@ struct MealCaptureView: View {
     var body: some View {
         NavigationStack {
             Form {
-                photosSection
+                if opensCameraOnAppear {
+                    Section {
+                        HStack {
+                            Spacer()
+                            ProgressView("Kamera wird geöffnet …")
+                            Spacer()
+                        }
+                    }
+                } else {
+                    photosSection
 
-                Section {
-                    TextField(
-                        "z. B. große Portion, ungefähr 350 g",
-                        text: $comment,
-                        axis: .vertical
-                    )
-                    .lineLimit(4...8)
-                    .focused($commentIsFocused)
-                    .accessibilityIdentifier("meal.comment")
-                } header: {
-                    Text("Kommentar (optional)")
-                } footer: {
-                    Text("Gewicht, Portionsgröße oder besondere Zutaten helfen später bei der Analyse.")
+                    Section {
+                        TextField(
+                            "z. B. große Portion, ungefähr 350 g",
+                            text: $comment,
+                            axis: .vertical
+                        )
+                        .lineLimit(4...8)
+                        .focused($commentIsFocused)
+                        .accessibilityIdentifier("meal.comment")
+                    } header: {
+                        Text("Kommentar (optional)")
+                    } footer: {
+                        Text("Gewicht, Portionsgröße oder besondere Zutaten helfen später bei der Analyse.")
+                    }
+
+                    timestampSection
+                    mealCategorySection
                 }
-
-                timestampSection
-                mealCategorySection
             }
             .accessibilityIdentifier("meal.captureForm")
             .accessibilityValue(opensCameraOnAppear ? "Kamera" : "Standard")
-            .navigationTitle("Neue Mahlzeit")
+            .navigationTitle(opensCameraOnAppear ? "Schnellaufnahme" : "Neue Mahlzeit")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(isSaving)
             .toolbar {
@@ -88,17 +98,21 @@ struct MealCaptureView: View {
                     .disabled(isSaving)
                 }
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Speichern", action: save)
-                        .fontWeight(.semibold)
-                        .disabled(isSaving || isImportingImages)
-                        .accessibilityIdentifier("meal.save")
+                if !opensCameraOnAppear {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Speichern", action: save)
+                            .fontWeight(.semibold)
+                            .disabled(isSaving || isImportingImages)
+                            .accessibilityIdentifier("meal.save")
+                    }
                 }
 
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Fertig") {
-                        commentIsFocused = false
+                if !opensCameraOnAppear {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Fertig") {
+                            commentIsFocused = false
+                        }
                     }
                 }
             }
@@ -119,13 +133,26 @@ struct MealCaptureView: View {
                 requestCamera()
             }
             .fullScreenCover(isPresented: $showsCamera) {
-                CameraPicker { imageData in
-                    showsCamera = false
-                    addImageData(imageData)
-                } onCancel: {
-                    showsCamera = false
+                if opensCameraOnAppear {
+                    QuickCameraView { imageData in
+                        saveQuickCapture(imageData)
+                    } onCancel: {
+                        showsCamera = false
+                        dismiss()
+                    } onFailure: {
+                        showsCamera = false
+                        alert = .imageImportFailed
+                    }
+                    .ignoresSafeArea()
+                } else {
+                    CameraPicker { imageData in
+                        showsCamera = false
+                        addImageData(imageData)
+                    } onCancel: {
+                        showsCamera = false
+                    }
+                    .ignoresSafeArea()
                 }
-                .ignoresSafeArea()
             }
             .alert(item: $alert) { alert in
                 if alert.offersSettings {
@@ -349,6 +376,16 @@ struct MealCaptureView: View {
                 isSaving = false
             }
         }
+    }
+
+    private func saveQuickCapture(_ imageData: Data) {
+        guard UIImage(data: imageData) != nil else {
+            showsCamera = false
+            alert = .imageImportFailed
+            return
+        }
+        attachedImages = [PendingMealImage(data: imageData)]
+        save()
     }
 
     private func openSettings() {
