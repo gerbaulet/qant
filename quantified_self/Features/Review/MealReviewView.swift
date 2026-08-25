@@ -38,6 +38,7 @@ struct MealReviewView: View {
             LazyVStack(alignment: .leading, spacing: 20) {
                 photoStrip
                 titleSection
+                failureSection
 
                 if let revision = meal.activeRevision {
                     nutritionSummary(revision)
@@ -360,6 +361,13 @@ struct MealReviewView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let failureMessage = revision.failureMessage, !failureMessage.isEmpty {
+                Text("Fehler: \(failureMessage)")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
+
             let runs = InitialAnalysisRunMetadata.decode(revision.providerMetadata)
             if !runs.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -395,6 +403,30 @@ struct MealReviewView: View {
 
     private var sortedRevisions: [MealAnalysisRevision] {
         meal.analysisRevisions.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    @ViewBuilder
+    private var failureSection: some View {
+        if meal.analysisState == .failed,
+           let failure = sortedRevisions.first(where: { $0.status == .failed }),
+           let message = failure.failureMessage,
+           !message.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Grund des Fehlers", systemImage: "exclamationmark.triangle.fill")
+                    .font(.headline)
+                    .foregroundStyle(.red)
+                Text(message)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                Text("Diese Meldung kannst du für die Fehlersuche kopieren.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background(.background, in: .rect(cornerRadius: 18))
+            .accessibilityIdentifier("meal.analysisFailureReason")
+        }
     }
 
     private func hasInitialRunSummaries(_ revision: MealAnalysisRevision) -> Bool {

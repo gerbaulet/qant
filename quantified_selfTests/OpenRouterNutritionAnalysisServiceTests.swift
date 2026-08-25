@@ -159,6 +159,24 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(systemText.contains("clarificationQuestion"))
     }
 
+    @Test("Analysis requires a provider that supports structured output")
+    func requiresStructuredOutputProvider() async throws {
+        let client = ChatClientStub(responseData: try Self.chatResponseData())
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "test-key"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/vision-model"),
+            client: client,
+            preferredLanguageIdentifier: "de-DE"
+        )
+
+        _ = try await service.analyze(NutritionAnalysisRequest(images: [], userComment: nil))
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let provider = try #require(json["provider"] as? [String: Any])
+        #expect(provider["require_parameters"] as? Bool == true)
+    }
+
     private static func chatResponseData(
         clarificationQuestion: Any = NSNull()
     ) throws -> Data {

@@ -257,6 +257,28 @@ final class quantified_selfUITests: XCTestCase {
         add(screenshot)
     }
 
+    @MainActor
+    func testShowsAnalysisFailureReasonInMealDetails() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-failure",
+        ])
+        app.launch()
+
+        let mealButton = app.buttons
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "meal.open."))
+            .firstMatch
+        XCTAssertTrue(mealButton.waitForExistence(timeout: 3))
+        mealButton.tap()
+
+        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForExistence(timeout: 2))
+        let reason = app.descendants(matching: .any)["meal.analysisFailureReason"]
+        XCTAssertTrue(reason.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Grund des Fehlers"].exists)
+        XCTAssertTrue(app.staticTexts["OpenRouter-Fehler 400: Kein Anbieter unterstützt strukturierte Ausgaben."].exists)
+    }
+
 }
 
 private extension XCUIElement {

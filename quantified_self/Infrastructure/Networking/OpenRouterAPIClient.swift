@@ -40,6 +40,7 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
     case serverError
     case invalidResponse
     case transportFailure
+    case apiError(statusCode: Int, message: String)
 
     var errorDescription: String? {
         switch self {
@@ -65,6 +66,8 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
             "OpenRouter hat eine unerwartete Antwort geliefert."
         case .transportFailure:
             "OpenRouter konnte nicht erreicht werden. Prüfe deine Internetverbindung."
+        case let .apiError(statusCode, message):
+            "OpenRouter-Fehler \(statusCode): \(message)"
         }
     }
 }
@@ -239,16 +242,36 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         case 404:
             throw OpenRouterClientError.modelNotFound
         case 400, 422:
-            throw OpenRouterClientError.invalidRequest
+            throw apiError(from: data, statusCode: httpResponse.statusCode) ?? .invalidRequest
         case 402:
             throw OpenRouterClientError.insufficientCredits
+        case 408, 524:
+            throw OpenRouterClientError.timedOut
+        case 413:
+            throw apiError(from: data, statusCode: httpResponse.statusCode) ?? .invalidRequest
         case 429:
-            throw OpenRouterClientError.rateLimited
+            throw apiError(from: data, statusCode: httpResponse.statusCode) ?? .rateLimited
         case 500...599:
-            throw OpenRouterClientError.serverError
+            throw apiError(from: data, statusCode: httpResponse.statusCode) ?? .serverError
         default:
             AppLogger.nutritionAnalysis.error("OpenRouter returned an unexpected status code")
             throw OpenRouterClientError.invalidResponse
         }
+    }
+
+    private func apiError(from data: Data, statusCode: Int) -> OpenRouterClientError? {
+        struct ErrorEnvelope: Decodable {
+            struct APIError: Decodable { let message: String }
+            let error: APIError
+        }
+
+        guard
+            let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data),
+            !envelope.error.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        let message = envelope.error.message
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(500)
+        return .apiError(statusCode: statusCode, message: String(message))
     }
 }

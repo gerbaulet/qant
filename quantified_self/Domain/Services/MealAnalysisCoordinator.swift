@@ -6,6 +6,25 @@ import SwiftData
 final class MealAnalysisCoordinator {
     static let maximumClarificationCount = 2
 
+    static func recoverInterruptedAnalyses(in context: ModelContext, now: Date = .now) throws {
+        let meals = try context.fetch(FetchDescriptor<Meal>())
+        var recoveredAny = false
+        for meal in meals where meal.analysisState == .analyzing {
+            let previousRevision = meal.activeRevision
+            meal.analysisRevisions.append(failureRevision(
+                requestedAt: meal.modifiedAt,
+                createdAt: now,
+                trigger: previousRevision == nil ? .initial : .retry,
+                message: "Die Analyse wurde beim Beenden der App unterbrochen. Du kannst sie erneut versuchen.",
+                previousRevision: previousRevision
+            ))
+            meal.analysisState = .failed
+            meal.modifiedAt = now
+            recoveredAny = true
+        }
+        if recoveredAny { try context.save() }
+    }
+
     private let context: ModelContext
     private let provider: any NutritionAnalysisProviding
     private let imageStorage: any ImageStorageProviding
@@ -166,14 +185,13 @@ final class MealAnalysisCoordinator {
             try? context.save()
             AppLogger.nutritionAnalysis.info("Nutrition analysis cancelled")
         } catch {
-            if trigger == .correction, let userCorrection {
-                persistCorrectionFailure(
-                    userCorrection,
-                    requestedAt: requestDate,
-                    error: error,
-                    for: meal
-                )
-            }
+            persistFailure(
+                requestedAt: requestDate,
+                trigger: trigger,
+                userCorrection: userCorrection,
+                error: error,
+                for: meal
+            )
             meal.analysisState = .failed
             meal.modifiedAt = now()
             try? context.save()
@@ -189,28 +207,46 @@ final class MealAnalysisCoordinator {
             .userCorrection
     }
 
-    private func persistCorrectionFailure(
-        _ correction: String,
+    private func persistFailure(
         requestedAt requestDate: Date,
+        trigger: AnalysisTrigger,
+        userCorrection: String?,
         error: Error,
         for meal: Meal
     ) {
-        guard let previousRevision = meal.activeRevision else { return }
-        meal.analysisRevisions.append(MealAnalysisRevision(
+        meal.analysisRevisions.append(Self.failureRevision(
+            requestedAt: requestDate,
             createdAt: now(),
-            requestDate: requestDate,
-            modelIdentifier: previousRevision.modelIdentifier,
-            providerIdentifier: previousRevision.providerIdentifier,
-            promptVersion: NutritionAnalysisPrompt.currentVersion,
-            trigger: .correction,
-            status: .failed,
-            mealName: previousRevision.mealName,
-            estimatedTotalWeightGrams: previousRevision.estimatedTotalWeightGrams,
-            confidence: previousRevision.confidence,
-            uncertaintySummary: previousRevision.uncertaintySummary,
-            userCorrection: correction,
-            failureMessage: error.localizedDescription
+            trigger: trigger,
+            userCorrection: userCorrection,
+            message: error.localizedDescription,
+            previousRevision: meal.activeRevision
         ))
+    }
+
+    private static func failureRevision(
+        requestedAt requestDate: Date,
+        createdAt: Date,
+        trigger: AnalysisTrigger,
+        userCorrection: String? = nil,
+        message: String,
+        previousRevision: MealAnalysisRevision?
+    ) -> MealAnalysisRevision {
+        MealAnalysisRevision(
+            createdAt: createdAt,
+            requestDate: requestDate,
+            modelIdentifier: previousRevision?.modelIdentifier ?? "Nicht verfügbar",
+            providerIdentifier: previousRevision?.providerIdentifier,
+            promptVersion: NutritionAnalysisPrompt.currentVersion,
+            trigger: trigger,
+            status: .failed,
+            mealName: previousRevision?.mealName ?? "Analyse fehlgeschlagen",
+            estimatedTotalWeightGrams: previousRevision?.estimatedTotalWeightGrams,
+            confidence: previousRevision?.confidence ?? .low,
+            uncertaintySummary: previousRevision?.uncertaintySummary,
+            userCorrection: userCorrection,
+            failureMessage: message
+        )
     }
 
     private func persist(

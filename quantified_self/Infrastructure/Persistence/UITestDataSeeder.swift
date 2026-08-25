@@ -10,9 +10,12 @@ enum UITestDataSeeder {
     ) throws {
         let wantsConfirmation = arguments.contains("--ui-testing-review-confirmation")
         let wantsClarification = arguments.contains("--ui-testing-review-clarification")
-        guard wantsConfirmation || wantsClarification else { return }
+        let wantsFailure = arguments.contains("--ui-testing-review-failure")
+        guard wantsConfirmation || wantsClarification || wantsFailure else { return }
 
-        let status: AnalysisState = wantsClarification ? .needsClarification : .awaitingConfirmation
+        let status: AnalysisState = wantsFailure
+            ? .failed
+            : wantsClarification ? .needsClarification : .awaitingConfirmation
         let revision = MealAnalysisRevision(
             modelIdentifier: "example/vision-model",
             providerIdentifier: "Example Provider",
@@ -23,6 +26,9 @@ enum UITestDataSeeder {
             uncertaintySummary: "Die genaue Menge der Sauce ist auf dem Foto nicht erkennbar.",
             clarificationQuestion: wantsClarification
                 ? "Wurde normale oder leichte Kokosmilch verwendet?"
+                : nil,
+            failureMessage: wantsFailure
+                ? "OpenRouter-Fehler 400: Kein Anbieter unterstützt strukturierte Ausgaben."
                 : nil,
             components: [
                 FoodComponent(sortIndex: 0, name: "Chicken Curry", estimatedWeightGrams: 280),
@@ -44,7 +50,7 @@ enum UITestDataSeeder {
             userComment: "Große Portion, ungefähr 440 g",
             category: .dinner,
             analysisState: status,
-            activeRevisionID: revision.id,
+            activeRevisionID: wantsFailure ? nil : revision.id,
             clarificationCount: wantsConfirmation ? 1 : 0,
             analysisRevisions: [revision]
         )

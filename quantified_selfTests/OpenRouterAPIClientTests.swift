@@ -58,6 +58,28 @@ struct OpenRouterAPIClientTests {
         }
     }
 
+    @Test("Provider request errors preserve a useful local diagnostic")
+    func providerErrorDiagnostic() async {
+        let session = makeSession { request in
+            Self.response(
+                for: request,
+                status: 400,
+                json: #"{"error":{"message":"No endpoints support response_format for this model"}}"#
+            )
+        }
+        let client = OpenRouterAPIClient(
+            session: session,
+            baseURL: URL(string: "https://example.test/api/v1")!
+        )
+
+        await #expect(throws: OpenRouterClientError.apiError(
+            statusCode: 400,
+            message: "No endpoints support response_format for this model"
+        )) {
+            try await client.sendChatCompletion(apiKey: "test-secret", body: Data("{}".utf8))
+        }
+    }
+
     @Test("Malformed model metadata is rejected")
     func malformedModelMetadata() async {
         let session = makeSession { request in

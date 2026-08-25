@@ -85,8 +85,25 @@ struct MealAnalysisCoordinatorTests {
 
         #expect(meal.analysisState == .failed)
         #expect(meal.userComment == "Bleibt gespeichert")
-        #expect(meal.analysisRevisions.isEmpty)
+        #expect(meal.analysisRevisions.count == 1)
+        #expect(meal.analysisRevisions.first?.status == .failed)
+        #expect(meal.analysisRevisions.first?.failureMessage == "OpenRouter ist momentan nicht verfügbar.")
         #expect(try context.fetch(FetchDescriptor<Meal>()).count == 1)
+    }
+
+    @Test("Interrupted analyses become retryable after app launch")
+    func recoversInterruptedAnalysis() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal(analysisState: .analyzing)
+        context.insert(meal)
+        try context.save()
+
+        try MealAnalysisCoordinator.recoverInterruptedAnalyses(in: context)
+
+        #expect(meal.analysisState == .failed)
+        #expect(meal.analysisRevisions.count == 1)
+        #expect(meal.analysisRevisions.first?.failureMessage?.contains("unterbrochen") == true)
     }
 
     @Test("Confirmation finalizes only the active awaiting revision")

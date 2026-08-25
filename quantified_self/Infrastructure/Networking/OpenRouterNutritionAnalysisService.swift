@@ -108,6 +108,9 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         return [
             "model": modelIdentifier,
             "temperature": 0.2,
+            "provider": [
+                "require_parameters": true,
+            ],
             "messages": [
                 [
                     "role": "system",
