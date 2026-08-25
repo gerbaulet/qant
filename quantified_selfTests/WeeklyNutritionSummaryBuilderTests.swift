@@ -12,6 +12,11 @@ struct WeeklyNutritionSummaryBuilderTests {
         return calendar
     }
 
+    @Test("Fifteen additional weekly recommendation kinds are available")
+    func weeklyRecommendationCatalogSize() {
+        #expect(WeeklyNutritionRecommendationKind.allCases.count == 21)
+    }
+
     @Test("Sunday belongs to the Monday-based week and compares daily averages")
     func sundayBoundaryAndComparison() throws {
         let calendar = berlinCalendar
@@ -149,6 +154,31 @@ struct WeeklyNutritionSummaryBuilderTests {
         ))
 
         #expect(summary.recommendations.isEmpty)
+    }
+
+    @Test("Weekly summary returns only the two most important matching tips")
+    func weeklyRecommendationPriorityLimit() throws {
+        let calendar = berlinCalendar
+        let meals = [17, 18, 19].map { day in
+            meal(
+                at: date(2026, 8, day, 12, calendar: calendar),
+                energy: 2_100,
+                protein: 125,
+                carbohydrates: 235,
+                fat: 70,
+                fiber: 28,
+                name: "Gemüsepfanne mit Vollkornreis"
+            )
+        }
+        let summary = try #require(WeeklyNutritionSummaryBuilder.makeSummary(
+            containing: date(2026, 8, 23, 20, calendar: calendar),
+            meals: meals,
+            goals: nutritionGoals(from: date(2026, 1, 1, calendar: calendar)),
+            calendar: calendar
+        ))
+
+        #expect(summary.recommendations.map(\.kind) == [.energyInRange, .proteinInRange])
+        #expect(summary.recommendations.count == 2)
     }
 
     private func goal(from date: Date) -> NutritionGoalPeriod {

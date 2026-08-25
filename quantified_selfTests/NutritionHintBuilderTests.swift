@@ -9,6 +9,11 @@ struct NutritionHintBuilderTests {
         return calendar
     }
 
+    @Test("Ten additional daily hint kinds are available")
+    func dailyHintCatalogSize() {
+        #expect(NutritionHintKind.allCases.count == 18)
+    }
+
     @Test("No hints appear without logged meals")
     func emptyDay() {
         let hints = NutritionHintBuilder.makeHints(
@@ -108,7 +113,7 @@ struct NutritionHintBuilderTests {
         )
 
         #expect(afternoon.isEmpty)
-        #expect(evening.map(\.kind) == [.carbohydratesLow])
+        #expect(evening.map(\.kind) == [.carbohydratesLow, .energyVeryLow])
     }
 
     @Test("A high-fat hint needs a fifteen-percent margin")
@@ -146,6 +151,42 @@ struct NutritionHintBuilderTests {
         #expect(hints.map(\.kind) == [.fatHigh, .proteinTargetReached])
         #expect(hints.count == 2)
         #expect(hints[0].importanceScore > hints[1].importanceScore)
+    }
+
+    @Test("New positive hints still respect the two-item relevance limit")
+    func balancedHintPriority() {
+        let hints = NutritionHintBuilder.makeHints(
+            for: snapshot(
+                mealCount: 3,
+                energy: 2_250,
+                protein: 125,
+                carbohydrates: 235,
+                fat: 74,
+                fiber: 27
+            ),
+            at: date(hour: 20),
+            calendar: calendar
+        )
+
+        #expect(hints.map(\.kind) == [.energyTargetReached, .balancedTargets])
+        #expect(hints.count == 2)
+    }
+
+    @Test("Very low energy and almost-reached protein are available after 18:00")
+    func additionalEveningHints() {
+        let lowEnergy = NutritionHintBuilder.makeHints(
+            for: snapshot(mealCount: 2, energy: 1_000, protein: 130, carbohydrates: 200, fat: 70, fiber: 25),
+            at: date(hour: 20),
+            calendar: calendar
+        )
+        let nearProtein = NutritionHintBuilder.makeHints(
+            for: snapshot(mealCount: 2, energy: 1_700, protein: 110, carbohydrates: 200, fat: 70, fiber: 25),
+            at: date(hour: 20),
+            calendar: calendar
+        )
+
+        #expect(lowEnergy.map(\.kind).contains(.energyVeryLow))
+        #expect(nearProtein.map(\.kind).contains(.proteinNearTarget))
     }
 
     private func snapshot(

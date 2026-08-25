@@ -1,12 +1,27 @@
 import Foundation
 
-enum WeeklyNutritionRecommendationKind: String, Sendable {
+enum WeeklyNutritionRecommendationKind: String, Sendable, CaseIterable {
     case increaseFiber
     case increaseProtein
     case reduceFat
     case moderateEnergy
     case repeatFiberRichMeal
     case repeatProteinRichMeal
+    case energyInRange
+    case energyLow
+    case proteinInRange
+    case fiberInRange
+    case fatInRange
+    case carbohydratesLow
+    case carbohydratesHigh
+    case consistentTracking
+    case variedMeals
+    case addVegetables
+    case addLegumes
+    case chooseWholeGrains
+    case planProteinSnack
+    case lightenSauce
+    case steadyEnergy
 }
 
 struct WeeklyNutritionRecommendation: Identifiable, Sendable, Equatable {
@@ -91,6 +106,8 @@ enum WeeklyNutritionSummaryBuilder {
         var energyTargetDayCount = 0
         var proteinTargetTotal = 0.0
         var proteinTargetDayCount = 0
+        var carbohydratesTargetTotal = 0.0
+        var carbohydratesTargetDayCount = 0
         var fatTargetTotal = 0.0
         var fatTargetDayCount = 0
         var fiberTargetTotal = 0.0
@@ -106,6 +123,7 @@ enum WeeklyNutritionSummaryBuilder {
         var averageFiber: Double? { average(fiber) }
         var averageEnergyTarget: Double? { targetAverage(energyTargetTotal, energyTargetDayCount) }
         var averageProteinTarget: Double? { targetAverage(proteinTargetTotal, proteinTargetDayCount) }
+        var averageCarbohydratesTarget: Double? { targetAverage(carbohydratesTargetTotal, carbohydratesTargetDayCount) }
         var averageFatTarget: Double? { targetAverage(fatTargetTotal, fatTargetDayCount) }
         var averageFiberTarget: Double? { targetAverage(fiberTargetTotal, fiberTargetDayCount) }
 
@@ -183,6 +201,10 @@ enum WeeklyNutritionSummaryBuilder {
                 if let target = GoalHistory.goal(for: .protein, at: day.start, in: goals)?.targetValue {
                     result.proteinTargetTotal += target
                     result.proteinTargetDayCount += 1
+                }
+                if let target = GoalHistory.goal(for: .carbohydrates, at: day.start, in: goals)?.targetValue {
+                    result.carbohydratesTargetTotal += target
+                    result.carbohydratesTargetDayCount += 1
                 }
                 if let target = GoalHistory.goal(for: .fat, at: day.start, in: goals)?.targetValue {
                     result.fatTargetTotal += target
@@ -265,6 +287,155 @@ enum WeeklyNutritionSummaryBuilder {
             ))
         }
 
+        if let energyFraction = fraction(aggregate.averageEnergy, of: aggregate.averageEnergyTarget) {
+            if (0.9..<1.05).contains(energyFraction) {
+                candidates.append(candidate(
+                    .energyInRange,
+                    "Dein Kaloriendurchschnitt lag nah am Ziel. Behalte Portionsgrößen und Mahlzeitenrhythmus ähnlich bei.",
+                    "scope",
+                    70
+                ))
+            } else if energyFraction < 0.8 {
+                candidates.append(candidate(
+                    .energyLow,
+                    "Dein Kaloriendurchschnitt lag deutlich unter dem Ziel. Prüfe zuerst, ob du alle Mahlzeiten erfasst hast.",
+                    "arrow.down.forward.circle",
+                    82
+                ))
+            }
+        }
+
+        if let proteinFraction = fraction(aggregate.averageProtein, of: aggregate.averageProteinTarget),
+           (0.8...1.1).contains(proteinFraction) {
+            candidates.append(candidate(
+                .proteinInRange,
+                "Dein Proteindurchschnitt passt gut zu deinem Ziel. Nutze deine bewährten Proteinquellen weiter.",
+                "checkmark.circle",
+                60
+            ))
+        }
+
+        if let fiberFraction = fraction(aggregate.averageFiber, of: aggregate.averageFiberTarget),
+           (0.8...1.15).contains(fiberFraction) {
+            candidates.append(candidate(
+                .fiberInRange,
+                "Dein Ballaststoffdurchschnitt lag im Zielbereich. Behalte die passenden Obst-, Gemüse- oder Vollkornanteile bei.",
+                "leaf.circle",
+                58
+            ))
+        }
+
+        if let fatFraction = fraction(aggregate.averageFat, of: aggregate.averageFatTarget),
+           (0.75..<1.15).contains(fatFraction) {
+            candidates.append(candidate(
+                .fatInRange,
+                "Dein Fettdurchschnitt lag nah am eingestellten Ziel.",
+                "drop.circle",
+                50
+            ))
+        }
+
+        if let carbohydratesFraction = fraction(aggregate.averageCarbohydrates, of: aggregate.averageCarbohydratesTarget) {
+            if carbohydratesFraction < 0.75 {
+                candidates.append(candidate(
+                    .carbohydratesLow,
+                    "Kohlenhydrate lagen im Durchschnitt niedrig. Ergänze bei Bedarf eine vertraute Beilage wie Kartoffeln, Reis oder Vollkornbrot.",
+                    "chart.bar.fill",
+                    84
+                ))
+            } else if carbohydratesFraction >= 1.15 {
+                candidates.append(candidate(
+                    .carbohydratesHigh,
+                    "Kohlenhydrate lagen im Durchschnitt über deinem Ziel. Verkleinere bei einer Mahlzeit zuerst die Beilage etwas.",
+                    "chart.bar.xaxis",
+                    83
+                ))
+            }
+        }
+
+        if aggregate.trackedDays >= 5 {
+            candidates.append(candidate(
+                .consistentTracking,
+                "Du hast an mindestens fünf Tagen Mahlzeiten erfasst. Diese Regelmäßigkeit macht den Wochenvergleich aussagekräftiger.",
+                "calendar.badge.checkmark",
+                30
+            ))
+        }
+
+        let distinctDescriptions = Set(aggregate.foodDescriptions.map {
+            $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "de_DE")).lowercased()
+        })
+        if distinctDescriptions.count >= 6 {
+            candidates.append(candidate(
+                .variedMeals,
+                "Deine erfassten Mahlzeiten waren abwechslungsreich. Behalte diese Vielfalt nächste Woche bei.",
+                "square.grid.3x3",
+                25
+            ))
+        }
+
+        let mentionsVegetables = containsAny([
+            "gemuse", "vegetable", "salat", "salad", "brokkoli", "broccoli", "paprika", "tomate", "tomato",
+        ], in: descriptions)
+        if fiberIsLow, !mentionsVegetables {
+            candidates.append(candidate(
+                .addVegetables,
+                "Auf deinen erfassten Mahlzeiten war wenig Gemüse erkennbar. Ergänze eine gewohnte Mahlzeit um eine Handvoll.",
+                "carrot",
+                75
+            ))
+        }
+
+        if fiberIsLow, proteinIsLow {
+            candidates.append(candidate(
+                .addLegumes,
+                "Bohnen, Linsen oder Kichererbsen können Protein und Ballaststoffe gleichzeitig ergänzen.",
+                "leaf.fill",
+                78
+            ))
+        }
+
+        if fiberIsLow,
+           containsAny(["reis", "rice", "nudel", "pasta", "brot", "bread", "wrap"], in: descriptions) {
+            candidates.append(candidate(
+                .chooseWholeGrains,
+                "Wähle bei einer deiner gewohnten Beilagen öfter die Vollkornvariante.",
+                "circle.grid.cross",
+                76
+            ))
+        }
+
+        if proteinIsLow {
+            candidates.append(candidate(
+                .planProteinSnack,
+                "Plane für einen passenden Zeitpunkt einen einfachen proteinreichen Snack wie Skyr, Ei oder Edamame ein.",
+                "takeoutbag.and.cup.and.straw",
+                72
+            ))
+        }
+
+        if let fatFraction = fraction(aggregate.averageFat, of: aggregate.averageFatTarget),
+           fatFraction >= 1.15,
+           containsAny(["sauce", "kase", "cheese", "curry", "dressing"], in: descriptions) {
+            candidates.append(candidate(
+                .lightenSauce,
+                "Bestelle oder serviere Sauce und Dressing bei einem gewohnten Gericht separat, damit du leichter dosieren kannst.",
+                "drop.degreesign.slash",
+                74
+            ))
+        }
+
+        if aggregate.daysAboveTarget == 0,
+           let energyFraction = fraction(aggregate.averageEnergy, of: aggregate.averageEnergyTarget),
+           (0.85...1.05).contains(energyFraction) {
+            candidates.append(candidate(
+                .steadyEnergy,
+                "Deine erfassten Tage lagen gleichmäßig am Kalorienziel. Behalte die aktuellen Portionsgrößen als Orientierung bei.",
+                "waveform.path.ecg",
+                45
+            ))
+        }
+
         if !fiberIsLow,
            let mealName = usefulMealName(aggregate.highestFiberMeal, minimumValue: 5) {
             candidates.append(RecommendationCandidate(
@@ -293,6 +464,22 @@ enum WeeklyNutritionSummaryBuilder {
             .sorted { $0.importance > $1.importance }
             .prefix(2)
             .map(\.recommendation)
+    }
+
+    private static func candidate(
+        _ kind: WeeklyNutritionRecommendationKind,
+        _ message: String,
+        _ systemImage: String,
+        _ importance: Int
+    ) -> RecommendationCandidate {
+        RecommendationCandidate(
+            recommendation: WeeklyNutritionRecommendation(
+                kind: kind,
+                message: message,
+                systemImage: systemImage
+            ),
+            importance: importance
+        )
     }
 
     private static func fraction(_ value: Double?, of target: Double?) -> Double? {
