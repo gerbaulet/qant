@@ -44,6 +44,10 @@ struct MealAnalysisCoordinatorTests {
         #expect(runs.map(\.runNumber) == [1, 2, 3])
         #expect(runs.allSatisfy { $0.modelIdentifier == "example/vision-model" })
         #expect(runs.allSatisfy { $0.energyKilocalories == 640 })
+
+        meal.activeRevision?.portionMultiplier = 1.5
+        #expect(meal.activeRevision?.normalizedPortionMultiplier == 1.5)
+        #expect(InitialAnalysisRunMetadata.decode(meal.activeRevision?.providerMetadata) == runs)
     }
 
     @Test("A material clarification question changes the persisted state")

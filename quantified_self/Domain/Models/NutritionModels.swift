@@ -186,6 +186,20 @@ final class MealAnalysisRevision {
         get { EstimateConfidence(rawValue: confidenceRawValue) ?? .low }
         set { confidenceRawValue = newValue.rawValue }
     }
+
+    var normalizedPortionMultiplier: Double {
+        guard portionMultiplier.isFinite else { return 1 }
+        return min(max(portionMultiplier, 0), 5)
+    }
+
+    var portionMultiplier: Double {
+        get { InitialAnalysisRunMetadata.portionMultiplier(from: providerMetadata) }
+        set { providerMetadata = InitialAnalysisRunMetadata.settingPortionMultiplier(newValue, in: providerMetadata) }
+    }
+
+    func scaled(_ value: Double) -> Double {
+        value * normalizedPortionMultiplier
+    }
 }
 
 @Model

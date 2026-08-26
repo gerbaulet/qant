@@ -172,10 +172,33 @@ struct MealReviewView: View {
                         Text("Portion")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text("~\(wholeNumber(weight)) g")
+                        Text("~\(wholeNumber(revision.scaled(weight))) g")
                             .font(.title3.bold())
                     }
                 }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Menge anpassen")
+                        .font(.subheadline)
+                    Spacer()
+                    Text("\(formattedMultiplier(revision.normalizedPortionMultiplier))×")
+                        .font(.subheadline.monospacedDigit().bold())
+                }
+                Slider(
+                    value: portionMultiplierBinding(for: revision),
+                    in: 0...5,
+                    step: 0.1
+                ) {
+                    Text("Portionenmultiplikator")
+                } minimumValueLabel: {
+                    Text("0")
+                } maximumValueLabel: {
+                    Text("5")
+                }
+                .accessibilityIdentifier("meal.portionMultiplier")
+                .accessibilityValue("\(formattedMultiplier(revision.normalizedPortionMultiplier))-fach")
             }
 
             Grid(horizontalSpacing: 12, verticalSpacing: 12) {
@@ -270,7 +293,7 @@ struct MealReviewView: View {
                         Text(component.name)
                         Spacer()
                         if let weight = component.estimatedWeightGrams {
-                            Text("~\(wholeNumber(weight)) g")
+                            Text("~\(wholeNumber(revision.scaled(weight))) g")
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -290,7 +313,7 @@ struct MealReviewView: View {
                 ForEach(additionalNutrients(in: revision)) { nutrient in
                     LabeledContent(
                         nutrient.knownIdentifier?.reviewTitle ?? nutrient.identifierRawValue,
-                        value: "~\(formattedValue(nutrient.value)) \(nutrient.unitRawValue)"
+                        value: "~\(formattedValue(revision.scaled(nutrient.value))) \(nutrient.unitRawValue)"
                     )
                 }
             }
@@ -637,7 +660,7 @@ struct MealReviewView: View {
         guard let nutrient = revision.nutrients.first(where: {
             $0.identifierRawValue == identifier.rawValue
         }) else { return "–" }
-        return "\(estimated ? "~" : "")\(formattedValue(nutrient.value)) \(nutrient.unitRawValue)"
+        return "\(estimated ? "~" : "")\(formattedValue(revision.scaled(nutrient.value))) \(nutrient.unitRawValue)"
     }
 
     private func additionalNutrients(in revision: MealAnalysisRevision) -> [NutrientValue] {
@@ -656,6 +679,25 @@ struct MealReviewView: View {
 
     private func formattedValue(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(value < 10 ? 1 : 0)))
+    }
+
+    private func formattedMultiplier(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(1)))
+    }
+
+    private func portionMultiplierBinding(for revision: MealAnalysisRevision) -> Binding<Double> {
+        Binding(
+            get: { revision.normalizedPortionMultiplier },
+            set: { newValue in
+                revision.portionMultiplier = (newValue * 10).rounded() / 10
+                meal.modifiedAt = .now
+                do {
+                    try modelContext.save()
+                } catch {
+                    alertMessage = "Die angepasste Menge konnte nicht gespeichert werden."
+                }
+            }
+        )
     }
 }
 

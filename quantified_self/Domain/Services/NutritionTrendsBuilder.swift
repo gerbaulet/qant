@@ -209,7 +209,7 @@ enum NutritionTrendsBuilder {
                 for nutrient in revision.nutrients {
                     guard let identifier = nutrient.knownIdentifier,
                           comparedNutrients.contains(identifier) else { continue }
-                    values[identifier, default: 0] += nutrient.value
+                    values[identifier, default: 0] += revision.scaled(nutrient.value)
                 }
             }
             return DailyTotal(date: date, values: values)

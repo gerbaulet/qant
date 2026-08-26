@@ -306,18 +306,22 @@ final class MealAnalysisCoordinator {
     private func makeAnalysisResult(_ revision: MealAnalysisRevision) -> NutritionAnalysisResult {
         NutritionAnalysisResult(
             mealName: revision.mealName,
-            estimatedTotalWeightGrams: revision.estimatedTotalWeightGrams,
+            estimatedTotalWeightGrams: revision.estimatedTotalWeightGrams.map(revision.scaled),
             confidence: revision.confidence,
             uncertaintySummary: revision.uncertaintySummary,
             clarificationQuestion: revision.clarificationQuestion,
-            nutrients: revision.nutrients.compactMap(makeAnalyzedNutrient),
+            nutrients: revision.nutrients.compactMap {
+                makeAnalyzedNutrient($0, multiplier: revision.normalizedPortionMultiplier)
+            },
             components: revision.components
                 .sorted { $0.sortIndex < $1.sortIndex }
                 .map { component in
                     AnalyzedFoodComponent(
                         name: component.name,
-                        estimatedWeightGrams: component.estimatedWeightGrams,
-                        nutrients: component.nutrients.compactMap(makeAnalyzedNutrient)
+                        estimatedWeightGrams: component.estimatedWeightGrams.map(revision.scaled),
+                        nutrients: component.nutrients.compactMap {
+                            makeAnalyzedNutrient($0, multiplier: revision.normalizedPortionMultiplier)
+                        }
                     )
                 },
             modelIdentifier: revision.modelIdentifier,
@@ -325,13 +329,16 @@ final class MealAnalysisCoordinator {
         )
     }
 
-    private func makeAnalyzedNutrient(_ nutrient: NutrientValue) -> AnalyzedNutrient? {
+    private func makeAnalyzedNutrient(
+        _ nutrient: NutrientValue,
+        multiplier: Double = 1
+    ) -> AnalyzedNutrient? {
         guard let identifier = nutrient.knownIdentifier, let unit = nutrient.knownUnit else {
             return nil
         }
         return AnalyzedNutrient(
             identifier: identifier,
-            value: nutrient.value,
+            value: nutrient.value * multiplier,
             unit: unit,
             confidence: nutrient.confidence,
             provenance: nutrient.provenance

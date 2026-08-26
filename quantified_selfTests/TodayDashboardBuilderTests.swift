@@ -128,11 +128,36 @@ struct TodayDashboardBuilderTests {
         #expect(snapshot.weeklyEnergy.target == 15_000)
     }
 
+    @Test("Portion multiplier scales meal, daily and weekly nutrients")
+    func portionMultiplier() {
+        let reference = date(2026, 8, 23, 12)
+        let adjusted = meal(
+            at: reference,
+            state: .confirmed,
+            energy: 600,
+            protein: 20,
+            portionMultiplier: 1.5
+        )
+
+        let snapshot = TodayDashboardBuilder.makeSnapshot(
+            for: reference,
+            meals: [adjusted],
+            goals: goals(starting: date(2026, 8, 1)),
+            calendar: calendar
+        )
+
+        #expect(snapshot.energy.consumed == 900)
+        #expect(snapshot.weeklyEnergy.consumed == 900)
+        #expect(snapshot.macros.first(where: { $0.id == .protein })?.consumed == 30)
+        #expect(snapshot.meals.first?.energyKilocalories == 900)
+    }
+
     private func meal(
         at timestamp: Date,
         state: AnalysisState,
         energy: Double,
-        protein: Double
+        protein: Double,
+        portionMultiplier: Double = 1
     ) -> Meal {
         let nutrients = [
             NutrientValue(
@@ -157,6 +182,7 @@ struct TodayDashboardBuilderTests {
             confidence: .medium,
             nutrients: nutrients
         )
+        revision.portionMultiplier = portionMultiplier
         return Meal(
             timestamp: timestamp,
             analysisState: state,

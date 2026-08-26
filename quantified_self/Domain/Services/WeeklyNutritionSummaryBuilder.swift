@@ -542,9 +542,13 @@ enum WeeklyNutritionSummaryBuilder {
         unit: NutrientUnit,
         revisions: [MealAnalysisRevision]
     ) -> Double {
-        revisions
-            .flatMap(\.nutrients)
-            .filter { $0.identifierRawValue == identifier.rawValue && $0.unitRawValue == unit.rawValue }
-            .reduce(0) { $0 + $1.value }
+        revisions.reduce(0) { total, revision in
+            total + revision.nutrients
+                .filter {
+                    $0.identifierRawValue == identifier.rawValue &&
+                        $0.unitRawValue == unit.rawValue
+                }
+                .reduce(0) { $0 + revision.scaled($1.value) }
+        }
     }
 }

@@ -24,6 +24,7 @@ struct PersistenceModelTests {
             confidence: .medium,
             nutrients: [energy]
         )
+        revision.portionMultiplier = 1.7
         let meal = Meal(
             timestamp: Date(timeIntervalSince1970: 1_787_500_000),
             userComment: "Etwa 440 g",
@@ -41,6 +42,7 @@ struct PersistenceModelTests {
         #expect(fetchedMeals.count == 1)
         #expect(fetchedMeals.first?.activeRevision?.mealName == "Chicken Curry mit Reis")
         #expect(fetchedMeals.first?.activeRevision?.nutrients.first?.value == 785)
+        #expect(fetchedMeals.first?.activeRevision?.portionMultiplier == 1.7)
     }
 
     @Test("Dinner suggestions, ingredients and per-serving nutrients survive a save")
@@ -116,7 +118,8 @@ struct PersistenceModelTests {
             configurations: [configuration]
         )
 
-        #expect(try migrated.mainContext.fetch(FetchDescriptor<Meal>()).count == 1)
+        let meals = try migrated.mainContext.fetch(FetchDescriptor<Meal>())
+        #expect(meals.count == 1)
         #expect(try migrated.mainContext.fetch(FetchDescriptor<DinnerSuggestionBatch>()).isEmpty)
     }
 

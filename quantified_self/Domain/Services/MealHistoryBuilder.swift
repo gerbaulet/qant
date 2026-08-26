@@ -89,7 +89,7 @@ enum MealHistoryBuilder {
             ? revision?.nutrients.first(where: {
                 $0.identifierRawValue == NutrientIdentifier.energy.rawValue &&
                     $0.unitRawValue == NutrientUnit.kilocalorie.rawValue
-            })?.value
+            }).map { revision?.scaled($0.value) ?? $0.value }
             : nil
         return MealHistoryEntry(
             id: meal.id,
