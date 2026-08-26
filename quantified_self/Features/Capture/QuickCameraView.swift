@@ -1,4 +1,5 @@
 import AVFoundation
+import OSLog
 import SwiftUI
 import UIKit
 
@@ -28,6 +29,8 @@ final class QuickCameraViewController: UIViewController, AVCapturePhotoCaptureDe
     private let onCancel: () -> Void
     private let onFailure: () -> Void
     private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var cameraDevice: AVCaptureDevice?
+    private var zoomFactorAtGestureStart: CGFloat = 1
     private var isConfigured = false
 
     init(
@@ -50,6 +53,7 @@ final class QuickCameraViewController: UIViewController, AVCapturePhotoCaptureDe
         super.viewDidLoad()
         view.backgroundColor = .black
         configureControls()
+        configureZoomGesture()
         configureCamera()
     }
 
@@ -93,6 +97,7 @@ final class QuickCameraViewController: UIViewController, AVCapturePhotoCaptureDe
 
             self.session.addInput(input)
             self.session.addOutput(self.photoOutput)
+            self.cameraDevice = camera
             self.isConfigured = true
 
             DispatchQueue.main.async {
@@ -141,6 +146,33 @@ final class QuickCameraViewController: UIViewController, AVCapturePhotoCaptureDe
             shutterButton.widthAnchor.constraint(equalToConstant: 76),
             shutterButton.heightAnchor.constraint(equalToConstant: 76),
         ])
+    }
+
+    private func configureZoomGesture() {
+        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        view.addGestureRecognizer(pinchGesture)
+    }
+
+    @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+        guard let cameraDevice else { return }
+
+        switch gesture.state {
+        case .began:
+            zoomFactorAtGestureStart = cameraDevice.videoZoomFactor
+        case .changed:
+            let requestedFactor = zoomFactorAtGestureStart * gesture.scale
+            let maximumFactor = min(cameraDevice.activeFormat.videoMaxZoomFactor, 10)
+            let zoomFactor = max(1, min(requestedFactor, maximumFactor))
+            do {
+                try cameraDevice.lockForConfiguration()
+                cameraDevice.videoZoomFactor = zoomFactor
+                cameraDevice.unlockForConfiguration()
+            } catch {
+                AppLogger.capture.error("Quick camera zoom could not be updated")
+            }
+        default:
+            break
+        }
     }
 
     @objc private func cancel() {
