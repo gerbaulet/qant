@@ -5,6 +5,7 @@ import SwiftData
 @MainActor
 final class MealAnalysisCoordinator {
     static let maximumClarificationCount = 2
+    static let maximumAutomaticAttemptCount = 3
 
     static func recoverInterruptedAnalyses(in context: ModelContext, now: Date = .now) throws {
         let meals = try context.fetch(FetchDescriptor<Meal>())
@@ -151,22 +152,10 @@ final class MealAnalysisCoordinator {
                 requestsBestEstimate: trigger == .bestEstimate,
                 allowsClarification: allowsClarification
             )
-            let result: NutritionAnalysisResult
-            let initialResults: [NutritionAnalysisResult]
-            if trigger == .initial {
-                async let firstAnalysis = provider.analyze(request)
-                async let secondAnalysis = provider.analyze(request)
-                async let thirdAnalysis = provider.analyze(request)
-                initialResults = try await [firstAnalysis, secondAnalysis, thirdAnalysis]
-                for candidate in initialResults {
-                    try NutritionAnalysisValidator.validate(candidate)
-                }
-                result = try NutritionAnalysisConsensus.combine(initialResults)
-            } else {
-                initialResults = []
-                result = try await provider.analyze(request)
-            }
-            try NutritionAnalysisValidator.validate(result)
+            let (result, initialResults) = try await requestValidAnalysis(
+                request,
+                trigger: trigger
+            )
             persist(
                 result,
                 requestedAt: requestDate,
@@ -197,6 +186,40 @@ final class MealAnalysisCoordinator {
             try? context.save()
             AppLogger.nutritionAnalysis.error("Nutrition analysis failed")
         }
+    }
+
+    private func requestValidAnalysis(
+        _ request: NutritionAnalysisRequest,
+        trigger: AnalysisTrigger
+    ) async throws -> (NutritionAnalysisResult, [NutritionAnalysisResult]) {
+        for attempt in 1...Self.maximumAutomaticAttemptCount {
+            do {
+                let result: NutritionAnalysisResult
+                let initialResults: [NutritionAnalysisResult]
+                if trigger == .initial {
+                    async let firstAnalysis = provider.analyze(request)
+                    async let secondAnalysis = provider.analyze(request)
+                    async let thirdAnalysis = provider.analyze(request)
+                    initialResults = try await [firstAnalysis, secondAnalysis, thirdAnalysis]
+                    for candidate in initialResults {
+                        try NutritionAnalysisValidator.validate(candidate)
+                    }
+                    result = try NutritionAnalysisConsensus.combine(initialResults)
+                } else {
+                    initialResults = []
+                    result = try await provider.analyze(request)
+                }
+                try NutritionAnalysisValidator.validate(result)
+                return (result, initialResults)
+            } catch let error as NutritionAnalysisError {
+                guard case .invalidResult = error,
+                      attempt < Self.maximumAutomaticAttemptCount else {
+                    throw error
+                }
+                AppLogger.nutritionAnalysis.info("Retrying analysis after invalid result")
+            }
+        }
+        throw NutritionAnalysisError.invalidResult("automatic retry limit reached")
     }
 
     private func latestFailedCorrection(for meal: Meal) -> String? {

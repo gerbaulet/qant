@@ -95,6 +95,56 @@ struct MealAnalysisCoordinatorTests {
         #expect(try context.fetch(FetchDescriptor<Meal>()).count == 1)
     }
 
+    @Test("Invalid analysis values restart the complete initial analysis")
+    func retriesInvalidResults() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let invalid = invalidResult()
+        let valid = NutritionAnalysisValidatorTests.validResult()
+        let provider = SequencedAnalysisProviderStub(results: [
+            invalid, invalid, invalid,
+            valid, valid, valid,
+        ])
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(provider.requestCount == 6)
+        #expect(meal.analysisState == .confirmed)
+        #expect(meal.analysisRevisions.count == 1)
+    }
+
+    @Test("Invalid analysis values fail after three complete attempts")
+    func limitsInvalidResultRetries() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let provider = SequencedAnalysisProviderStub(
+            results: Array(repeating: invalidResult(), count: 9)
+        )
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(provider.requestCount == 9)
+        #expect(meal.analysisState == .failed)
+        #expect(meal.analysisRevisions.count == 1)
+        #expect(meal.analysisRevisions.first?.failureMessage == "Die Ernährungsanalyse enthielt ungültige Werte.")
+    }
+
     @Test("Interrupted analyses become retryable after app launch")
     func recoversInterruptedAnalysis() throws {
         let container = try makeContainer()
@@ -308,6 +358,29 @@ struct MealAnalysisCoordinatorTests {
             }
         )
     }
+
+    private func invalidResult() -> NutritionAnalysisResult {
+        let valid = NutritionAnalysisValidatorTests.validResult()
+        return NutritionAnalysisResult(
+            mealName: valid.mealName,
+            estimatedTotalWeightGrams: valid.estimatedTotalWeightGrams,
+            confidence: valid.confidence,
+            uncertaintySummary: valid.uncertaintySummary,
+            clarificationQuestion: valid.clarificationQuestion,
+            nutrients: valid.nutrients.map { nutrient in
+                AnalyzedNutrient(
+                    identifier: nutrient.identifier,
+                    value: nutrient.identifier == .energy ? -1 : nutrient.value,
+                    unit: nutrient.unit,
+                    confidence: nutrient.confidence,
+                    provenance: nutrient.provenance
+                )
+            },
+            components: valid.components,
+            modelIdentifier: valid.modelIdentifier,
+            providerIdentifier: valid.providerIdentifier
+        )
+    }
 }
 
 @MainActor
@@ -332,6 +405,22 @@ private final class AnalysisProviderStub: NutritionAnalysisProviding {
         receivedRequest = request
         if let error { throw error }
         return result!
+    }
+}
+
+@MainActor
+private final class SequencedAnalysisProviderStub: NutritionAnalysisProviding {
+    private let results: [NutritionAnalysisResult]
+    private(set) var requestCount = 0
+
+    init(results: [NutritionAnalysisResult]) {
+        self.results = results
+    }
+
+    func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult {
+        let index = min(requestCount, results.count - 1)
+        requestCount += 1
+        return results[index]
     }
 }
 
