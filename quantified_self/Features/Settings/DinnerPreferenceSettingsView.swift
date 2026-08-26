@@ -16,22 +16,53 @@ struct DinnerPreferenceSettingsSection: View {
                     Text(style.title).tag(style)
                 }
             }
-            TextField("z. B. Nüsse, Laktose", text: $preferences.allergies, axis: .vertical)
-                .accessibilityLabel("Allergien und Unverträglichkeiten")
-            TextField("z. B. Pilze, Fenchel", text: $preferences.excludedIngredients, axis: .vertical)
-                .accessibilityLabel("Ausgeschlossene Zutaten")
-            TextField("z. B. italienisch, levantinisch", text: $preferences.preferredCuisines, axis: .vertical)
-                .accessibilityLabel("Bevorzugte Küchen")
-            Stepper(
-                "Maximal \(preferences.maximumPreparationMinutes) Minuten",
-                value: $preferences.maximumPreparationMinutes,
-                in: 10...180,
-                step: 5
+            preferenceField(
+                title: "Allergien und Unverträglichkeiten",
+                explanation: "Lebensmittel, die keinesfalls vorgeschlagen werden dürfen.",
+                prompt: "z. B. Nüsse, Laktose",
+                text: $preferences.allergies,
+                identifier: "settings.dinnerPreferences.allergies"
             )
-            TextField("z. B. Ofen, Mixer, Airfryer", text: $preferences.kitchenEquipment, axis: .vertical)
-                .accessibilityLabel("Küchenausstattung")
-            TextField("z. B. Brokkoli, Reis, Tofu", text: $preferences.availableIngredients, axis: .vertical)
-                .accessibilityLabel("Vorhandene Zutaten")
+            preferenceField(
+                title: "Ausgeschlossene Zutaten",
+                explanation: "Zutaten, die du nicht magst oder vermeiden möchtest.",
+                prompt: "z. B. Pilze, Fenchel",
+                text: $preferences.excludedIngredients,
+                identifier: "settings.dinnerPreferences.excludedIngredients"
+            )
+            preferenceField(
+                title: "Bevorzugte Küchen",
+                explanation: "Küchenrichtungen, an denen sich die Vorschläge orientieren sollen.",
+                prompt: "z. B. italienisch, levantinisch",
+                text: $preferences.preferredCuisines,
+                identifier: "settings.dinnerPreferences.preferredCuisines"
+            )
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Zubereitungszeit")
+                    .font(.subheadline.weight(.semibold))
+                Stepper(
+                    "Maximal \(preferences.maximumPreparationMinutes) Minuten",
+                    value: $preferences.maximumPreparationMinutes,
+                    in: 10...180,
+                    step: 5
+                )
+                .accessibilityIdentifier("settings.dinnerPreferences.preparationTime")
+            }
+            .padding(.vertical, 2)
+            preferenceField(
+                title: "Küchenausstattung",
+                explanation: "Geräte, die für die Zubereitung verwendet werden können.",
+                prompt: "z. B. Ofen, Mixer, Airfryer",
+                text: $preferences.kitchenEquipment,
+                identifier: "settings.dinnerPreferences.kitchenEquipment"
+            )
+            preferenceField(
+                title: "Vorhandene Zutaten",
+                explanation: "Vorräte, die bei Vorschlägen bevorzugt verwendet werden sollen.",
+                prompt: "z. B. Brokkoli, Reis, Tofu",
+                text: $preferences.availableIngredients,
+                identifier: "settings.dinnerPreferences.availableIngredients"
+            )
         } header: {
             Text("Essenspräferenzen")
         } footer: {
@@ -40,5 +71,27 @@ struct DinnerPreferenceSettingsSection: View {
         .onChange(of: preferences) { _, newValue in
             store.preferences = newValue
         }
+    }
+
+    private func preferenceField(
+        title: String,
+        explanation: String,
+        prompt: String,
+        text: Binding<String>,
+        identifier: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(explanation)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField(prompt, text: text, axis: .vertical)
+                .lineLimit(1...3)
+                .accessibilityLabel(title)
+                .accessibilityHint(explanation)
+                .accessibilityIdentifier(identifier)
+        }
+        .padding(.vertical, 3)
     }
 }
