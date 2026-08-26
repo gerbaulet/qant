@@ -42,7 +42,6 @@ struct NutritionTrendsView: View {
                     controls
                     chartCard
                     monthlyComparisonCard
-                    trackingExplanation
                 }
                 .padding()
             }
@@ -159,13 +158,6 @@ struct NutritionTrendsView: View {
                 }
             }
         }
-    }
-
-    private var trackingExplanation: some View {
-        Text("Durchschnittswerte verwenden nur Tage mit mindestens einer bestätigten Mahlzeit. Nicht erfasste Tage zählen nicht als null Kalorien.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 4)
     }
 
     private func formatted(_ value: Double?) -> String {

@@ -192,9 +192,6 @@ struct TodayDashboardView: View {
                         Text(change.formatted(.percent.scale(1).sign(strategy: .always()).precision(.fractionLength(0))))
                     }
                 }
-                Text("Nur bestätigte Mahlzeiten; fehlende Tage zählen nicht als null.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
 
                 if !weeklySummary.recommendations.isEmpty {
                     Divider()
