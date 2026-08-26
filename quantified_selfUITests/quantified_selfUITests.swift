@@ -63,6 +63,21 @@ final class quantified_selfUITests: XCTestCase {
     }
 
     @MainActor
+    func testOpensDinnerSuggestionFlow() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let suggestionButton = app.buttons["today.suggestDinner"]
+        XCTAssertTrue(suggestionButton.waitForExistence(timeout: 3))
+        suggestionButton.tap()
+
+        XCTAssertTrue(app.navigationBars["Abendessen vorschlagen"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["dinnerSuggestions.generate"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Verbleibendes Tagesbudget"].exists)
+    }
+
+    @MainActor
     func testQuickCaptureLaunchesDirectlyIntoCapture() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: ["--ui-testing", "--ui-testing-quick-capture"])

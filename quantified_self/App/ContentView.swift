@@ -83,6 +83,7 @@ private struct TodayDashboardContainer: View {
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var selectedMeal: Meal?
+    @State private var showsDinnerSuggestions = false
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
 
     let onAddFood: () -> Void
@@ -103,6 +104,7 @@ private struct TodayDashboardContainer: View {
                     calendar: .autoupdatingCurrent
                 ),
                 onAddFood: onAddFood,
+                onSuggestDinner: { showsDinnerSuggestions = true },
                 onRetryMeal: retryAnalysis,
                 onOpenMeal: openMeal
             )
@@ -114,8 +116,19 @@ private struct TodayDashboardContainer: View {
                 }
             }
         }
+        .sheet(isPresented: $showsDinnerSuggestions) {
+            DinnerSuggestionFlowView(
+                snapshot: TodayDashboardBuilder.makeSnapshot(
+                    for: .now,
+                    meals: meals,
+                    goals: goals,
+                    calendar: .autoupdatingCurrent
+                )
+            )
+        }
         .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
             selectedMeal = nil
+            showsDinnerSuggestions = false
         }
     }
 
@@ -146,5 +159,5 @@ private struct TodayDashboardContainer: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: NutritionSchemaV1.models, inMemory: true)
+        .modelContainer(for: NutritionSchemaV2.models, inMemory: true)
 }
