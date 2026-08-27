@@ -75,6 +75,25 @@ struct OpenRouterTrafficLogTests {
         #expect(await fixture.log.contents().isEmpty)
     }
 
+    @Test("Log snapshots limit UI work while preserving the newest contents")
+    func boundedSnapshot() async throws {
+        let fixture = try makeFixture(enabled: true)
+        defer { fixture.cleanup() }
+        await fixture.log.recordResponse(
+            id: UUID(),
+            statusCode: 200,
+            headers: ["Content-Type": "text/plain"],
+            body: Data(String(repeating: "A", count: 1_024).utf8)
+        )
+        await fixture.log.recordFailure(id: UUID(), description: "NEUESTER EINTRAG")
+
+        let snapshot = try await fixture.log.snapshot(maximumBytes: 256)
+
+        #expect(snapshot.isTruncated)
+        #expect(snapshot.contents.utf8.count <= 256)
+        #expect(snapshot.contents.contains("NEUESTER EINTRAG"))
+    }
+
     private func makeFixture(enabled: Bool) throws -> Fixture {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "openrouter-traffic-log-tests-\(UUID().uuidString)")

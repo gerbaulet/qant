@@ -366,13 +366,23 @@ struct OpenRouterSettingsView: View {
 }
 
 private struct OpenRouterTrafficLogView: View {
+    private static let maximumDisplayedBytes = 256 * 1_024
+
     @State private var contents = ""
     @State private var isLoading = true
+    @State private var isTruncated = false
+    @State private var errorMessage: String?
 
     var body: some View {
         Group {
             if isLoading {
                 ProgressView("Log wird geladen …")
+            } else if let errorMessage {
+                ContentUnavailableView(
+                    "Log nicht verfügbar",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(errorMessage)
+                )
             } else if contents.isEmpty {
                 ContentUnavailableView(
                     "Noch keine Einträge",
@@ -380,12 +390,23 @@ private struct OpenRouterTrafficLogView: View {
                     description: Text("Bei aktiviertem Logging erscheinen zukünftige OpenRouter-Anfragen hier.")
                 )
             } else {
-                ScrollView([.horizontal, .vertical]) {
-                    Text(verbatim: contents)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        if isTruncated {
+                            Label(
+                                "Es werden die neuesten 256 KB angezeigt. Ältere Einträge bleiben gespeichert.",
+                                systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90"
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        }
+
+                        Text(verbatim: contents)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding()
                 }
             }
         }
@@ -402,8 +423,23 @@ private struct OpenRouterTrafficLogView: View {
     @MainActor
     private func load() async {
         isLoading = true
-        contents = await FileOpenRouterTrafficLog.shared.contents()
-        isLoading = false
+        errorMessage = nil
+        defer { isLoading = false }
+
+        do {
+            let snapshot = try await FileOpenRouterTrafficLog.shared.snapshot(
+                maximumBytes: Self.maximumDisplayedBytes
+            )
+            try Task.checkCancellation()
+            contents = snapshot.contents
+            isTruncated = snapshot.isTruncated
+        } catch is CancellationError {
+            return
+        } catch {
+            contents = ""
+            isTruncated = false
+            errorMessage = "Die lokale Logdatei konnte nicht gelesen werden."
+        }
     }
 }
 

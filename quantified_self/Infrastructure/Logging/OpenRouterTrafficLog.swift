@@ -5,6 +5,11 @@ enum OpenRouterTrafficLogSettings {
     nonisolated static let enabledKey = "openrouter.traffic-log-enabled"
 }
 
+struct OpenRouterTrafficLogSnapshot: Sendable, Equatable {
+    let contents: String
+    let isTruncated: Bool
+}
+
 protocol OpenRouterTrafficLogging: Sendable {
     func recordRequest(
         id: UUID,
@@ -25,7 +30,7 @@ protocol OpenRouterTrafficLogging: Sendable {
 actor FileOpenRouterTrafficLog: OpenRouterTrafficLogging {
     static let shared = FileOpenRouterTrafficLog()
 
-    private let fileURL: URL
+    nonisolated private let fileURL: URL
     nonisolated(unsafe) private let defaults: UserDefaults
     private let now: @Sendable () -> Date
     nonisolated(unsafe) private let fileManager: FileManager
@@ -94,6 +99,34 @@ actor FileOpenRouterTrafficLog: OpenRouterTrafficLogging {
     func contents() -> String {
         guard let data = try? Data(contentsOf: fileURL) else { return "" }
         return String(decoding: data, as: UTF8.self)
+    }
+
+    nonisolated func snapshot(maximumBytes: Int) async throws -> OpenRouterTrafficLogSnapshot {
+        let fileURL = fileURL
+        return try await Task.detached(priority: .userInitiated) {
+            guard maximumBytes > 0 else {
+                return OpenRouterTrafficLogSnapshot(contents: "", isTruncated: false)
+            }
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                return OpenRouterTrafficLogSnapshot(contents: "", isTruncated: false)
+            }
+
+            let handle = try FileHandle(forReadingFrom: fileURL)
+            defer { try? handle.close() }
+            let size = try handle.seekToEnd()
+            let maximumByteCount = UInt64(maximumBytes)
+            let isTruncated = size > maximumByteCount
+            if isTruncated {
+                try handle.seek(toOffset: size - maximumByteCount)
+            } else {
+                try handle.seek(toOffset: 0)
+            }
+            let data = try handle.readToEnd() ?? Data()
+            return OpenRouterTrafficLogSnapshot(
+                contents: String(decoding: data, as: UTF8.self),
+                isTruncated: isTruncated
+            )
+        }.value
     }
 
     func clear() throws {
