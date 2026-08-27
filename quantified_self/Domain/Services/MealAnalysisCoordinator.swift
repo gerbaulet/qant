@@ -29,17 +29,20 @@ final class MealAnalysisCoordinator {
     private let context: ModelContext
     private let provider: any NutritionAnalysisProviding
     private let imageStorage: any ImageStorageProviding
+    private let networkAvailabilityWaiter: any NetworkAvailabilityWaiting
     private let now: () -> Date
 
     init(
         context: ModelContext,
         provider: any NutritionAnalysisProviding,
         imageStorage: any ImageStorageProviding,
+        networkAvailabilityWaiter: any NetworkAvailabilityWaiting = SystemNetworkAvailabilityWaiter(),
         now: @escaping () -> Date = Date.init
     ) {
         self.context = context
         self.provider = provider
         self.imageStorage = imageStorage
+        self.networkAvailabilityWaiter = networkAvailabilityWaiter
         self.now = now
     }
 
@@ -217,6 +220,13 @@ final class MealAnalysisCoordinator {
                     throw error
                 }
                 AppLogger.nutritionAnalysis.info("Retrying analysis after invalid result")
+            } catch let error as OpenRouterClientError {
+                guard error == .transportFailure,
+                      attempt < Self.maximumAutomaticAttemptCount else {
+                    throw error
+                }
+                AppLogger.nutritionAnalysis.info("Waiting for network before retrying analysis")
+                try await networkAvailabilityWaiter.waitUntilAvailable()
             }
         }
         throw NutritionAnalysisError.invalidResult("automatic retry limit reached")

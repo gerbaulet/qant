@@ -145,6 +145,62 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.analysisRevisions.first?.failureMessage == "Die Ernährungsanalyse enthielt ungültige Werte.")
     }
 
+    @Test("Offline analyses wait for connectivity before restarting")
+    func waitsForNetworkBeforeRetrying() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let valid = NutritionAnalysisValidatorTests.validResult()
+        let provider = SequencedAnalysisProviderStub(outcomes: [
+            .failure(OpenRouterClientError.transportFailure),
+            .failure(OpenRouterClientError.transportFailure),
+            .failure(OpenRouterClientError.transportFailure),
+            .success(valid), .success(valid), .success(valid),
+        ])
+        let waiter = NetworkAvailabilityWaiterStub()
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:]),
+            networkAvailabilityWaiter: waiter
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(waiter.waitCount == 1)
+        #expect(provider.requestCount == 6)
+        #expect(meal.analysisState == .confirmed)
+    }
+
+    @Test("Offline analyses fail after three complete attempts")
+    func limitsOfflineRetries() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let provider = SequencedAnalysisProviderStub(outcomes: Array(
+            repeating: .failure(OpenRouterClientError.transportFailure),
+            count: 9
+        ))
+        let waiter = NetworkAvailabilityWaiterStub()
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:]),
+            networkAvailabilityWaiter: waiter
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(waiter.waitCount == 2)
+        #expect(provider.requestCount == 9)
+        #expect(meal.analysisState == .failed)
+        #expect(meal.analysisRevisions.first?.failureMessage?.contains("Internetverbindung") == true)
+    }
+
     @Test("Interrupted analyses become retryable after app launch")
     func recoversInterruptedAnalysis() throws {
         let container = try makeContainer()
@@ -410,17 +466,40 @@ private final class AnalysisProviderStub: NutritionAnalysisProviding {
 
 @MainActor
 private final class SequencedAnalysisProviderStub: NutritionAnalysisProviding {
-    private let results: [NutritionAnalysisResult]
+    enum Outcome {
+        case success(NutritionAnalysisResult)
+        case failure(Error)
+    }
+
+    private let outcomes: [Outcome]
     private(set) var requestCount = 0
 
     init(results: [NutritionAnalysisResult]) {
-        self.results = results
+        self.outcomes = results.map(Outcome.success)
+    }
+
+    init(outcomes: [Outcome]) {
+        self.outcomes = outcomes
     }
 
     func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult {
-        let index = min(requestCount, results.count - 1)
+        let index = min(requestCount, outcomes.count - 1)
         requestCount += 1
-        return results[index]
+        switch outcomes[index] {
+        case let .success(result):
+            return result
+        case let .failure(error):
+            throw error
+        }
+    }
+}
+
+@MainActor
+private final class NetworkAvailabilityWaiterStub: NetworkAvailabilityWaiting {
+    private(set) var waitCount = 0
+
+    func waitUntilAvailable() async throws {
+        waitCount += 1
     }
 }
 
