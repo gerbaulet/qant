@@ -230,6 +230,9 @@ final class MealAnalysisCoordinator {
                     result = try await provider.analyze(request)
                 }
                 try NutritionAnalysisValidator.validate(result)
+                if trigger == .clarification {
+                    try NutritionAnalysisConsistencyValidator.validate(result)
+                }
                 return (result, initialResults)
             } catch let error as NutritionAnalysisError {
                 guard case .invalidResult = error,
