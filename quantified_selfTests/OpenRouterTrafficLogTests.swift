@@ -4,6 +4,27 @@ import Testing
 
 @Suite(.serialized)
 struct OpenRouterTrafficLogTests {
+    @Test("Large log text previews are bounded and report omitted characters")
+    func boundsLargeTextPreview() {
+        let text = String(repeating: "Modell", count: 10_000)
+
+        let preview = OpenRouterTrafficLogTextPreview(text: text, characterLimit: 1_000)
+
+        #expect(preview.text.count == 1_000)
+        #expect(preview.omittedCharacterCount == text.count - 1_000)
+        #expect(text.count == 60_000)
+    }
+
+    @Test("Short log text previews remain unchanged")
+    func preservesShortTextPreview() {
+        let text = #"{"data":[]}"#
+
+        let preview = OpenRouterTrafficLogTextPreview(text: text, characterLimit: 1_000)
+
+        #expect(preview.text == text)
+        #expect(preview.omittedCharacterCount == 0)
+    }
+
     @Test("Logging persists one structured entry with sanitized request and response text")
     func persistsStructuredSanitizedTraffic() async throws {
         let fixture = try makeFixture(enabled: true)

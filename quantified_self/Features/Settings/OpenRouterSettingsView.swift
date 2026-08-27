@@ -467,9 +467,14 @@ private struct OpenRouterTrafficLogView: View {
         respondedAt: Date(timeIntervalSince1970: 1_787_832_673.345),
         statusCode: 200,
         responseHeaders: ["Content-Type": "application/json"],
-        responseText: #"{"result":"Testantwort"}"#,
+        responseText: uiTestResponseText,
         failureDescription: nil
     )
+
+    private static let uiTestResponseText =
+        #"{"result":"Testantwort","data":["#
+        + String(repeating: #"{"id":"example/model","name":"Testmodell"},"#, count: 5_000)
+        + "]}"
 #endif
 }
 
@@ -583,17 +588,27 @@ private struct OpenRouterTrafficLogDetailView: View {
 
 private struct LogTextBlock: View {
     let title: String
-    let text: String
+    private let preview: OpenRouterTrafficLogTextPreview
+
+    init(title: String, text: String) {
+        self.title = title
+        preview = OpenRouterTrafficLogTextPreview(text: text)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(verbatim: text)
+            Text(verbatim: preview.text)
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if preview.omittedCharacterCount > 0 {
+                Text("Vorschau gekürzt – weitere \(preview.omittedCharacterCount.formatted()) Zeichen sind im lokalen Log gespeichert.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

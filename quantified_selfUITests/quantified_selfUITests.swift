@@ -140,6 +140,10 @@ final class quantified_selfUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Bitte analysieren'")).firstMatch.exists)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Testantwort'")).firstMatch.exists)
 
+        for _ in 0..<6 {
+            app.swipeUp()
+        }
+
         let backButton = app.navigationBars["Request-Details"].buttons["OpenRouter-Log"]
         XCTAssertTrue(backButton.waitForExistence(timeout: 2))
         backButton.tap()

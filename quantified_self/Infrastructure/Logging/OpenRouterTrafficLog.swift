@@ -19,6 +19,25 @@ nonisolated struct OpenRouterTrafficLogEntry: Codable, Identifiable, Sendable, E
     var failureDescription: String?
 }
 
+nonisolated struct OpenRouterTrafficLogTextPreview: Equatable, Sendable {
+    static let defaultCharacterLimit = 4_000
+
+    let text: String
+    let omittedCharacterCount: Int
+
+    init(text: String, characterLimit: Int = defaultCharacterLimit) {
+        precondition(characterLimit > 0)
+        guard text.count > characterLimit else {
+            self.text = text
+            omittedCharacterCount = 0
+            return
+        }
+
+        self.text = String(text.prefix(characterLimit))
+        omittedCharacterCount = text.count - characterLimit
+    }
+}
+
 protocol OpenRouterTrafficLogging: Sendable {
     func recordRequest(id: UUID, method: String, url: URL, headers: [String: String], body: Data?) async
     func recordResponse(id: UUID, statusCode: Int, headers: [String: String], body: Data) async
