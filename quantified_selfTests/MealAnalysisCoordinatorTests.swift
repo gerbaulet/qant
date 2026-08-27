@@ -484,6 +484,41 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
     }
 
+    @Test("An unexplained material calorie jump is retried")
+    func retriesUnexplainedCalorieJump() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let previousRevision = makeRevision(
+            status: .needsClarification,
+            question: "Wie viel Öl wurde verwendet?"
+        )
+        let meal = Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: previousRevision.id,
+            analysisRevisions: [previousRevision]
+        )
+        context.insert(meal)
+        try context.save()
+        let unexplained = resultWithEnergy(800, uncertaintySummary: nil)
+        let provider = SequencedAnalysisProviderStub(results: [
+            unexplained,
+            unexplained,
+            unexplained,
+            NutritionAnalysisValidatorTests.validResult(),
+        ])
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.answerClarification("Zwei Esslöffel", for: meal)
+
+        #expect(provider.requestCount == 6)
+        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
+    }
+
     @Test("A failed correction remains retryable with its original text")
     func retriesFailedCorrection() async throws {
         let container = try makeContainer()
@@ -584,13 +619,16 @@ struct MealAnalysisCoordinatorTests {
         )
     }
 
-    private func resultWithEnergy(_ energy: Double) -> NutritionAnalysisResult {
+    private func resultWithEnergy(
+        _ energy: Double,
+        uncertaintySummary: String? = "Menge des Öls"
+    ) -> NutritionAnalysisResult {
         let valid = NutritionAnalysisValidatorTests.validResult()
         return NutritionAnalysisResult(
             mealName: valid.mealName,
             estimatedTotalWeightGrams: valid.estimatedTotalWeightGrams,
             confidence: valid.confidence,
-            uncertaintySummary: valid.uncertaintySummary,
+            uncertaintySummary: uncertaintySummary,
             clarificationQuestion: valid.clarificationQuestion,
             nutrients: valid.nutrients.map { nutrient in
                 guard nutrient.identifier == .energy else { return nutrient }

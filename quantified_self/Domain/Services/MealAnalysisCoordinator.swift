@@ -238,6 +238,10 @@ final class MealAnalysisCoordinator {
                 try NutritionAnalysisValidator.validate(result)
                 if trigger == .clarification {
                     try NutritionAnalysisConsistencyValidator.validate(result)
+                    try NutritionAnalysisDriftValidator.validate(
+                        previous: request.previousAnalysis,
+                        revised: result
+                    )
                 }
                 return (result, initialResults)
             } catch let error as NutritionAnalysisError {

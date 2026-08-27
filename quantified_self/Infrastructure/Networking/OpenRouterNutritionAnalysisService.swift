@@ -178,6 +178,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             lines.append("User's clarification answer: \(answer)")
             lines.append("Revise the previous estimate using this answer. Replace the affected assumption; never add the confirmed amount on top of an amount already estimated for the same ingredient or portion.")
             lines.append("Keep unaffected ingredients and quantities unchanged. Recalculate the complete result so total weight, components, total nutrients, and component nutrients remain mutually consistent.")
+            lines.append("If energy changes by both at least 100 kcal and at least 20% from the baseline, uncertaintySummary must specifically explain which newly confirmed ingredient or quantity caused the change. Do not reuse the earlier generic uncertainty text.")
         }
         if let correction = request.userCorrection {
             lines.append("User correction: \(correction)")

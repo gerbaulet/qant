@@ -187,6 +187,8 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(userText.contains("never add the confirmed amount on top"))
         #expect(userText.contains("Keep unaffected ingredients and quantities unchanged"))
         #expect(userText.contains("mutually consistent"))
+        #expect(userText.contains("at least 100 kcal and at least 20%"))
+        #expect(userText.contains("uncertaintySummary must specifically explain"))
     }
 
     @Test("German device language localizes every user-facing analysis field")
