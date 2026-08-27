@@ -105,13 +105,16 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
 
     private let session: URLSession
     private let baseURL: URL
+    private let trafficLog: any OpenRouterTrafficLogging
 
     init(
         session: URLSession = .shared,
-        baseURL: URL = URL(string: "https://openrouter.ai/api/v1")!
+        baseURL: URL = URL(string: "https://openrouter.ai/api/v1")!,
+        trafficLog: any OpenRouterTrafficLogging = FileOpenRouterTrafficLog.shared
     ) {
         self.session = session
         self.baseURL = baseURL
+        self.trafficLog = trafficLog
     }
 
     func checkConfiguration(
@@ -212,25 +215,61 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
+        let requestID = UUID()
+        await trafficLog.recordRequest(
+            id: requestID,
+            method: method,
+            url: url,
+            headers: request.allHTTPHeaderFields?.filter { key, _ in
+                key.caseInsensitiveCompare("Authorization") != .orderedSame
+            } ?? [:],
+            body: body
+        )
+
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
         } catch is CancellationError {
+            await trafficLog.recordFailure(id: requestID, description: "Anfrage abgebrochen")
             throw CancellationError()
         } catch let error as URLError {
-            if error.code == .cancelled { throw CancellationError() }
-            if error.code == .timedOut { throw OpenRouterClientError.timedOut }
+            if error.code == .cancelled {
+                await trafficLog.recordFailure(id: requestID, description: "Anfrage abgebrochen")
+                throw CancellationError()
+            }
+            if error.code == .timedOut {
+                await trafficLog.recordFailure(id: requestID, description: "Zeitüberschreitung")
+                throw OpenRouterClientError.timedOut
+            }
+            await trafficLog.recordFailure(
+                id: requestID,
+                description: "Transportfehler: \(error.localizedDescription)"
+            )
             AppLogger.nutritionAnalysis.error("OpenRouter transport request failed")
             throw OpenRouterClientError.transportFailure
         } catch {
+            await trafficLog.recordFailure(
+                id: requestID,
+                description: "Transportfehler: \(error.localizedDescription)"
+            )
             AppLogger.nutritionAnalysis.error("OpenRouter transport request failed")
             throw OpenRouterClientError.transportFailure
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
+            await trafficLog.recordFailure(id: requestID, description: "Unerwartete Netzwerkantwort")
             throw OpenRouterClientError.invalidResponse
         }
+        let responseHeaders = httpResponse.allHeaderFields.reduce(into: [String: String]()) { result, item in
+            result[String(describing: item.key)] = String(describing: item.value)
+        }
+        await trafficLog.recordResponse(
+            id: requestID,
+            statusCode: httpResponse.statusCode,
+            headers: responseHeaders,
+            body: data
+        )
         switch httpResponse.statusCode {
         case 200..<300:
             AppLogger.nutritionAnalysis.debug("OpenRouter request succeeded")

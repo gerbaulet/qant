@@ -123,6 +123,7 @@ struct OpenRouterAPIClientTests {
     @Test("Chat completions use the authenticated JSON endpoint")
     func chatCompletionRequest() async throws {
         let body = Data(#"{"model":"example/model"}"#.utf8)
+        let trafficLog = RecordingOpenRouterTrafficLog()
         let session = makeSession { request in
             #expect(request.url?.path == "/api/v1/chat/completions")
             #expect(request.httpMethod == "POST")
@@ -133,12 +134,21 @@ struct OpenRouterAPIClientTests {
         }
         let client = OpenRouterAPIClient(
             session: session,
-            baseURL: URL(string: "https://example.test/api/v1")!
+            baseURL: URL(string: "https://example.test/api/v1")!,
+            trafficLog: trafficLog
         )
 
         let response = try await client.sendChatCompletion(apiKey: "test-secret", body: body)
 
         #expect(String(decoding: response, as: UTF8.self) == #"{"choices":[]}"#)
+        let entries = await trafficLog.snapshot()
+        #expect(entries.count == 2)
+        #expect(entries[0].contains("REQUEST POST https://example.test/api/v1/chat/completions"))
+        #expect(entries[0].contains(#"{"model":"example/model"}"#))
+        #expect(!entries[0].localizedCaseInsensitiveContains("authorization"))
+        #expect(!entries[0].contains("test-secret"))
+        #expect(entries[1].contains("RESPONSE 200"))
+        #expect(entries[1].contains(#"{"choices":[]}"#))
     }
 
     @Test("Model catalog returns image models with structured output")
@@ -202,6 +212,35 @@ struct OpenRouterAPIClientTests {
         }
         return data
     }
+}
+
+private actor RecordingOpenRouterTrafficLog: OpenRouterTrafficLogging {
+    private var entries: [String] = []
+
+    func recordRequest(
+        id: UUID,
+        method: String,
+        url: URL,
+        headers: [String: String],
+        body: Data?
+    ) {
+        entries.append("REQUEST \(method) \(url.absoluteString) \(headers) \(body.map { String(decoding: $0, as: UTF8.self) } ?? "")")
+    }
+
+    func recordResponse(
+        id: UUID,
+        statusCode: Int,
+        headers: [String: String],
+        body: Data
+    ) {
+        entries.append("RESPONSE \(statusCode) \(headers) \(String(decoding: body, as: UTF8.self))")
+    }
+
+    func recordFailure(id: UUID, description: String) {
+        entries.append("FAILURE \(description)")
+    }
+
+    func snapshot() -> [String] { entries }
 }
 
 private final class URLProtocolStub: URLProtocol, @unchecked Sendable {
