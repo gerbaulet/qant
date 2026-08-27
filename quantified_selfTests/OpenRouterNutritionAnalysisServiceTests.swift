@@ -131,6 +131,7 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(userText.contains("not additional food consumed"))
         #expect(userText.contains("Evidence priority"))
         #expect(userText.contains("never as a second serving"))
+        #expect(userText.contains("Baseline component names are descriptive only"))
     }
 
     @Test("Correction requests include the user's correction and demand a complete estimate")

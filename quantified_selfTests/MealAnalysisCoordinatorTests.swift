@@ -306,6 +306,53 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.receivedRequest?.allowsClarification == false)
     }
 
+    @Test("Follow-up baseline omits representative component quantities")
+    func stripsComponentDetailsFromFollowUpBaseline() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let previousRevision = makeRevision(
+            status: .needsClarification,
+            question: "Wie groß war die Portion?"
+        )
+        previousRevision.components = [
+            FoodComponent(
+                sortIndex: 0,
+                name: "Reis",
+                estimatedWeightGrams: 250,
+                nutrients: [
+                    NutrientValue(
+                        identifier: .energy,
+                        value: 325,
+                        unit: .kilocalorie,
+                        confidence: .medium,
+                        provenance: .visualEstimate
+                    ),
+                ]
+            ),
+        ]
+        let meal = Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: previousRevision.id,
+            analysisRevisions: [previousRevision]
+        )
+        context.insert(meal)
+        try context.save()
+        let provider = AnalysisProviderStub(result: NutritionAnalysisValidatorTests.validResult())
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.answerClarification("Eine große Portion", for: meal)
+
+        let component = try #require(provider.receivedRequest?.previousAnalysis?.components.first)
+        #expect(component.name == "Reis")
+        #expect(component.estimatedWeightGrams == nil)
+        #expect(component.nutrients.isEmpty)
+        #expect(provider.receivedRequest?.previousAnalysis?.nutrients.count == 8)
+    }
+
     @Test("A later clarification includes every earlier stored exchange")
     func includesClarificationHistory() async throws {
         let container = try makeContainer()

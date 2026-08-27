@@ -124,7 +124,7 @@ final class MealAnalysisCoordinator {
         userCorrection: String? = nil
     ) async {
         let previousMealState = meal.analysisState
-        let previousAnalysis = meal.activeRevision.map(makeAnalysisResult)
+        let previousAnalysis = meal.activeRevision.map(makeBaselineAnalysisResult)
         let nextClarificationCount = trigger == .clarification
             ? meal.clarificationCount + 1
             : meal.clarificationCount
@@ -353,7 +353,7 @@ final class MealAnalysisCoordinator {
         meal.modifiedAt = now()
     }
 
-    private func makeAnalysisResult(_ revision: MealAnalysisRevision) -> NutritionAnalysisResult {
+    private func makeBaselineAnalysisResult(_ revision: MealAnalysisRevision) -> NutritionAnalysisResult {
         NutritionAnalysisResult(
             mealName: revision.mealName,
             estimatedTotalWeightGrams: revision.estimatedTotalWeightGrams.map(revision.scaled),
@@ -368,10 +368,8 @@ final class MealAnalysisCoordinator {
                 .map { component in
                     AnalyzedFoodComponent(
                         name: component.name,
-                        estimatedWeightGrams: component.estimatedWeightGrams.map(revision.scaled),
-                        nutrients: component.nutrients.compactMap {
-                            makeAnalyzedNutrient($0, multiplier: revision.normalizedPortionMultiplier)
-                        }
+                        estimatedWeightGrams: nil,
+                        nutrients: []
                     )
                 },
             modelIdentifier: revision.modelIdentifier,
