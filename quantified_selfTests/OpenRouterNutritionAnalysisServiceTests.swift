@@ -103,8 +103,34 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(systemText.contains("Do not ask another clarification question"))
         let userContent = try #require(messages.last?["content"] as? [[String: Any]])
         let userText = try #require(userContent.first?["text"] as? String)
-        #expect(userText.contains("Previous structured analysis"))
+        #expect(userText.contains("Baseline structured analysis"))
         #expect(userText.contains("best estimate"))
+    }
+
+    @Test("Previous estimates are labeled as a lower-priority baseline")
+    func labelsPreviousEstimateAsBaseline() async throws {
+        let client = ChatClientStub(responseData: try Self.chatResponseData())
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "secret"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/model"),
+            client: client
+        )
+
+        _ = try await service.analyze(NutritionAnalysisRequest(
+            images: [],
+            userComment: "Eine Portion",
+            previousAnalysis: NutritionAnalysisValidatorTests.validResult(),
+            clarificationAnswer: "Ohne zusätzliches Öl"
+        ))
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        let userContent = try #require(messages.last?["content"] as? [[String: Any]])
+        let userText = try #require(userContent.first?["text"] as? String)
+        #expect(userText.contains("not additional food consumed"))
+        #expect(userText.contains("Evidence priority"))
+        #expect(userText.contains("never as a second serving"))
     }
 
     @Test("Correction requests include the user's correction and demand a complete estimate")

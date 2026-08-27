@@ -164,7 +164,9 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         }
         if let previousAnalysis = request.previousAnalysis,
            let data = try? JSONEncoder().encode(previousAnalysis) {
-            lines.append("Previous structured analysis: \(String(decoding: data, as: UTF8.self))")
+            lines.append("Baseline structured analysis (context to revise, not additional food consumed): \(String(decoding: data, as: UTF8.self))")
+            lines.append("Evidence priority: current and earlier user clarifications first; then explicit original user text and readable labels; then visible image evidence; finally assumptions from the baseline analysis.")
+            lines.append("Treat baseline quantities as existing assumptions, never as a second serving or extra ingredients.")
         }
         if !request.clarificationHistory.isEmpty,
            let data = try? JSONEncoder().encode(request.clarificationHistory) {
