@@ -274,6 +274,7 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.receivedRequest?.previousAnalysis?.mealName == "Vorherige Schätzung")
         #expect(provider.receivedRequest?.clarificationAnswer == "Etwa zwei Esslöffel")
         #expect(provider.receivedRequest?.allowsClarification == true)
+        #expect(provider.requestCount == 3)
     }
 
     @Test("Best estimate reruns without permitting another question")
@@ -467,7 +468,7 @@ struct MealAnalysisCoordinatorTests {
         context.insert(meal)
         try context.save()
         let provider = SequencedAnalysisProviderStub(results: [
-            resultWithEnergy(1_400),
+            resultWithEnergy(3_000),
             NutritionAnalysisValidatorTests.validResult(),
         ])
         let coordinator = MealAnalysisCoordinator(
@@ -478,7 +479,7 @@ struct MealAnalysisCoordinatorTests {
 
         await coordinator.answerClarification("Eine große Portion", for: meal)
 
-        #expect(provider.requestCount == 2)
+        #expect(provider.requestCount == 6)
         #expect(meal.analysisState == .awaitingConfirmation)
         #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
     }

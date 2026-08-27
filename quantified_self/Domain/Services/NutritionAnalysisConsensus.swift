@@ -12,7 +12,10 @@ struct NutritionAnalysisConsensus {
         .fat,
     ]
 
-    static func combine(_ results: [NutritionAnalysisResult]) throws -> NutritionAnalysisResult {
+    static func combine(
+        _ results: [NutritionAnalysisResult],
+        allowsClarification: Bool = true
+    ) throws -> NutritionAnalysisResult {
         guard results.count == initialSampleCount else {
             throw NutritionAnalysisError.invalidResult("initial consensus requires three results")
         }
@@ -39,9 +42,14 @@ struct NutritionAnalysisConsensus {
         }
 
         let modelQuestion = majorityClarificationQuestion(in: results)
-        let clarificationQuestion = resultsDivergeStrongly
-            ? "Die drei kcal-Schätzungen weichen um mindestens 35 % und 10 kcal voneinander ab. Bitte beschreibe Zutaten, Mengen und Portionsgröße genauer."
-            : modelQuestion
+        let clarificationQuestion: String?
+        if !allowsClarification {
+            clarificationQuestion = nil
+        } else {
+            clarificationQuestion = resultsDivergeStrongly
+                ? "Die drei kcal-Schätzungen weichen um mindestens 35 % und 10 kcal voneinander ab. Bitte beschreibe Zutaten, Mengen und Portionsgröße genauer."
+                : modelQuestion
+        }
         let uncertaintySummary = resultsDivergeStrongly
             ? "Die drei unabhängigen kcal-Schätzungen waren nicht ausreichend konsistent."
             : representative.uncertaintySummary

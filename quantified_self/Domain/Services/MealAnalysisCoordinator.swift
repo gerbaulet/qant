@@ -218,15 +218,19 @@ final class MealAnalysisCoordinator {
             do {
                 let result: NutritionAnalysisResult
                 let initialResults: [NutritionAnalysisResult]
-                if trigger == .initial {
+                if trigger == .initial || trigger == .clarification {
                     async let firstAnalysis = provider.analyze(request)
                     async let secondAnalysis = provider.analyze(request)
                     async let thirdAnalysis = provider.analyze(request)
-                    initialResults = try await [firstAnalysis, secondAnalysis, thirdAnalysis]
-                    for candidate in initialResults {
+                    let sampleResults = try await [firstAnalysis, secondAnalysis, thirdAnalysis]
+                    for candidate in sampleResults {
                         try NutritionAnalysisValidator.validate(candidate)
                     }
-                    result = try NutritionAnalysisConsensus.combine(initialResults)
+                    result = try NutritionAnalysisConsensus.combine(
+                        sampleResults,
+                        allowsClarification: request.allowsClarification
+                    )
+                    initialResults = trigger == .initial ? sampleResults : []
                 } else {
                     initialResults = []
                     result = try await provider.analyze(request)

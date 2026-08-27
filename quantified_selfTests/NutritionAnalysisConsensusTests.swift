@@ -78,6 +78,17 @@ struct NutritionAnalysisConsensusTests {
         #expect(result.clarificationQuestion == "Wie viel Milch war im Kaffee?")
     }
 
+    @Test("A final follow-up suppresses model and divergence questions")
+    func suppressesQuestionsWhenClarificationIsDisallowed() throws {
+        let result = try NutritionAnalysisConsensus.combine([
+            result(energy: 200, question: "Wie viel Öl?"),
+            result(energy: 640, question: "Wie groß war die Portion?"),
+            result(energy: 1_000),
+        ], allowsClarification: false)
+
+        #expect(result.clarificationQuestion == nil)
+    }
+
     private func scaledResult(_ factor: Double) -> NutritionAnalysisResult {
         let base = NutritionAnalysisValidatorTests.validResult()
         return NutritionAnalysisResult(

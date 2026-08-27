@@ -140,7 +140,7 @@ struct OpenRouterSettingsView: View {
                 } header: {
                     Text("OpenRouter")
                 } footer: {
-                    Text("Der API-Schlüssel liegt ausschließlich im iOS-Schlüsselbund. Für eine neue Mahlzeit werden drei parallele Analysen berechnet; dadurch können ungefähr dreifache API-Kosten entstehen.")
+                    Text("Der API-Schlüssel liegt ausschließlich im iOS-Schlüsselbund. Für eine neue Mahlzeit und nach jeder beantworteten Rückfrage werden drei parallele Analysen berechnet; dadurch entstehen jeweils ungefähr dreifache API-Kosten.")
                 }
 
                 statusSection
@@ -150,7 +150,7 @@ struct OpenRouterSettingsView: View {
                 Section("Datenschutz") {
                     Label("Keine Werbung, Analytik-SDKs oder unnötige Tracker", systemImage: "hand.raised.fill")
                     Text("Mahlzeiten, Ziele, Essenspräferenzen, Abendessenvorschläge und Fotos werden lokal in der App gespeichert. Fotos bleiben erhalten, solange der zugehörige Eintrag gespeichert ist.")
-                    Text("Nur bei einer Analyse werden die zugehörigen Fotos und dein Kommentar an OpenRouter sowie den ausgewählten Modellanbieter gesendet. Für die erste Schätzung geschieht dies dreimal parallel.")
+                    Text("Nur bei einer Analyse werden die zugehörigen Fotos und dein Kommentar an OpenRouter sowie den ausgewählten Modellanbieter gesendet. Für die erste Schätzung und nach beantworteten Rückfragen geschieht dies dreimal parallel.")
                     Text("Beim Erstellen von Abendessenvorschlägen werden dein Restbudget, deine Essenspräferenzen und die angegebenen vorhandenen Zutaten einmal an OpenRouter sowie den ausgewählten Modellanbieter gesendet.")
                     Text("OpenRouter und einzelne Anbieter können unterschiedliche Datenschutz- und Aufbewahrungsrichtlinien haben. Die App sendet keine anderen Mahlzeiten. API-Schlüssel werden niemals protokolliert; das detaillierte lokale OpenRouter-Log ist standardmäßig ausgeschaltet.")
                 }
