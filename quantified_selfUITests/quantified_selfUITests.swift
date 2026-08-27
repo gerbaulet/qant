@@ -63,21 +63,6 @@ final class quantified_selfUITests: XCTestCase {
     }
 
     @MainActor
-    func testOpensDinnerSuggestionFlow() throws {
-        let app = XCUIApplication()
-        app.launchArguments.append("--ui-testing")
-        app.launch()
-
-        let suggestionButton = app.buttons["today.suggestDinner"]
-        XCTAssertTrue(suggestionButton.waitForExistence(timeout: 3))
-        suggestionButton.tap()
-
-        XCTAssertTrue(app.navigationBars["Abendessen vorschlagen"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["dinnerSuggestions.generate"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["Verbleibendes Tagesbudget"].exists)
-    }
-
-    @MainActor
     func testQuickCaptureLaunchesDirectlyIntoCapture() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: ["--ui-testing", "--ui-testing-quick-capture"])
@@ -168,34 +153,6 @@ final class quantified_selfUITests: XCTestCase {
         XCTAssertTrue(app.buttons["today.addFood"].waitForExistence(timeout: 2))
     }
 
-    @MainActor
-    func testDinnerPreferencesExplainEveryInput() throws {
-        let app = XCUIApplication()
-        app.launchArguments.append("--ui-testing")
-        app.launch()
-
-        let settingsTab = app.tabBars.buttons["Einstellungen"]
-        XCTAssertTrue(settingsTab.waitForExistence(timeout: 3))
-        settingsTab.tap()
-
-        let allergies = app.textFields["settings.dinnerPreferences.allergies"]
-        for _ in 0..<3 where !allergies.exists {
-            app.swipeUp()
-        }
-        XCTAssertTrue(allergies.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["Allergien und Unverträglichkeiten"].exists)
-        XCTAssertTrue(app.staticTexts["Lebensmittel, die keinesfalls vorgeschlagen werden dürfen."].exists)
-
-        let availableIngredients = app.textFields["settings.dinnerPreferences.availableIngredients"]
-        for _ in 0..<4 where !availableIngredients.exists {
-            app.swipeUp()
-        }
-        XCTAssertTrue(availableIngredients.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["Vorhandene Zutaten"].exists)
-        XCTAssertTrue(app.staticTexts["Vorräte, die bei Vorschlägen bevorzugt verwendet werden sollen."].exists)
-    }
-
-    @MainActor
     func testStorageSectionUsesCompactHeight() throws {
         let app = XCUIApplication()
         app.launchArguments.append("--ui-testing")

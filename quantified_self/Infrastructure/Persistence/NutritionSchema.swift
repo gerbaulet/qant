@@ -15,27 +15,12 @@ enum NutritionSchemaV1: VersionedSchema {
     }
 }
 
-enum NutritionSchemaV2: VersionedSchema {
-    static let versionIdentifier = Schema.Version(2, 0, 0)
-
-    static var models: [any PersistentModel.Type] {
-        NutritionSchemaV1.models + [
-            DinnerSuggestionBatch.self,
-            DinnerSuggestion.self,
-            DinnerSuggestionIngredient.self,
-            DinnerSuggestionNutrient.self,
-        ]
-    }
-}
-
 enum NutritionMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [NutritionSchemaV1.self, NutritionSchemaV2.self]
+        [NutritionSchemaV1.self]
     }
 
     static var stages: [MigrationStage] {
-        [
-            .lightweight(fromVersion: NutritionSchemaV1.self, toVersion: NutritionSchemaV2.self),
-        ]
+        []
     }
 }
