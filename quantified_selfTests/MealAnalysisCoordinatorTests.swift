@@ -452,6 +452,95 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.receivedRequest?.allowsClarification == false)
     }
 
+    @Test("Two calorie-neutral clarifications do not drift and retain both answers")
+    func keepsCaloriesStableAcrossClarifications() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let initial = makeRevision(
+            status: .needsClarification,
+            question: "Wie viel Öl wurde verwendet?"
+        )
+        let firstFollowUp = resultWithEnergy(
+            640,
+            uncertaintySummary: "Ölmenge wurde bestätigt",
+            clarificationQuestion: "Wurde Zucker hinzugefügt?"
+        )
+        let finalFollowUp = resultWithEnergy(
+            640,
+            uncertaintySummary: "Öl- und Zuckermenge wurden bestätigt"
+        )
+        let provider = SequencedAnalysisProviderStub(results: [
+            firstFollowUp,
+            firstFollowUp,
+            firstFollowUp,
+            finalFollowUp,
+            finalFollowUp,
+            finalFollowUp,
+        ])
+        let meal = Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: initial.id,
+            analysisRevisions: [initial]
+        )
+        context.insert(meal)
+        try context.save()
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.answerClarification("Ein Esslöffel", for: meal)
+        #expect(meal.analysisState == .needsClarification)
+        await coordinator.answerClarification("Nein", for: meal)
+
+        #expect(provider.requestCount == 6)
+        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.clarificationCount == 2)
+        #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
+        #expect(provider.receivedRequests.last?.clarificationHistory == [
+            NutritionClarificationExchange(
+                question: "Wie viel Öl wurde verwendet?",
+                answer: "Ein Esslöffel"
+            ),
+        ])
+        #expect(provider.receivedRequests.last?.clarificationAnswer == "Nein")
+    }
+
+    @Test("A specifically explained added amount may increase calories")
+    func allowsExplainedCalorieIncrease() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let initial = makeRevision(
+            status: .needsClarification,
+            question: "Gab es eine zusätzliche Beilage?"
+        )
+        let increased = resultWithEnergy(
+            800,
+            uncertaintySummary: "Die bestätigte zusätzliche Brotscheibe erhöht die Energiemenge."
+        )
+        let provider = AnalysisProviderStub(result: increased)
+        let meal = Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: initial.id,
+            analysisRevisions: [initial]
+        )
+        context.insert(meal)
+        try context.save()
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.answerClarification("Ja, eine Scheibe Brot", for: meal)
+
+        #expect(provider.requestCount == 3)
+        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 800)
+        #expect(meal.activeRevision?.uncertaintySummary?.contains("Brotscheibe") == true)
+    }
+
     @Test("An inconsistent clarification result is retried before persistence")
     func retriesInconsistentClarification() async throws {
         let container = try makeContainer()
@@ -621,7 +710,8 @@ struct MealAnalysisCoordinatorTests {
 
     private func resultWithEnergy(
         _ energy: Double,
-        uncertaintySummary: String? = "Menge des Öls"
+        uncertaintySummary: String? = "Menge des Öls",
+        clarificationQuestion: String? = nil
     ) -> NutritionAnalysisResult {
         let valid = NutritionAnalysisValidatorTests.validResult()
         return NutritionAnalysisResult(
@@ -629,7 +719,7 @@ struct MealAnalysisCoordinatorTests {
             estimatedTotalWeightGrams: valid.estimatedTotalWeightGrams,
             confidence: valid.confidence,
             uncertaintySummary: uncertaintySummary,
-            clarificationQuestion: valid.clarificationQuestion,
+            clarificationQuestion: clarificationQuestion,
             nutrients: valid.nutrients.map { nutrient in
                 guard nutrient.identifier == .energy else { return nutrient }
                 return AnalyzedNutrient(
@@ -681,6 +771,7 @@ private final class SequencedAnalysisProviderStub: NutritionAnalysisProviding {
 
     private let outcomes: [Outcome]
     private(set) var requestCount = 0
+    private(set) var receivedRequests: [NutritionAnalysisRequest] = []
 
     init(results: [NutritionAnalysisResult]) {
         self.outcomes = results.map(Outcome.success)
@@ -691,6 +782,7 @@ private final class SequencedAnalysisProviderStub: NutritionAnalysisProviding {
     }
 
     func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult {
+        receivedRequests.append(request)
         let index = min(requestCount, outcomes.count - 1)
         requestCount += 1
         switch outcomes[index] {

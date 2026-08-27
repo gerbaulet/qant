@@ -32,6 +32,16 @@ struct NutritionAnalysisDriftValidatorTests {
         }
     }
 
+    @Test("Exact absolute and relative boundaries require an explanation")
+    func enforcesExactBoundaries() {
+        #expect(throws: NutritionAnalysisError.self) {
+            try NutritionAnalysisDriftValidator.validate(
+                previous: result(energy: 500, summary: nil),
+                revised: result(energy: 600, summary: nil)
+            )
+        }
+    }
+
     @Test("A specifically explained material change is accepted")
     func acceptsExplainedMaterialChange() throws {
         try NutritionAnalysisDriftValidator.validate(
