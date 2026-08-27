@@ -4,8 +4,8 @@ import Testing
 
 @Suite(.serialized)
 struct OpenRouterTrafficLogTests {
-    @Test("Enabled traffic logging persists timestamped requests and responses without image data")
-    func persistsSanitizedTraffic() async throws {
+    @Test("Logging persists one structured entry with sanitized request and response text")
+    func persistsStructuredSanitizedTraffic() async throws {
         let fixture = try makeFixture(enabled: true)
         defer { fixture.cleanup() }
         let requestID = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
@@ -25,7 +25,10 @@ struct OpenRouterTrafficLogTests {
             id: requestID,
             method: "POST",
             url: URL(string: "https://openrouter.example/chat/completions")!,
-            headers: ["Accept": "application/json", "Content-Type": "application/json"],
+            headers: [
+                "Authorization": "Bearer secret",
+                "Content-Type": "application/json",
+            ],
             body: body
         )
         await fixture.log.recordResponse(
@@ -35,18 +38,21 @@ struct OpenRouterTrafficLogTests {
             body: Data(#"{"choices":[{"message":{"content":"Antworttext"}}]}"#.utf8)
         )
 
-        let contents = await fixture.log.contents()
-        #expect(contents.contains("[2026-08-27T10:11:12.345Z] REQUEST [\(requestID.uuidString)]"))
-        #expect(contents.contains("POST https://openrouter.example/chat/completions"))
-        #expect(contents.contains("Bitte analysieren"))
-        #expect(contents.contains("Nichttext gekürzt: data:image/jpeg;base64,"))
-        #expect(!contents.contains(imageData))
-        #expect(contents.contains("[2026-08-27T10:11:12.345Z] RESPONSE [\(requestID.uuidString)]"))
-        #expect(contents.contains("HTTP 200"))
-        #expect(contents.contains("Antworttext"))
+        let entry = try #require(await fixture.log.entries().first)
+        #expect(entry.id == requestID)
+        #expect(entry.requestedAt == fixture.fixedDate)
+        #expect(entry.respondedAt == fixture.fixedDate)
+        #expect(entry.method == "POST")
+        #expect(entry.url == "https://openrouter.example/chat/completions")
+        #expect(entry.requestHeaders["Authorization"] == nil)
+        #expect(entry.requestText.contains("Bitte analysieren"))
+        #expect(entry.requestText.contains("Nichttext entfernt: image/jpeg"))
+        #expect(!entry.requestText.contains(imageData))
+        #expect(entry.statusCode == 200)
+        #expect(entry.responseText?.contains("Antworttext") == true)
     }
 
-    @Test("Disabled traffic logging does not create entries")
+    @Test("Disabled traffic logging does not create model entries")
     func disabledLogging() async throws {
         let fixture = try makeFixture(enabled: false)
         defer { fixture.cleanup() }
@@ -59,70 +65,120 @@ struct OpenRouterTrafficLogTests {
             body: nil
         )
 
-        #expect(await fixture.log.contents().isEmpty)
+        #expect(try await fixture.log.entries().isEmpty)
         #expect(!FileManager.default.fileExists(atPath: fixture.fileURL.path))
     }
 
-    @Test("Clearing removes all persisted log contents")
+    @Test("Responses and failures are correlated with their requests")
+    func correlatesResults() async throws {
+        let fixture = try makeFixture(enabled: true)
+        defer { fixture.cleanup() }
+        let failedID = UUID()
+        let successfulID = UUID()
+
+        await fixture.log.recordRequest(
+            id: failedID,
+            method: "POST",
+            url: URL(string: "https://openrouter.example/failed")!,
+            headers: [:],
+            body: nil
+        )
+        await fixture.log.recordFailure(id: failedID, description: "Zeitüberschreitung")
+        await fixture.log.recordRequest(
+            id: successfulID,
+            method: "GET",
+            url: URL(string: "https://openrouter.example/success")!,
+            headers: [:],
+            body: nil
+        )
+        await fixture.log.recordResponse(
+            id: successfulID,
+            statusCode: 204,
+            headers: [:],
+            body: Data()
+        )
+
+        let entries = try await fixture.log.entries()
+        #expect(entries.count == 2)
+        #expect(entries.first(where: { $0.id == failedID })?.failureDescription == "Zeitüberschreitung")
+        #expect(entries.first(where: { $0.id == successfulID })?.statusCode == 204)
+    }
+
+    @Test("Structured entries survive creating a new log store")
+    func restoresPersistedEntries() async throws {
+        let fixture = try makeFixture(enabled: true)
+        defer { fixture.cleanup() }
+        let requestID = UUID()
+        await fixture.log.recordRequest(
+            id: requestID,
+            method: "POST",
+            url: URL(string: "https://openrouter.example/chat")!,
+            headers: ["Content-Type": "text/plain"],
+            body: Data("Hallo".utf8)
+        )
+
+        let restoredLog = FileOpenRouterTrafficLog(
+            fileURL: fixture.fileURL,
+            defaults: fixture.defaults,
+            now: { fixture.fixedDate }
+        )
+
+        let restored = try await restoredLog.entries()
+        #expect(restored.count == 1)
+        #expect(restored.first?.id == requestID)
+        #expect(restored.first?.requestText == "Hallo")
+    }
+
+    @Test("Clearing removes structured and legacy logs")
     func clearingLog() async throws {
         let fixture = try makeFixture(enabled: true)
         defer { fixture.cleanup() }
-        await fixture.log.recordFailure(id: UUID(), description: "Testfehler")
-        #expect(!(await fixture.log.contents()).isEmpty)
+        let requestID = UUID()
+        await fixture.log.recordRequest(
+            id: requestID,
+            method: "GET",
+            url: URL(string: "https://openrouter.example/models")!,
+            headers: [:],
+            body: nil
+        )
+        let legacyURL = fixture.directory.appending(path: "OpenRouterTraffic.log")
+        try Data("Altbestand".utf8).write(to: legacyURL)
 
         try await fixture.log.clear()
 
-        #expect(await fixture.log.contents().isEmpty)
-    }
-
-    @Test("Log snapshots limit UI work while preserving the newest contents")
-    func boundedSnapshot() async throws {
-        let fixture = try makeFixture(enabled: true)
-        defer { fixture.cleanup() }
-        await fixture.log.recordResponse(
-            id: UUID(),
-            statusCode: 200,
-            headers: ["Content-Type": "text/plain"],
-            body: Data(String(repeating: "A", count: 1_024).utf8)
-        )
-        await fixture.log.recordFailure(id: UUID(), description: "NEUESTER EINTRAG")
-
-        let snapshot = try await fixture.log.snapshot(maximumBytes: 256)
-
-        #expect(snapshot.isTruncated)
-        #expect(snapshot.contents.utf8.count <= 256)
-        #expect(snapshot.contents.contains("NEUESTER EINTRAG"))
+        #expect(try await fixture.log.entries().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: fixture.fileURL.path))
+        #expect(!FileManager.default.fileExists(atPath: legacyURL.path))
     }
 
     private func makeFixture(enabled: Bool) throws -> Fixture {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "openrouter-traffic-log-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let suiteName = "openrouter-traffic-log-tests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defaults.set(enabled, forKey: OpenRouterTrafficLogSettings.enabledKey)
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let fixedDate = try #require(formatter.date(from: "2026-08-27T10:11:12.345Z"))
-        let fileURL = directory.appending(path: "OpenRouterTraffic.log")
+        let fileURL = directory.appending(path: "OpenRouterTraffic.json")
         return Fixture(
-            log: FileOpenRouterTrafficLog(
-                fileURL: fileURL,
-                defaults: defaults,
-                now: { fixedDate }
-            ),
+            log: FileOpenRouterTrafficLog(fileURL: fileURL, defaults: defaults, now: { fixedDate }),
             fileURL: fileURL,
             directory: directory,
             defaults: defaults,
-            suiteName: suiteName
+            suiteName: suiteName,
+            fixedDate: fixedDate
         )
     }
 
-    private struct Fixture {
+    private struct Fixture: @unchecked Sendable {
         let log: FileOpenRouterTrafficLog
         let fileURL: URL
         let directory: URL
         let defaults: UserDefaults
         let suiteName: String
+        let fixedDate: Date
 
         func cleanup() {
             try? FileManager.default.removeItem(at: directory)

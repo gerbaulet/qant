@@ -186,7 +186,7 @@ struct OpenRouterSettingsView: View {
                 } header: {
                     Text("OpenRouter-Log")
                 } footer: {
-                    Text("Speichert Anfragen und Antworten mit ISO-Zeitstempeln lokal auf diesem Gerät. Texte können Mahlzeitenkommentare und Prompts enthalten. API-Schlüssel werden ausgelassen; Bilder und andere Nichttext-Inhalte werden gekürzt. Das Ausschalten löscht vorhandene Einträge nicht.")
+                    Text("Speichert Anfragen und Antworten mit ISO-Zeitstempeln lokal auf diesem Gerät. Texte können Mahlzeitenkommentare und Prompts enthalten. API-Schlüssel werden ausgelassen; Bilder und andere Nichttext-Inhalte werden entfernt. Das Ausschalten löscht vorhandene Einträge nicht.")
                 }
             }
             .navigationTitle("Einstellungen")
@@ -370,55 +370,15 @@ struct OpenRouterSettingsView: View {
 }
 
 private struct OpenRouterTrafficLogView: View {
-    private static let maximumDisplayedBytes = 256 * 1_024
-
     @Environment(\.dismiss) private var dismiss
-    @State private var contents = ""
+    @State private var entries: [OpenRouterTrafficLogEntry] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
-    @State private var isTruncated = false
     @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                if let errorMessage {
-                    ContentUnavailableView(
-                        "Log nicht verfügbar",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(errorMessage)
-                    )
-                } else if contents.isEmpty {
-                    ContentUnavailableView(
-                        isLoading ? "Log wird geöffnet" : "Noch keine Einträge",
-                        systemImage: "doc.text.magnifyingglass",
-                        description: Text(
-                            isLoading
-                                ? "Du kannst diese Ansicht jederzeit schließen."
-                                : "Bei aktiviertem Logging erscheinen zukünftige OpenRouter-Anfragen hier."
-                        )
-                    )
-                } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 12) {
-                            if isTruncated {
-                                Label(
-                                    "Es werden die neuesten 256 KB angezeigt. Ältere Einträge bleiben gespeichert.",
-                                    systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90"
-                                )
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                            }
-
-                            Text(verbatim: contents)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding()
-                    }
-                }
-            }
+            content
             .navigationTitle("OpenRouter-Log")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -441,6 +401,37 @@ private struct OpenRouterTrafficLogView: View {
         }
     }
 
+    @ViewBuilder
+    private var content: some View {
+        if let errorMessage {
+            ContentUnavailableView(
+                "Log nicht verfügbar",
+                systemImage: "exclamationmark.triangle",
+                description: Text(errorMessage)
+            )
+        } else if entries.isEmpty {
+            ContentUnavailableView(
+                isLoading ? "Requests werden geladen" : "Noch keine Einträge",
+                systemImage: "list.bullet.rectangle",
+                description: Text(
+                    isLoading
+                        ? "Du kannst diese Ansicht jederzeit schließen."
+                        : "Bei aktiviertem Logging erscheinen zukünftige OpenRouter-Requests hier."
+                )
+            )
+        } else {
+            List(entries) { entry in
+                NavigationLink {
+                    OpenRouterTrafficLogDetailView(entry: entry)
+                } label: {
+                    OpenRouterTrafficLogRow(entry: entry)
+                }
+                .accessibilityIdentifier("settings.openRouterTrafficLogEntry.\(entry.id.uuidString)")
+            }
+            .accessibilityIdentifier("settings.openRouterTrafficLogList")
+        }
+    }
+
     @MainActor
     private func load() {
         guard !isLoading else { return }
@@ -450,19 +441,162 @@ private struct OpenRouterTrafficLogView: View {
         Task {
             defer { isLoading = false }
             do {
-                let snapshot = try await FileOpenRouterTrafficLog.shared.snapshot(
-                    maximumBytes: Self.maximumDisplayedBytes
-                )
+#if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--ui-testing-openrouter-log-entry") {
+                    entries = [Self.uiTestEntry]
+                    return
+                }
+#endif
+                let loadedEntries = try await FileOpenRouterTrafficLog.shared.entries()
                 try Task.checkCancellation()
-                contents = snapshot.contents
-                isTruncated = snapshot.isTruncated
+                entries = loadedEntries
             } catch is CancellationError {
                 return
             } catch {
-                contents = ""
-                isTruncated = false
-                errorMessage = "Die lokale Logdatei konnte nicht gelesen werden."
+                entries = []
+                errorMessage = "Die lokalen Logeinträge konnten nicht gelesen werden."
             }
+        }
+    }
+
+#if DEBUG
+    private static let uiTestEntry = OpenRouterTrafficLogEntry(
+        id: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
+        requestedAt: Date(timeIntervalSince1970: 1_787_832_672.345),
+        method: "POST",
+        url: "https://openrouter.ai/api/v1/chat/completions",
+        requestHeaders: ["Content-Type": "application/json"],
+        requestText: #"{"prompt":"Bitte analysieren"}"#,
+        respondedAt: Date(timeIntervalSince1970: 1_787_832_673.345),
+        statusCode: 200,
+        responseHeaders: ["Content-Type": "application/json"],
+        responseText: #"{"result":"Testantwort"}"#,
+        failureDescription: nil
+    )
+#endif
+}
+
+private struct OpenRouterTrafficLogRow: View {
+    let entry: OpenRouterTrafficLogEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(entry.requestedAt.formatted(.dateTime.day().month().year().hour().minute().second()))
+                    .font(.headline)
+                Spacer()
+                status
+            }
+            Text("\(entry.method) · \(endpoint)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        if let statusCode = entry.statusCode {
+            Text("HTTP \(statusCode)")
+                .foregroundStyle((200..<300).contains(statusCode) ? Color.green : Color.orange)
+        } else if entry.failureDescription != nil {
+            Text("Fehler")
+                .foregroundStyle(.orange)
+        } else {
+            Text("Offen")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var endpoint: String {
+        guard let url = URL(string: entry.url) else { return entry.url }
+        return url.lastPathComponent.isEmpty ? url.host ?? entry.url : url.lastPathComponent
+    }
+}
+
+private struct OpenRouterTrafficLogDetailView: View {
+    let entry: OpenRouterTrafficLogEntry
+
+    var body: some View {
+        Form {
+            Section("Details") {
+                LabeledContent("Zeitpunkt") {
+                    Text(isoTimestamp(entry.requestedAt))
+                        .textSelection(.enabled)
+                }
+                LabeledContent("Methode", value: entry.method)
+                LabeledContent("Status", value: responseStatus)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("URL")
+                        .foregroundStyle(.secondary)
+                    Text(entry.url)
+                        .font(.footnote)
+                        .textSelection(.enabled)
+                }
+            }
+
+            Section("Request") {
+                if !entry.requestHeaders.isEmpty {
+                    LogTextBlock(title: "Header", text: formattedHeaders(entry.requestHeaders))
+                }
+                LogTextBlock(title: "Text", text: entry.requestText)
+                    .accessibilityIdentifier("settings.openRouterTrafficLogRequest")
+            }
+
+            Section("Response") {
+                if let respondedAt = entry.respondedAt {
+                    LabeledContent("Zeitpunkt") {
+                        Text(isoTimestamp(respondedAt))
+                            .textSelection(.enabled)
+                    }
+                }
+                if !entry.responseHeaders.isEmpty {
+                    LogTextBlock(title: "Header", text: formattedHeaders(entry.responseHeaders))
+                }
+                if let failureDescription = entry.failureDescription {
+                    LogTextBlock(title: "Fehler", text: failureDescription)
+                } else {
+                    LogTextBlock(title: "Text", text: entry.responseText ?? "Noch keine Response empfangen.")
+                }
+            }
+            .accessibilityIdentifier("settings.openRouterTrafficLogResponse")
+        }
+        .navigationTitle("Request-Details")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var responseStatus: String {
+        if let statusCode = entry.statusCode { return "HTTP \(statusCode)" }
+        if entry.failureDescription != nil { return "Fehlgeschlagen" }
+        return "Offen"
+    }
+
+    private func formattedHeaders(_ headers: [String: String]) -> String {
+        headers
+            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
+            .map { "\($0.key): \($0.value)" }
+            .joined(separator: "\n")
+    }
+
+    private func isoTimestamp(_ date: Date) -> String {
+        date.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: true).timeZone(separator: .colon))
+    }
+}
+
+private struct LogTextBlock: View {
+    let title: String
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(verbatim: text)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

@@ -128,6 +128,7 @@ final class quantified_selfUITests: XCTestCase {
     func testOpenRouterLogFinishesLoadingAndKeepsTabsResponsive() throws {
         let app = XCUIApplication()
         app.launchArguments.append("--ui-testing")
+        app.launchArguments.append("--ui-testing-openrouter-log-entry")
         app.launch()
 
         let settingsTab = app.tabBars.buttons["Einstellungen"]
@@ -144,7 +145,20 @@ final class quantified_selfUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["OpenRouter-Log"].waitForExistence(timeout: 2))
         let closeButton = app.buttons["settings.closeOpenRouterTrafficLog"]
         XCTAssertTrue(closeButton.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["Noch keine Einträge"].waitForExistence(timeout: 3))
+        let entry = app.buttons["settings.openRouterTrafficLogEntry.AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 3))
+        entry.tap()
+
+        XCTAssertTrue(app.navigationBars["Request-Details"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Request"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Response"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Bitte analysieren'")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Testantwort'")).firstMatch.exists)
+
+        let backButton = app.navigationBars["Request-Details"].buttons["OpenRouter-Log"]
+        XCTAssertTrue(backButton.waitForExistence(timeout: 2))
+        backButton.tap()
+        XCTAssertTrue(closeButton.waitForExistence(timeout: 2))
         closeButton.tap()
         XCTAssertTrue(app.navigationBars["Einstellungen"].waitForExistence(timeout: 2))
 
