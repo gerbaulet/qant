@@ -133,6 +133,35 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(userText.contains("complete revised structured estimate"))
     }
 
+    @Test("Clarification answers replace assumptions instead of adding another amount")
+    func clarificationAnswerRevisesPriorAssumption() async throws {
+        let client = ChatClientStub(responseData: try Self.chatResponseData())
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "secret"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/model"),
+            client: client
+        )
+
+        _ = try await service.analyze(NutritionAnalysisRequest(
+            images: [],
+            userComment: nil,
+            previousAnalysis: NutritionAnalysisValidatorTests.validResult(
+                clarificationQuestion: "Wie viel Öl wurde verwendet?"
+            ),
+            clarificationAnswer: "Zwei Esslöffel"
+        ))
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        let userContent = try #require(messages.last?["content"] as? [[String: Any]])
+        let userText = try #require(userContent.first?["text"] as? String)
+        #expect(userText.contains("Replace the affected assumption"))
+        #expect(userText.contains("never add the confirmed amount on top"))
+        #expect(userText.contains("Keep unaffected ingredients and quantities unchanged"))
+        #expect(userText.contains("mutually consistent"))
+    }
+
     @Test("German device language localizes every user-facing analysis field")
     func requestsGermanUserFacingText() async throws {
         let client = ChatClientStub(responseData: try Self.chatResponseData())

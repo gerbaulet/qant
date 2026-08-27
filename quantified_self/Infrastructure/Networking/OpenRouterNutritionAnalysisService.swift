@@ -168,6 +168,8 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         }
         if let answer = request.clarificationAnswer {
             lines.append("User's clarification answer: \(answer)")
+            lines.append("Revise the previous estimate using this answer. Replace the affected assumption; never add the confirmed amount on top of an amount already estimated for the same ingredient or portion.")
+            lines.append("Keep unaffected ingredients and quantities unchanged. Recalculate the complete result so total weight, components, total nutrients, and component nutrients remain mutually consistent.")
         }
         if let correction = request.userCorrection {
             lines.append("User correction: \(correction)")
