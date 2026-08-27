@@ -124,6 +124,7 @@ final class MealAnalysisCoordinator {
         userCorrection: String? = nil
     ) async {
         let previousMealState = meal.analysisState
+        let preservedPortionMultiplier = meal.activeRevision?.normalizedPortionMultiplier ?? 1
         let previousAnalysis = meal.activeRevision.map(makeBaselineAnalysisResult)
         let nextClarificationCount = trigger == .clarification
             ? meal.clarificationCount + 1
@@ -167,6 +168,7 @@ final class MealAnalysisCoordinator {
                 clarificationAnswer: clarificationAnswer,
                 userCorrection: userCorrection,
                 initialResults: initialResults,
+                portionMultiplier: preservedPortionMultiplier,
                 for: meal
             )
             meal.clarificationCount = nextClarificationCount
@@ -309,6 +311,7 @@ final class MealAnalysisCoordinator {
         clarificationAnswer: String?,
         userCorrection: String?,
         initialResults: [NutritionAnalysisResult],
+        portionMultiplier: Double,
         for meal: Meal
     ) {
         let asksClarification = result.clarificationQuestion?.isEmpty == false
@@ -349,6 +352,9 @@ final class MealAnalysisCoordinator {
             },
             nutrients: result.nutrients.map(makeNutrient)
         )
+        if trigger != .initial {
+            revision.portionMultiplier = portionMultiplier
+        }
 
         meal.analysisRevisions.append(revision)
         meal.activeRevisionID = revision.id
@@ -359,12 +365,12 @@ final class MealAnalysisCoordinator {
     private func makeBaselineAnalysisResult(_ revision: MealAnalysisRevision) -> NutritionAnalysisResult {
         NutritionAnalysisResult(
             mealName: revision.mealName,
-            estimatedTotalWeightGrams: revision.estimatedTotalWeightGrams.map(revision.scaled),
+            estimatedTotalWeightGrams: revision.estimatedTotalWeightGrams,
             confidence: revision.confidence,
             uncertaintySummary: revision.uncertaintySummary,
             clarificationQuestion: revision.clarificationQuestion,
             nutrients: revision.nutrients.compactMap {
-                makeAnalyzedNutrient($0, multiplier: revision.normalizedPortionMultiplier)
+                makeAnalyzedNutrient($0)
             },
             components: revision.components
                 .sorted { $0.sortIndex < $1.sortIndex }

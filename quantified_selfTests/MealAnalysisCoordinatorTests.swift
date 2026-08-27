@@ -386,6 +386,39 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.receivedRequest?.clarificationAnswer == "200 Gramm")
     }
 
+    @Test("A local portion multiplier is preserved but excluded from AI baseline values")
+    func keepsPortionMultiplierOutOfFollowUpBaseline() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let previousRevision = makeRevision(
+            status: .needsClarification,
+            question: "Wie viel Dressing?"
+        )
+        previousRevision.portionMultiplier = 1.5
+        let meal = Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: previousRevision.id,
+            analysisRevisions: [previousRevision]
+        )
+        context.insert(meal)
+        try context.save()
+        let provider = AnalysisProviderStub(result: NutritionAnalysisValidatorTests.validResult())
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.answerClarification("Zwei Esslöffel", for: meal)
+
+        let baseline = try #require(provider.receivedRequest?.previousAnalysis)
+        #expect(baseline.estimatedTotalWeightGrams == 450)
+        #expect(baseline.nutrients.first { $0.identifier == .energy }?.value == 640)
+        let revision = try #require(meal.activeRevision)
+        #expect(revision.portionMultiplier == 1.5)
+        #expect(revision.nutrients.first { $0.knownIdentifier == .energy }.map { revision.scaled($0.value) } == 960)
+    }
+
     @Test("A correction creates a complete new revision and preserves history")
     func correctsWithRevisionHistory() async throws {
         let container = try makeContainer()
