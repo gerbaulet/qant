@@ -150,6 +150,7 @@ final class MealAnalysisCoordinator {
                 images: images,
                 userComment: meal.userComment,
                 previousAnalysis: previousAnalysis,
+                clarificationHistory: clarificationHistory(for: meal),
                 clarificationAnswer: clarificationAnswer,
                 userCorrection: userCorrection,
                 requestsBestEstimate: trigger == .bestEstimate,
@@ -188,6 +189,22 @@ final class MealAnalysisCoordinator {
             meal.modifiedAt = now()
             try? context.save()
             AppLogger.nutritionAnalysis.error("Nutrition analysis failed")
+        }
+    }
+
+    private func clarificationHistory(for meal: Meal) -> [NutritionClarificationExchange] {
+        let revisions = meal.analysisRevisions.sorted { $0.createdAt < $1.createdAt }
+        return revisions.enumerated().compactMap { index, revision in
+            guard
+                revision.trigger == .clarification,
+                let answer = revision.clarificationAnswer?.trimmingCharacters(in: .whitespacesAndNewlines),
+                !answer.isEmpty,
+                index > 0,
+                let question = revisions[index - 1].clarificationQuestion?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                !question.isEmpty
+            else { return nil }
+            return NutritionClarificationExchange(question: question, answer: answer)
         }
     }
 

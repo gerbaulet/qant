@@ -87,5 +87,5 @@ enum NutrientIdentifier: String, Codable, CaseIterable, Sendable {
 }
 
 enum NutritionAnalysisPrompt {
-    static let currentVersion = 3
+    static let currentVersion = 4
 }

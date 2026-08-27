@@ -188,6 +188,35 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(systemText.contains("clarificationQuestion"))
     }
 
+    @Test("Earlier clarification exchanges are preserved in the prompt")
+    func includesClarificationHistory() async throws {
+        let client = ChatClientStub(responseData: try Self.chatResponseData())
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "secret"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/model"),
+            client: client
+        )
+
+        _ = try await service.analyze(NutritionAnalysisRequest(
+            images: [],
+            userComment: nil,
+            clarificationHistory: [
+                NutritionClarificationExchange(question: "Wie viel Öl?", answer: "Zwei Esslöffel"),
+            ],
+            clarificationAnswer: "200 Gramm Reis"
+        ))
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        let userContent = try #require(messages.last?["content"] as? [[String: Any]])
+        let userText = try #require(userContent.first?["text"] as? String)
+        #expect(userText.contains("Earlier clarification history"))
+        #expect(userText.contains("Wie viel Öl?"))
+        #expect(userText.contains("Zwei Esslöffel"))
+        #expect(userText.contains("Preserve every confirmed fact"))
+    }
+
     @Test("Analysis requires a provider that supports structured output")
     func requiresStructuredOutputProvider() async throws {
         let client = ChatClientStub(responseData: try Self.chatResponseData())

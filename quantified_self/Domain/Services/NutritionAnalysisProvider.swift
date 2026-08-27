@@ -10,10 +10,16 @@ struct NutritionAnalysisImage: Sendable, Equatable {
     }
 }
 
+struct NutritionClarificationExchange: Codable, Sendable, Equatable {
+    let question: String
+    let answer: String
+}
+
 struct NutritionAnalysisRequest: Sendable, Equatable {
     let images: [NutritionAnalysisImage]
     let userComment: String?
     let previousAnalysis: NutritionAnalysisResult?
+    let clarificationHistory: [NutritionClarificationExchange]
     let clarificationAnswer: String?
     let userCorrection: String?
     let requestsBestEstimate: Bool
@@ -23,6 +29,7 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
         images: [NutritionAnalysisImage],
         userComment: String?,
         previousAnalysis: NutritionAnalysisResult? = nil,
+        clarificationHistory: [NutritionClarificationExchange] = [],
         clarificationAnswer: String? = nil,
         userCorrection: String? = nil,
         requestsBestEstimate: Bool = false,
@@ -31,6 +38,7 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
         self.images = images
         self.userComment = userComment
         self.previousAnalysis = previousAnalysis
+        self.clarificationHistory = clarificationHistory
         self.clarificationAnswer = clarificationAnswer
         self.userCorrection = userCorrection
         self.requestsBestEstimate = requestsBestEstimate

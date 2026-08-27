@@ -306,6 +306,39 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.receivedRequest?.allowsClarification == false)
     }
 
+    @Test("A later clarification includes every earlier stored exchange")
+    func includesClarificationHistory() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let first = makeRevision(status: .needsClarification, question: "Wie viel Öl?")
+        first.createdAt = Date(timeIntervalSince1970: 1)
+        let second = makeRevision(status: .needsClarification, question: "Wie viel Reis?")
+        second.createdAt = Date(timeIntervalSince1970: 2)
+        second.trigger = .clarification
+        second.clarificationAnswer = "Zwei Esslöffel"
+        let meal = Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: second.id,
+            clarificationCount: 1,
+            analysisRevisions: [second, first]
+        )
+        context.insert(meal)
+        try context.save()
+        let provider = AnalysisProviderStub(result: NutritionAnalysisValidatorTests.validResult())
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.answerClarification("200 Gramm", for: meal)
+
+        #expect(provider.receivedRequest?.clarificationHistory == [
+            NutritionClarificationExchange(question: "Wie viel Öl?", answer: "Zwei Esslöffel"),
+        ])
+        #expect(provider.receivedRequest?.clarificationAnswer == "200 Gramm")
+    }
+
     @Test("A correction creates a complete new revision and preserves history")
     func correctsWithRevisionHistory() async throws {
         let container = try makeContainer()

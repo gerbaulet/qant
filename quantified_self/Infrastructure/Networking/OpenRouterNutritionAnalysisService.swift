@@ -166,6 +166,11 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
            let data = try? JSONEncoder().encode(previousAnalysis) {
             lines.append("Previous structured analysis: \(String(decoding: data, as: UTF8.self))")
         }
+        if !request.clarificationHistory.isEmpty,
+           let data = try? JSONEncoder().encode(request.clarificationHistory) {
+            lines.append("Earlier clarification history: \(String(decoding: data, as: UTF8.self))")
+            lines.append("Preserve every confirmed fact in this history while applying the current answer.")
+        }
         if let answer = request.clarificationAnswer {
             lines.append("User's clarification answer: \(answer)")
             lines.append("Revise the previous estimate using this answer. Replace the affected assumption; never add the confirmed amount on top of an amount already estimated for the same ingredient or portion.")
