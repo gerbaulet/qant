@@ -12,6 +12,7 @@ struct OpenRouterSettingsView: View {
     @State private var isSchedulingTestReminder = false
     @State private var trafficLogMessage: String?
     @State private var trafficLogMessageIsError = false
+    @State private var showsTrafficLog = false
     private let weeklyReminderScheduler = WeeklySummaryNotificationScheduler()
 
     init(viewModel: OpenRouterSettingsViewModel = OpenRouterSettingsViewModel()) {
@@ -165,8 +166,8 @@ struct OpenRouterSettingsView: View {
                     Toggle("Logging aktivieren", isOn: $trafficLoggingEnabled)
                         .accessibilityIdentifier("settings.openRouterTrafficLogging")
 
-                    NavigationLink {
-                        OpenRouterTrafficLogView()
+                    Button {
+                        showsTrafficLog = true
                     } label: {
                         Label("Log anzeigen", systemImage: "doc.text.magnifyingglass")
                     }
@@ -195,6 +196,9 @@ struct OpenRouterSettingsView: View {
                     await viewModel.loadModelOptions()
                 }
             }
+        }
+        .sheet(isPresented: $showsTrafficLog) {
+            OpenRouterTrafficLogView()
         }
     }
 
@@ -368,77 +372,97 @@ struct OpenRouterSettingsView: View {
 private struct OpenRouterTrafficLogView: View {
     private static let maximumDisplayedBytes = 256 * 1_024
 
+    @Environment(\.dismiss) private var dismiss
     @State private var contents = ""
-    @State private var isLoading = true
+    @State private var isLoading = false
+    @State private var hasLoaded = false
     @State private var isTruncated = false
     @State private var errorMessage: String?
 
     var body: some View {
-        ZStack {
-            if isLoading {
-                ProgressView("Log wird geladen …")
-            } else if let errorMessage {
-                ContentUnavailableView(
-                    "Log nicht verfügbar",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(errorMessage)
-                )
-            } else if contents.isEmpty {
-                ContentUnavailableView(
-                    "Noch keine Einträge",
-                    systemImage: "doc.text",
-                    description: Text("Bei aktiviertem Logging erscheinen zukünftige OpenRouter-Anfragen hier.")
-                )
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        if isTruncated {
-                            Label(
-                                "Es werden die neuesten 256 KB angezeigt. Ältere Einträge bleiben gespeichert.",
-                                systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90"
-                            )
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        }
+        NavigationStack {
+            ZStack {
+                if let errorMessage {
+                    ContentUnavailableView(
+                        "Log nicht verfügbar",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text(errorMessage)
+                    )
+                } else if contents.isEmpty {
+                    ContentUnavailableView(
+                        isLoading ? "Log wird geöffnet" : "Noch keine Einträge",
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text(
+                            isLoading
+                                ? "Du kannst diese Ansicht jederzeit schließen."
+                                : "Bei aktiviertem Logging erscheinen zukünftige OpenRouter-Anfragen hier."
+                        )
+                    )
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 12) {
+                            if isTruncated {
+                                Label(
+                                    "Es werden die neuesten 256 KB angezeigt. Ältere Einträge bleiben gespeichert.",
+                                    systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90"
+                                )
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            }
 
-                        Text(verbatim: contents)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(verbatim: contents)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding()
                     }
-                    .padding()
                 }
             }
-        }
-        .navigationTitle("OpenRouter-Log")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            Button("Aktualisieren", systemImage: "arrow.clockwise") {
-                Task { await load() }
+            .navigationTitle("OpenRouter-Log")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Schließen") { dismiss() }
+                        .accessibilityIdentifier("settings.closeOpenRouterTrafficLog")
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Aktualisieren", systemImage: "arrow.clockwise") {
+                        load()
+                    }
+                    .disabled(isLoading)
+                }
+            }
+            .onAppear {
+                guard !hasLoaded else { return }
+                hasLoaded = true
+                load()
             }
         }
-        .task { await load() }
     }
 
     @MainActor
-    private func load() async {
+    private func load() {
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
 
-        do {
-            let snapshot = try await FileOpenRouterTrafficLog.shared.snapshot(
-                maximumBytes: Self.maximumDisplayedBytes
-            )
-            try Task.checkCancellation()
-            contents = snapshot.contents
-            isTruncated = snapshot.isTruncated
-        } catch is CancellationError {
-            return
-        } catch {
-            contents = ""
-            isTruncated = false
-            errorMessage = "Die lokale Logdatei konnte nicht gelesen werden."
+        Task {
+            defer { isLoading = false }
+            do {
+                let snapshot = try await FileOpenRouterTrafficLog.shared.snapshot(
+                    maximumBytes: Self.maximumDisplayedBytes
+                )
+                try Task.checkCancellation()
+                contents = snapshot.contents
+                isTruncated = snapshot.isTruncated
+            } catch is CancellationError {
+                return
+            } catch {
+                contents = ""
+                isTruncated = false
+                errorMessage = "Die lokale Logdatei konnte nicht gelesen werden."
+            }
         }
     }
 }

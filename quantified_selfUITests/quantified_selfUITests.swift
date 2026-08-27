@@ -142,7 +142,11 @@ final class quantified_selfUITests: XCTestCase {
         logLink.tap()
 
         XCTAssertTrue(app.navigationBars["OpenRouter-Log"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["Log wird geladen …"].waitForNonExistence(timeout: 3))
+        let closeButton = app.buttons["settings.closeOpenRouterTrafficLog"]
+        XCTAssertTrue(closeButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Noch keine Einträge"].waitForExistence(timeout: 3))
+        closeButton.tap()
+        XCTAssertTrue(app.navigationBars["Einstellungen"].waitForExistence(timeout: 2))
 
         let todayTab = app.tabBars.buttons["Heute"]
         XCTAssertTrue(todayTab.isHittable)
