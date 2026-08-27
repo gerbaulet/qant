@@ -125,6 +125,32 @@ final class quantified_selfUITests: XCTestCase {
     }
 
     @MainActor
+    func testOpenRouterLogFinishesLoadingAndKeepsTabsResponsive() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let settingsTab = app.tabBars.buttons["Einstellungen"]
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: 3))
+        settingsTab.tap()
+
+        let logLink = app.buttons["settings.openRouterTrafficLog"]
+        for _ in 0..<8 where !logLink.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(logLink.waitForExistence(timeout: 2))
+        logLink.tap()
+
+        XCTAssertTrue(app.navigationBars["OpenRouter-Log"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Log wird geladen …"].waitForNonExistence(timeout: 3))
+
+        let todayTab = app.tabBars.buttons["Heute"]
+        XCTAssertTrue(todayTab.isHittable)
+        todayTab.tap()
+        XCTAssertTrue(app.buttons["today.addFood"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     func testDinnerPreferencesExplainEveryInput() throws {
         let app = XCUIApplication()
         app.launchArguments.append("--ui-testing")

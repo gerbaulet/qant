@@ -374,7 +374,7 @@ private struct OpenRouterTrafficLogView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        Group {
+        ZStack {
             if isLoading {
                 ProgressView("Log wird geladen …")
             } else if let errorMessage {
