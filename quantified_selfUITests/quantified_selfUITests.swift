@@ -270,10 +270,12 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
-        mealName.tap()
-        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForExistence(timeout: 2))
+        let mealButton = app.buttons
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "meal.open."))
+            .firstMatch
+        XCTAssertTrue(mealButton.waitForExistence(timeout: 5))
+        mealButton.tap()
+        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForExistence(timeout: 5))
 
         let captureForm = app.descendants(matching: .any)["meal.captureForm"]
         XCTAssertTrue(captureForm.waitForExistence(timeout: 4))

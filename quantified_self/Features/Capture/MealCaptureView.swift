@@ -133,26 +133,20 @@ struct MealCaptureView: View {
                 requestCamera()
             }
             .fullScreenCover(isPresented: $showsCamera) {
-                if opensCameraOnAppear {
-                    QuickCameraView { imageData in
+                CameraPicker { imageData in
+                    if opensCameraOnAppear {
                         saveQuickCapture(imageData)
-                    } onCancel: {
-                        showsCamera = false
-                        dismiss()
-                    } onFailure: {
-                        showsCamera = false
-                        alert = .imageImportFailed
-                    }
-                    .ignoresSafeArea()
-                } else {
-                    CameraPicker { imageData in
+                    } else {
                         showsCamera = false
                         addImageData(imageData)
-                    } onCancel: {
-                        showsCamera = false
                     }
-                    .ignoresSafeArea()
+                } onCancel: {
+                    showsCamera = false
+                    if opensCameraOnAppear {
+                        dismiss()
+                    }
                 }
+                .ignoresSafeArea()
             }
             .alert(item: $alert) { alert in
                 if alert.offersSettings {

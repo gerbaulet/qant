@@ -71,7 +71,9 @@ struct ContentView: View {
         selectedSection = .today
         mealCaptureMode = nil
         Task {
-            try? await Task.sleep(for: .milliseconds(400))
+            // Let any nested review sheet finish dismissing before presenting
+            // the camera sheet. SwiftUI otherwise drops the new presentation.
+            try? await Task.sleep(for: .milliseconds(800))
             guard activeQuickCaptureRequestID == requestID else { return }
             mealCaptureMode = .camera
         }
