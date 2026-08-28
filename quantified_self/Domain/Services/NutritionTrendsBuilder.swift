@@ -16,6 +16,19 @@ struct NutritionTrendPoint: Identifiable, Sendable {
     var id: Date { date }
 }
 
+struct CumulativeNutritionTrendPoint: Identifiable, Sendable {
+    let id = UUID()
+    let hour: Double
+    let value: Double
+}
+
+struct DailyCumulativeNutritionTrend: Sendable {
+    let actualPoints: [CumulativeNutritionTrendPoint]
+    let averagePoints: [CumulativeNutritionTrendPoint]
+    let hasActualData: Bool
+    let averageDayCount: Int
+}
+
 struct MonthlyNutritionSummary: Sendable {
     let interval: DateInterval
     let calendarDayCount: Int
@@ -47,6 +60,7 @@ struct NutritionTrendsSnapshot: Sendable {
     let nutrient: NutrientIdentifier
     let interval: DateInterval
     let points: [NutritionTrendPoint]
+    let dailyCumulativeTrend: DailyCumulativeNutritionTrend
     let monthlyComparison: MonthlyNutritionComparison
 }
 
@@ -78,6 +92,12 @@ enum NutritionTrendsBuilder {
             nutrient: nutrient,
             interval: interval,
             points: points,
+            dailyCumulativeTrend: makeDailyCumulativeTrend(
+                for: date,
+                nutrient: nutrient,
+                meals: meals,
+                calendar: calendar
+            ),
             monthlyComparison: makeMonthlyComparison(
                 for: date,
                 meals: meals,
@@ -85,6 +105,99 @@ enum NutritionTrendsBuilder {
                 calendar: calendar
             )
         )
+    }
+
+    static func makeDailyCumulativeTrend(
+        for date: Date,
+        nutrient: NutrientIdentifier,
+        meals: [Meal],
+        calendar: Calendar
+    ) -> DailyCumulativeNutritionTrend {
+        guard let selectedDay = calendar.dateInterval(of: .day, for: date) else {
+            return DailyCumulativeNutritionTrend(
+                actualPoints: [],
+                averagePoints: [],
+                hasActualData: false,
+                averageDayCount: 0
+            )
+        }
+
+        let confirmedMeals = meals.filter { meal in
+            meal.mealState != .archived &&
+                meal.timestamp < selectedDay.end &&
+                meal.activeRevision?.status == .confirmed
+        }
+        let selectedDayMeals = confirmedMeals.filter { meal in
+            meal.timestamp >= selectedDay.start
+        }
+        let recordedDays = Set(confirmedMeals.map { calendar.startOfDay(for: $0.timestamp) })
+            .sorted(by: >)
+            .prefix(90)
+        let recordedDaySet = Set(recordedDays)
+        let averageMeals = confirmedMeals.filter {
+            recordedDaySet.contains(calendar.startOfDay(for: $0.timestamp))
+        }
+        let actualEndHour = max(
+            localHour(for: date, calendar: calendar),
+            selectedDayMeals.map { localHour(for: $0.timestamp, calendar: calendar) }.max() ?? 0
+        )
+
+        return DailyCumulativeNutritionTrend(
+            actualPoints: cumulativePoints(
+                meals: selectedDayMeals,
+                nutrient: nutrient,
+                divisor: 1,
+                endHour: min(actualEndHour, 24),
+                calendar: calendar
+            ),
+            averagePoints: cumulativePoints(
+                meals: averageMeals,
+                nutrient: nutrient,
+                divisor: max(Double(recordedDaySet.count), 1),
+                endHour: 24,
+                calendar: calendar
+            ),
+            hasActualData: !selectedDayMeals.isEmpty,
+            averageDayCount: recordedDaySet.count
+        )
+    }
+
+    private static func cumulativePoints(
+        meals: [Meal],
+        nutrient: NutrientIdentifier,
+        divisor: Double,
+        endHour: Double,
+        calendar: Calendar
+    ) -> [CumulativeNutritionTrendPoint] {
+        guard !meals.isEmpty else { return [] }
+        var valuesByHour: [Double: Double] = [:]
+        for meal in meals {
+            guard let revision = meal.activeRevision,
+                  let value = revision.nutrients.first(where: { $0.knownIdentifier == nutrient }) else {
+                continue
+            }
+            valuesByHour[localHour(for: meal.timestamp, calendar: calendar), default: 0] +=
+                revision.scaled(value.value) / divisor
+        }
+
+        var cumulativeValue = 0.0
+        var points = [CumulativeNutritionTrendPoint(hour: 0, value: 0)]
+        for hour in valuesByHour.keys.sorted() {
+            cumulativeValue += valuesByHour[hour, default: 0]
+            points.append(CumulativeNutritionTrendPoint(hour: hour, value: cumulativeValue))
+        }
+        points.append(CumulativeNutritionTrendPoint(
+            hour: max(endHour, valuesByHour.keys.max() ?? 0),
+            value: cumulativeValue
+        ))
+        return points
+    }
+
+    private static func localHour(for date: Date, calendar: Calendar) -> Double {
+        let components = calendar.dateComponents([.hour, .minute, .second], from: date)
+        return Double(components.hour ?? 0) +
+            Double(components.minute ?? 0) / 60 +
+            Double(components.second ?? 0) / 3_600
     }
 
     private static func makeMonthlyComparison(

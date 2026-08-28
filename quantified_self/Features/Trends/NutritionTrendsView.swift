@@ -70,7 +70,16 @@ struct NutritionTrendsView: View {
         }
     }
 
+    @ViewBuilder
     private var chartCard: some View {
+        if range == .day {
+            dailyChartCard
+        } else {
+            periodChartCard
+        }
+    }
+
+    private var periodChartCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(nutrient.trendTitle)
                 .font(.headline)
@@ -101,6 +110,88 @@ struct NutritionTrendsView: View {
         }
         .padding(18)
         .background(.background, in: .rect(cornerRadius: 18))
+    }
+
+    private var dailyChartCard: some View {
+        let trend = snapshot.dailyCumulativeTrend
+        return VStack(alignment: .leading, spacing: 14) {
+            Text(nutrient.trendTitle)
+                .font(.headline)
+
+            if !trend.hasActualData && trend.averageDayCount == 0 {
+                ContentUnavailableView(
+                    "Keine bestätigten Daten",
+                    systemImage: "chart.xyaxis.line",
+                    description: Text("Bestätigte Mahlzeiten erscheinen hier im Tagesverlauf.")
+                )
+                .frame(minHeight: 220)
+            } else {
+                HStack(spacing: 18) {
+                    chartLegend(title: "Heute", dashed: false, color: .blue)
+                    if trend.averageDayCount > 0 {
+                        chartLegend(
+                            title: "Ø \(trend.averageDayCount) Tage",
+                            dashed: true,
+                            color: .orange
+                        )
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                Chart {
+                    ForEach(trend.actualPoints) { point in
+                        LineMark(
+                            x: .value("Uhrzeit", point.hour),
+                            y: .value(nutrient.trendTitle, point.value),
+                            series: .value("Verlauf", "Heute")
+                        )
+                        .interpolationMethod(.stepEnd)
+                        .foregroundStyle(.blue)
+                        .lineStyle(StrokeStyle(lineWidth: 3))
+                    }
+                    ForEach(trend.averagePoints) { point in
+                        LineMark(
+                            x: .value("Uhrzeit", point.hour),
+                            y: .value(nutrient.trendTitle, point.value),
+                            series: .value("Verlauf", "Durchschnitt")
+                        )
+                        .interpolationMethod(.stepEnd)
+                        .foregroundStyle(.orange)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [7, 5]))
+                    }
+                }
+                .chartXScale(domain: 0...24)
+                .chartXAxis {
+                    AxisMarks(values: [0, 4, 8, 12, 16, 20, 24]) { value in
+                        AxisGridLine()
+                        AxisTick()
+                        AxisValueLabel {
+                            if let hour = value.as(Int.self) {
+                                Text("\(hour)")
+                            }
+                        }
+                    }
+                }
+                .frame(height: 240)
+                .accessibilityLabel("Kumulativer Tagesverlauf für \(nutrient.trendTitle)")
+                .accessibilityValue(dailyChartAccessibilityValue)
+            }
+        }
+        .padding(18)
+        .background(.background, in: .rect(cornerRadius: 18))
+    }
+
+    private func chartLegend(title: String, dashed: Bool, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Capsule()
+                .stroke(
+                    color,
+                    style: StrokeStyle(lineWidth: 2, dash: dashed ? [5, 4] : [])
+                )
+                .frame(width: 26, height: 2)
+            Text(title)
+        }
     }
 
     private var monthlyComparisonCard: some View {
@@ -172,6 +263,17 @@ struct NutritionTrendsView: View {
             )
             return "\(date): \(formatted(point.value)) \(nutrient.trendUnit.rawValue)"
         }.joined(separator: ", ")
+    }
+
+    private var dailyChartAccessibilityValue: String {
+        let trend = snapshot.dailyCumulativeTrend
+        let actual = trend.actualPoints.last?.value ?? 0
+        let average = trend.averagePoints.last?.value
+        var description = "Heute: \(formatted(actual)) \(nutrient.trendUnit.rawValue)"
+        if let average {
+            description += ", Durchschnitt aus \(trend.averageDayCount) Tagen: \(formatted(average)) \(nutrient.trendUnit.rawValue)"
+        }
+        return description
     }
 }
 

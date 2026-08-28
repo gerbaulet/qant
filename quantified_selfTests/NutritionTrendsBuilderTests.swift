@@ -81,6 +81,65 @@ struct NutritionTrendsBuilderTests {
         #expect(current.daysAtOrBelowEnergyTarget == 1)
     }
 
+    @Test("Daily trend accumulates meals at their local time")
+    func dailyCumulativeTrend() {
+        let breakfast = meal(at: date(2026, 8, 23, 8, 30), state: .confirmed, energy: 500, protein: 25)
+        let lunch = meal(at: date(2026, 8, 23, 12, 15), state: .confirmed, energy: 700, protein: 35)
+
+        let trend = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 23, 14),
+            nutrient: .energy,
+            meals: [breakfast, lunch],
+            calendar: calendar
+        )
+
+        #expect(trend.hasActualData)
+        #expect(trend.actualPoints.map(\.hour) == [0, 8.5, 12.25, 14])
+        #expect(trend.actualPoints.map(\.value) == [0, 500, 1_200, 1_200])
+    }
+
+    @Test("Daily average weights each recorded day equally and ignores missing days")
+    func dailyAverageUsesRecordedDays() {
+        let firstBreakfast = meal(at: date(2026, 8, 20, 8), state: .confirmed, energy: 600, protein: 30)
+        let firstDinner = meal(at: date(2026, 8, 20, 18), state: .confirmed, energy: 400, protein: 20)
+        let secondLunch = meal(at: date(2026, 8, 22, 10), state: .confirmed, energy: 300, protein: 15)
+
+        let trend = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 23, 14),
+            nutrient: .energy,
+            meals: [firstBreakfast, firstDinner, secondLunch],
+            calendar: calendar
+        )
+
+        #expect(trend.averageDayCount == 2)
+        #expect(trend.averagePoints.map(\.hour) == [0, 8, 10, 18, 24])
+        #expect(trend.averagePoints.map(\.value) == [0, 300, 450, 650, 650])
+    }
+
+    @Test("Daily average includes only the latest 90 recorded days")
+    func dailyAverageLimitsRecordedDays() {
+        let reference = date(2026, 8, 23, 14)
+        let meals = (1...91).map { offset in
+            let timestamp = calendar.date(byAdding: .day, value: -offset, to: reference)!
+            return meal(
+                at: timestamp,
+                state: .confirmed,
+                energy: offset == 91 ? 9_000 : 1,
+                protein: 1
+            )
+        }
+
+        let trend = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: reference,
+            nutrient: .energy,
+            meals: meals,
+            calendar: calendar
+        )
+
+        #expect(trend.averageDayCount == 90)
+        #expect(abs((trend.averagePoints.last?.value ?? 0) - 1) < 0.000_001)
+    }
+
     private func meal(
         at timestamp: Date,
         state: AnalysisState,
@@ -119,12 +178,19 @@ struct NutritionTrendsBuilderTests {
         )
     }
 
-    private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 0) -> Date {
+    private func date(
+        _ year: Int,
+        _ month: Int,
+        _ day: Int,
+        _ hour: Int = 0,
+        _ minute: Int = 0
+    ) -> Date {
         calendar.date(from: DateComponents(
             year: year,
             month: month,
             day: day,
-            hour: hour
+            hour: hour,
+            minute: minute
         ))!
     }
 }
