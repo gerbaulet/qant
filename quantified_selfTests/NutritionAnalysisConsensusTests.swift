@@ -1,5 +1,5 @@
 import Testing
-@testable import quantified_self
+@testable import Quant
 
 struct NutritionAnalysisConsensusTests {
     @Test("Three similar initial analyses are averaged")

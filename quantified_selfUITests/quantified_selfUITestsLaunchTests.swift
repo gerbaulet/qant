@@ -1,13 +1,13 @@
 //
-//  quantified_selfUITestsLaunchTests.swift
-//  quantified_selfUITests
+//  QuantUITestsLaunchTests.swift
+//  QuantUITests
 //
 //  Created by Clemens Gerbaulet on 23.08.26.
 //
 
 import XCTest
 
-final class quantified_selfUITestsLaunchTests: XCTestCase {
+final class QuantUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

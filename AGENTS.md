@@ -1,4 +1,4 @@
-# Arbeitsanweisungen für Qant
+# Arbeitsanweisungen für Quant
 
 ## Geltungsbereich und Priorität
 
@@ -13,7 +13,7 @@ erneut implementieren.
 
 ## Produktgrundsätze
 
-- Der sichtbare App-Name lautet **Qant**. Interne Target-, Scheme- und
+- Der sichtbare App-Name lautet **Quant**. Interne Target-, Scheme- und
   Bundle-Namen nur ändern, wenn dies ausdrücklich erforderlich ist.
 - Die Bedienoberfläche ist deutsch. Code, Typnamen, Testnamen und technische
   Kommentare bleiben auf Englisch.
@@ -55,7 +55,7 @@ erneut implementieren.
 ### Aufnahme und Schnellzugriff
 
 - Der Action-Button beziehungsweise App Intent öffnet unmittelbar die Kamera,
-  auch wenn Qant bereits im Vordergrund ist.
+  auch wenn Quant bereits im Vordergrund ist.
 - Vor dem Sprung zur Kamera müssen präsentierte Mahlzeitendetails, Review-Sheets,
   Dialoge und andere Modals zuverlässig geschlossen werden.
 - In der Aufnahmeansicht stehen „Zeitpunkt“ und „Art der Mahlzeit“ unten. Sie
@@ -76,7 +76,7 @@ erneut implementieren.
 - Die Modellauswahl ist ein verständliches Menü beziehungsweise Dropdown. Die
   App lädt geeignete Modelle über die OpenRouter-Model-API und bietet zusätzlich
   eine manuelle Modellkennung als fortgeschrittene Option an.
-- Nur Modelle anbieten, die die für Qant erforderlichen Bild- und strukturierten
+- Nur Modelle anbieten, die die für Quant erforderlichen Bild- und strukturierten
   Ausgaben unterstützen. Die Liste wird nach der von OpenRouter gelieferten
   Popularitätsinformation sortiert; diese Herkunft in der UI verständlich
   machen.

@@ -12,21 +12,21 @@
 			containerPortal = 776BD509303B47AC00CFCA36 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 776BD510303B47AC00CFCA36;
-			remoteInfo = quantified_self;
+			remoteInfo = Quant;
 		};
 		776BD52B303B47AF00CFCA36 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 776BD509303B47AC00CFCA36 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 776BD510303B47AC00CFCA36;
-			remoteInfo = quantified_self;
+			remoteInfo = Quant;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		776BD511303B47AC00CFCA36 /* quantified_self.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = quantified_self.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		776BD520303B47AF00CFCA36 /* quantified_selfTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = quantified_selfTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		776BD52A303B47AF00CFCA36 /* quantified_selfUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = quantified_selfUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		776BD511303B47AC00CFCA36 /* Quant.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Quant.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		776BD520303B47AF00CFCA36 /* QuantTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QuantTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		776BD52A303B47AF00CFCA36 /* QuantUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QuantUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -85,9 +85,9 @@
 		776BD512303B47AC00CFCA36 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				776BD511303B47AC00CFCA36 /* quantified_self.app */,
-				776BD520303B47AF00CFCA36 /* quantified_selfTests.xctest */,
-				776BD52A303B47AF00CFCA36 /* quantified_selfUITests.xctest */,
+				776BD511303B47AC00CFCA36 /* Quant.app */,
+				776BD520303B47AF00CFCA36 /* QuantTests.xctest */,
+				776BD52A303B47AF00CFCA36 /* QuantUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,9 +95,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		776BD510303B47AC00CFCA36 /* quantified_self */ = {
+		776BD510303B47AC00CFCA36 /* Quant */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 776BD534303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "quantified_self" */;
+			buildConfigurationList = 776BD534303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "Quant" */;
 			buildPhases = (
 				776BD50D303B47AC00CFCA36 /* Sources */,
 				776BD50E303B47AC00CFCA36 /* Frameworks */,
@@ -110,16 +110,16 @@
 			fileSystemSynchronizedGroups = (
 				776BD513303B47AC00CFCA36 /* quantified_self */,
 			);
-			name = quantified_self;
+			name = Quant;
 			packageProductDependencies = (
 			);
-			productName = quantified_self;
-			productReference = 776BD511303B47AC00CFCA36 /* quantified_self.app */;
+			productName = Quant;
+			productReference = 776BD511303B47AC00CFCA36 /* Quant.app */;
 			productType = "com.apple.product-type.application";
 		};
-		776BD51F303B47AF00CFCA36 /* quantified_selfTests */ = {
+		776BD51F303B47AF00CFCA36 /* QuantTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 776BD537303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "quantified_selfTests" */;
+			buildConfigurationList = 776BD537303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "QuantTests" */;
 			buildPhases = (
 				776BD51C303B47AF00CFCA36 /* Sources */,
 				776BD51D303B47AF00CFCA36 /* Frameworks */,
@@ -133,16 +133,16 @@
 			fileSystemSynchronizedGroups = (
 				776BD523303B47AF00CFCA36 /* quantified_selfTests */,
 			);
-			name = quantified_selfTests;
+			name = QuantTests;
 			packageProductDependencies = (
 			);
-			productName = quantified_selfTests;
-			productReference = 776BD520303B47AF00CFCA36 /* quantified_selfTests.xctest */;
+			productName = QuantTests;
+			productReference = 776BD520303B47AF00CFCA36 /* QuantTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		776BD529303B47AF00CFCA36 /* quantified_selfUITests */ = {
+		776BD529303B47AF00CFCA36 /* QuantUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 776BD53A303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "quantified_selfUITests" */;
+			buildConfigurationList = 776BD53A303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "QuantUITests" */;
 			buildPhases = (
 				776BD526303B47AF00CFCA36 /* Sources */,
 				776BD527303B47AF00CFCA36 /* Frameworks */,
@@ -156,11 +156,11 @@
 			fileSystemSynchronizedGroups = (
 				776BD52D303B47AF00CFCA36 /* quantified_selfUITests */,
 			);
-			name = quantified_selfUITests;
+			name = QuantUITests;
 			packageProductDependencies = (
 			);
-			productName = quantified_selfUITests;
-			productReference = 776BD52A303B47AF00CFCA36 /* quantified_selfUITests.xctest */;
+			productName = QuantUITests;
+			productReference = 776BD52A303B47AF00CFCA36 /* QuantUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -200,9 +200,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				776BD510303B47AC00CFCA36 /* quantified_self */,
-				776BD51F303B47AF00CFCA36 /* quantified_selfTests */,
-				776BD529303B47AF00CFCA36 /* quantified_selfUITests */,
+				776BD510303B47AC00CFCA36 /* Quant */,
+				776BD51F303B47AF00CFCA36 /* QuantTests */,
+				776BD529303B47AF00CFCA36 /* QuantUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -258,12 +258,12 @@
 /* Begin PBXTargetDependency section */
 		776BD522303B47AF00CFCA36 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 776BD510303B47AC00CFCA36 /* quantified_self */;
+			target = 776BD510303B47AC00CFCA36 /* Quant */;
 			targetProxy = 776BD521303B47AF00CFCA36 /* PBXContainerItemProxy */;
 		};
 		776BD52C303B47AF00CFCA36 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 776BD510303B47AC00CFCA36 /* quantified_self */;
+			target = 776BD510303B47AC00CFCA36 /* Quant */;
 			targetProxy = 776BD52B303B47AF00CFCA36 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -400,7 +400,7 @@
 				DEVELOPMENT_TEAM = 6948ZYZ67T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Qant;
+				INFOPLIST_KEY_CFBundleDisplayName = Quant;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Nimm Fotos deiner Mahlzeiten für die Nährwertanalyse auf.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -434,7 +434,7 @@
 				DEVELOPMENT_TEAM = 6948ZYZ67T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Qant;
+				INFOPLIST_KEY_CFBundleDisplayName = Quant;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Nimm Fotos deiner Mahlzeiten für die Nährwertanalyse auf.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -476,7 +476,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/quantified_self.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/quantified_self";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Quant.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Quant";
 			};
 			name = Debug;
 		};
@@ -498,7 +498,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/quantified_self.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/quantified_self";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Quant.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Quant";
 			};
 			name = Release;
 		};
@@ -518,7 +518,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = quantified_self;
+				TEST_TARGET_NAME = Quant;
 			};
 			name = Debug;
 		};
@@ -538,7 +538,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = quantified_self;
+				TEST_TARGET_NAME = Quant;
 			};
 			name = Release;
 		};
@@ -554,7 +554,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		776BD534303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "quantified_self" */ = {
+		776BD534303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "Quant" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				776BD535303B47AF00CFCA36 /* Debug */,
@@ -563,7 +563,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		776BD537303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "quantified_selfTests" */ = {
+		776BD537303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "QuantTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				776BD538303B47AF00CFCA36 /* Debug */,
@@ -572,7 +572,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		776BD53A303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "quantified_selfUITests" */ = {
+		776BD53A303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "QuantUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				776BD53B303B47AF00CFCA36 /* Debug */,

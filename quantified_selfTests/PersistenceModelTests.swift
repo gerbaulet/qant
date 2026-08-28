@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 import Testing
-@testable import quantified_self
+@testable import Quant
 
 @MainActor
 struct PersistenceModelTests {

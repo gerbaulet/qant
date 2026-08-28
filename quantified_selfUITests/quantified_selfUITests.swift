@@ -1,13 +1,13 @@
 //
-//  quantified_selfUITests.swift
-//  quantified_selfUITests
+//  QuantUITests.swift
+//  QuantUITests
 //
 //  Created by Clemens Gerbaulet on 23.08.26.
 //
 
 import XCTest
 
-final class quantified_selfUITests: XCTestCase {
+final class QuantUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false

@@ -24,7 +24,7 @@ struct QuickCameraView: UIViewControllerRepresentable {
 final class QuickCameraViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     private let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
-    private let sessionQueue = DispatchQueue(label: "de.clemensgerbaulet.qant.quick-camera")
+    private let sessionQueue = DispatchQueue(label: "de.clemensgerbaulet.quant.quick-camera")
     private let onCapture: (Data) -> Void
     private let onCancel: () -> Void
     private let onFailure: () -> Void

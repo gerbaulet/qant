@@ -8,7 +8,7 @@ protocol NetworkAvailabilityWaiting {
 struct SystemNetworkAvailabilityWaiter: NetworkAvailabilityWaiting {
     func waitUntilAvailable() async throws {
         let monitor = NWPathMonitor()
-        let queue = DispatchQueue(label: "de.clemensgerbaulet.qant.network-availability")
+        let queue = DispatchQueue(label: "de.clemensgerbaulet.quant.network-availability")
         let availability = AsyncStream<Void> { continuation in
             monitor.pathUpdateHandler = { path in
                 guard path.status == .satisfied else { return }

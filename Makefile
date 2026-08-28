@@ -5,19 +5,19 @@ override DEVELOPER_DIR := /Applications/Xcode.app/Contents/Developer
 export DEVELOPER_DIR
 
 override PROJECT := quantified_self.xcodeproj
-override SCHEME := quantified_self
+override SCHEME := Quant
 override BUNDLE_ID := de.clemensgerbaulet.quantified-self
 
 CONFIGURATION ?= Debug
-DERIVED_DATA ?= /tmp/qant-derived
-DEVICE_DERIVED_DATA ?= /tmp/qant-device
+DERIVED_DATA ?= /tmp/quant-derived
+DEVICE_DERIVED_DATA ?= /tmp/quant-device
 SIMULATOR_NAME ?= iPhone 17 Pro
 SIMULATOR_OS ?= latest
 DEVICE ?= Clemens-iPhone2
-TEST_TARGET ?= quantified_selfTests
+TEST_TARGET ?= QuantTests
 
 SIMULATOR_DESTINATION = platform=iOS Simulator,name=$(SIMULATOR_NAME),OS=$(SIMULATOR_OS)
-DEVICE_APP = $(DEVICE_DERIVED_DATA)/Build/Products/$(CONFIGURATION)-iphoneos/quantified_self.app
+DEVICE_APP = $(DEVICE_DERIVED_DATA)/Build/Products/$(CONFIGURATION)-iphoneos/Quant.app
 XCODEBUILD = xcodebuild -project "$(PROJECT)" -scheme "$(SCHEME)" -configuration "$(CONFIGURATION)"
 
 .PHONY: \
@@ -37,7 +37,7 @@ XCODEBUILD = xcodebuild -project "$(PROJECT)" -scheme "$(SCHEME)" -configuration
 	qant-launch-device \
 	qant-deploy-device
 
-qant-help: ## Show available Qant development commands.
+qant-help: ## Show available Quant development commands.
 	@awk 'BEGIN { FS = ":.*## " } /^qant-[a-z-]+:.*## / { printf "  %-26s %s\n", $$1, $$2 }' "$(firstword $(MAKEFILE_LIST))"
 
 qant-doctor: ## Verify Xcode and list available simulators and devices.
@@ -46,7 +46,7 @@ qant-doctor: ## Verify Xcode and list available simulators and devices.
 	xcrun simctl list devices available
 	xcrun devicectl list devices
 
-qant-list: ## List the Qant project, targets, configurations, and schemes.
+qant-list: ## List the Quant project, targets, configurations, and schemes.
 	xcodebuild -project "$(PROJECT)" -list
 
 qant-simulators: ## List currently available simulators.
@@ -55,7 +55,7 @@ qant-simulators: ## List currently available simulators.
 qant-devices: ## List physical Apple devices known to Xcode.
 	xcrun devicectl list devices
 
-qant-build: ## Build Qant for the iOS Simulator without code signing.
+qant-build: ## Build Quant for the iOS Simulator without code signing.
 	$(XCODEBUILD) \
 		-destination 'generic/platform=iOS Simulator' \
 		-derivedDataPath "$(DERIVED_DATA)" \
@@ -72,16 +72,16 @@ qant-test: ## Run unit tests; override TEST_TARGET for a focused test.
 		test \
 		-only-testing:"$(TEST_TARGET)"
 
-qant-test-ui: ## Run the Qant UI-test target.
-	$(MAKE) qant-test TEST_TARGET=quantified_selfUITests
+qant-test-ui: ## Run the Quant UI-test target.
+	$(MAKE) qant-test TEST_TARGET=QuantUITests
 
-qant-test-all: ## Run all Qant unit and UI tests.
+qant-test-all: ## Run all Quant unit and UI tests.
 	$(XCODEBUILD) \
 		-destination '$(SIMULATOR_DESTINATION)' \
 		-derivedDataPath "$(DERIVED_DATA)" \
 		test
 
-qant-clean: ## Clean Qant simulator build products.
+qant-clean: ## Clean Quant simulator build products.
 	$(XCODEBUILD) \
 		-destination 'generic/platform=iOS Simulator' \
 		-derivedDataPath "$(DERIVED_DATA)" \
@@ -97,13 +97,13 @@ qant-install-device: ## Install the existing device build without deleting app d
 	test -d "$(DEVICE_APP)"
 	xcrun devicectl device install app --device "$(DEVICE)" "$(DEVICE_APP)"
 
-qant-launch-device: ## Launch Qant on the selected unlocked iPhone.
+qant-launch-device: ## Launch Quant on the selected unlocked iPhone.
 	xcrun devicectl device process launch \
 		--device "$(DEVICE)" \
 		--terminate-existing \
 		"$(BUNDLE_ID)"
 
-qant-deploy-device: ## Build, install, and launch Qant on the selected iPhone.
+qant-deploy-device: ## Build, install, and launch Quant on the selected iPhone.
 	$(MAKE) qant-build-device
 	$(MAKE) qant-install-device
 	$(MAKE) qant-launch-device

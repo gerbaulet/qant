@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import quantified_self
+@testable import Quant
 
 struct NutritionHintBuilderTests {
     private var calendar: Calendar {

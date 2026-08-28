@@ -1,6 +1,6 @@
 //
-//  quantified_selfApp.swift
-//  quantified_self
+//  QuantApp.swift
+//  Quant
 //
 //  Created by Clemens Gerbaulet on 23.08.26.
 //
@@ -9,7 +9,7 @@ import SwiftUI
 import SwiftData
 
 @main
-struct quantified_selfApp: App {
+struct QuantApp: App {
     var sharedModelContainer: ModelContainer = {
         let usesEphemeralStore = ProcessInfo.processInfo.arguments.contains("--ui-testing")
 

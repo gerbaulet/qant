@@ -295,7 +295,7 @@ struct OpenRouterSettingsView: View {
         Task {
             switch await weeklyReminderScheduler.scheduleTestNotification() {
             case .enabled:
-                weeklyReminderMessage = "Test-Erinnerung erstellt. Sie erscheint in etwa 5 Sekunden, wenn Qant im Hintergrund ist."
+                weeklyReminderMessage = "Test-Erinnerung erstellt. Sie erscheint in etwa 5 Sekunden, wenn Quant im Hintergrund ist."
                 weeklyReminderMessageIsError = false
             case .denied:
                 weeklyReminderMessage = "Mitteilungen sind nicht erlaubt. Du kannst sie in den iOS-Einstellungen freigeben."

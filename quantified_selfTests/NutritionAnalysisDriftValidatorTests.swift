@@ -1,5 +1,5 @@
 import Testing
-@testable import quantified_self
+@testable import Quant
 
 struct NutritionAnalysisDriftValidatorTests {
     @Test("Small calorie changes need no new explanation")

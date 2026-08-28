@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import quantified_self
+@testable import Quant
 
 struct QuickCaptureRequestStoreTests {
     @Test("A quick-capture request is consumed exactly once")

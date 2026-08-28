@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import UIKit
-@testable import quantified_self
+@testable import Quant
 
 struct ImageStorageTests {
     @Test("Image storage creates a reduced original and list thumbnail")

@@ -1,5 +1,5 @@
 import Testing
-@testable import quantified_self
+@testable import Quant
 
 struct NutritionAnalysisConsistencyValidatorTests {
     @Test("A coherent follow-up result is accepted")
