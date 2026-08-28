@@ -8,7 +8,7 @@ struct OpenRouterConfigurationCheck: Sendable, Equatable {
     let supportsStructuredOutput: Bool
 }
 
-struct OpenRouterModelOption: Identifiable, Sendable, Equatable {
+struct OpenRouterModelOption: Codable, Identifiable, Sendable, Equatable {
     let id: String
     let name: String
 }

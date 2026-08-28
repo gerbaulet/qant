@@ -91,7 +91,7 @@ struct OpenRouterSettingsView: View {
                     }
 
                     Button {
-                        Task { await viewModel.loadModelOptions() }
+                        Task { await viewModel.loadModelOptions(forceRefresh: true) }
                     } label: {
                         HStack {
                             Text(viewModel.modelOptions.isEmpty ? "Passende Modelle laden" : "Modellliste aktualisieren")

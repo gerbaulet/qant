@@ -321,6 +321,7 @@ private struct AnalysisSecretStore: SecretStoring {
 
 private final class AnalysisSettingsStore: OpenRouterSettingsStoring {
     var modelIdentifier: String
+    var modelCatalogCache: OpenRouterModelCatalogCache?
 
     init(modelIdentifier: String) {
         self.modelIdentifier = modelIdentifier
