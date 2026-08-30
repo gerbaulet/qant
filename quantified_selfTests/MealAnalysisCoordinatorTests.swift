@@ -95,6 +95,63 @@ struct MealAnalysisCoordinatorTests {
         #expect(try context.fetch(FetchDescriptor<Meal>()).count == 1)
     }
 
+    @Test("A failed initial request retries only its missing result")
+    func retriesOnlyFailedInitialRequest() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let valid = NutritionAnalysisValidatorTests.validResult()
+        let provider = SequencedAnalysisProviderStub(outcomes: [
+            .success(valid),
+            .success(valid),
+            .failure(OpenRouterClientError.transportFailure),
+            .success(valid),
+        ])
+        let waiter = NetworkAvailabilityWaiterStub()
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:]),
+            networkAvailabilityWaiter: waiter
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(provider.requestCount == 4)
+        #expect(waiter.waitCount == 1)
+        #expect(meal.analysisState == .confirmed)
+        #expect(InitialAnalysisRunMetadata.decode(meal.activeRevision?.providerMetadata).count == 3)
+    }
+
+    @Test("An invalid initial result retries only its missing result")
+    func retriesOnlyInvalidInitialResult() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let valid = NutritionAnalysisValidatorTests.validResult()
+        let provider = SequencedAnalysisProviderStub(results: [
+            valid,
+            invalidResult(),
+            valid,
+            valid,
+        ])
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(provider.requestCount == 4)
+        #expect(meal.analysisState == .confirmed)
+        #expect(InitialAnalysisRunMetadata.decode(meal.activeRevision?.providerMetadata).count == 3)
+    }
+
     @Test("Invalid analysis values restart the complete initial analysis")
     func retriesInvalidResults() async throws {
         let container = try makeContainer()
