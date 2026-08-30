@@ -21,89 +21,89 @@ DEVICE_APP = $(DEVICE_DERIVED_DATA)/Build/Products/$(CONFIGURATION)-iphoneos/Qua
 XCODEBUILD = xcodebuild -project "$(PROJECT)" -scheme "$(SCHEME)" -configuration "$(CONFIGURATION)"
 
 .PHONY: \
-	qant-help \
-	qant-doctor \
-	qant-list \
-	qant-simulators \
-	qant-devices \
-	qant-build \
-	qant-build-release \
-	qant-test \
-	qant-test-ui \
-	qant-test-all \
-	qant-clean \
-	qant-build-device \
-	qant-install-device \
-	qant-launch-device \
-	qant-deploy-device
+	help \
+	doctor \
+	list \
+	simulators \
+	devices \
+	build \
+	build-release \
+	test \
+	test-ui \
+	test-all \
+	clean \
+	build-device \
+	install-device \
+	launch-device \
+	deploy-device
 
-qant-help: ## Show available Quant development commands.
-	@awk 'BEGIN { FS = ":.*## " } /^qant-[a-z-]+:.*## / { printf "  %-26s %s\n", $$1, $$2 }' "$(firstword $(MAKEFILE_LIST))"
+help: ## Show available Quant development commands.
+	@awk 'BEGIN { FS = ":.*## " } /^[a-z-]+:.*## / { printf "  %-26s %s\n", $$1, $$2 }' "$(firstword $(MAKEFILE_LIST))"
 
-qant-doctor: ## Verify Xcode and list available simulators and devices.
+doctor: ## Verify Xcode and list available simulators and devices.
 	xcodebuild -version
 	xcrun --find xcodebuild
 	xcrun simctl list devices available
 	xcrun devicectl list devices
 
-qant-list: ## List the Quant project, targets, configurations, and schemes.
+list: ## List the Quant project, targets, configurations, and schemes.
 	xcodebuild -project "$(PROJECT)" -list
 
-qant-simulators: ## List currently available simulators.
+simulators: ## List currently available simulators.
 	xcrun simctl list devices available
 
-qant-devices: ## List physical Apple devices known to Xcode.
+devices: ## List physical Apple devices known to Xcode.
 	xcrun devicectl list devices
 
-qant-build: ## Build Quant for the iOS Simulator without code signing.
+build: ## Build Quant for the iOS Simulator without code signing.
 	$(XCODEBUILD) \
 		-destination 'generic/platform=iOS Simulator' \
 		-derivedDataPath "$(DERIVED_DATA)" \
 		CODE_SIGNING_ALLOWED=NO \
 		build
 
-qant-build-release: ## Build the Release configuration for the iOS Simulator.
-	$(MAKE) qant-build CONFIGURATION=Release DERIVED_DATA=/tmp/qant-release
+build-release: ## Build the Release configuration for the iOS Simulator.
+	$(MAKE) build CONFIGURATION=Release DERIVED_DATA=/tmp/release
 
-qant-test: ## Run unit tests; override TEST_TARGET for a focused test.
+test: ## Run unit tests; override TEST_TARGET for a focused test.
 	$(XCODEBUILD) \
 		-destination '$(SIMULATOR_DESTINATION)' \
 		-derivedDataPath "$(DERIVED_DATA)" \
 		test \
 		-only-testing:"$(TEST_TARGET)"
 
-qant-test-ui: ## Run the Quant UI-test target.
-	$(MAKE) qant-test TEST_TARGET=QuantUITests
+test-ui: ## Run the Quant UI-test target.
+	$(MAKE) test TEST_TARGET=QuantUITests
 
-qant-test-all: ## Run all Quant unit and UI tests.
+test-all: ## Run all Quant unit and UI tests.
 	$(XCODEBUILD) \
 		-destination '$(SIMULATOR_DESTINATION)' \
 		-derivedDataPath "$(DERIVED_DATA)" \
 		test
 
-qant-clean: ## Clean Quant simulator build products.
+clean: ## Clean Quant simulator build products.
 	$(XCODEBUILD) \
 		-destination 'generic/platform=iOS Simulator' \
 		-derivedDataPath "$(DERIVED_DATA)" \
 		clean
 
-qant-build-device: ## Build a signed Debug app using cached provisioning only.
+build-device: ## Build a signed Debug app using cached provisioning only.
 	$(XCODEBUILD) \
 		-destination 'generic/platform=iOS' \
 		-derivedDataPath "$(DEVICE_DERIVED_DATA)" \
 		build
 
-qant-install-device: ## Install the existing device build without deleting app data.
+install-device: ## Install the existing device build without deleting app data.
 	test -d "$(DEVICE_APP)"
 	xcrun devicectl device install app --device "$(DEVICE)" "$(DEVICE_APP)"
 
-qant-launch-device: ## Launch Quant on the selected unlocked iPhone.
+launch-device: ## Launch Quant on the selected unlocked iPhone.
 	xcrun devicectl device process launch \
 		--device "$(DEVICE)" \
 		--terminate-existing \
 		"$(BUNDLE_ID)"
 
-qant-deploy-device: ## Build, install, and launch Quant on the selected iPhone.
-	$(MAKE) qant-build-device
-	$(MAKE) qant-install-device
-	$(MAKE) qant-launch-device
+deploy-device: ## Build, install, and launch Quant on the selected iPhone.
+	$(MAKE) build-device
+	$(MAKE) install-device
+	$(MAKE) launch-device
