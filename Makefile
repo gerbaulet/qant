@@ -1,5 +1,5 @@
 SHELL := /bin/zsh
-.DEFAULT_GOAL := qant-help
+.DEFAULT_GOAL := help
 
 override DEVELOPER_DIR := /Applications/Xcode.app/Contents/Developer
 export DEVELOPER_DIR
