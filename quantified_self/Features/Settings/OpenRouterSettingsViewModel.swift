@@ -20,6 +20,10 @@ final class OpenRouterSettingsViewModel {
     private(set) var statusMessage: String?
     private(set) var testState: TestState = .idle
 
+    var canLoadModels: Bool {
+        hasStoredAPIKey || !replacementAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private let secretStore: any SecretStoring
     private let settingsStore: any OpenRouterSettingsStoring
     private let configurationChecker: any OpenRouterConfigurationChecking
@@ -43,6 +47,7 @@ final class OpenRouterSettingsViewModel {
     func load() {
         modelIdentifier = settingsStore.modelIdentifier
         modelOptions = settingsStore.modelCatalogCache?.options ?? []
+        selectAvailableModelIfNeeded()
         do {
             hasStoredAPIKey = try secretStore.secret(for: .openRouterAPIKey) != nil
         } catch {
@@ -99,6 +104,7 @@ final class OpenRouterSettingsViewModel {
         defer { isLoadingModels = false }
 
         do {
+            try persistReplacementAPIKey()
             guard let apiKey = try secretStore.secret(for: .openRouterAPIKey) else {
                 throw OpenRouterClientError.invalidAPIKey
             }
@@ -112,9 +118,7 @@ final class OpenRouterSettingsViewModel {
                 options: refreshedOptions,
                 fetchedAt: now()
             )
-            if modelIdentifier.isEmpty, let firstModel = modelOptions.first {
-                modelIdentifier = firstModel.id
-            }
+            selectAvailableModelIfNeeded()
         } catch {
             testState = .failure(error.localizedDescription)
         }
@@ -135,15 +139,27 @@ final class OpenRouterSettingsViewModel {
 
     private func persistConfiguration() throws {
         let trimmedModel = modelIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedKey = replacementAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard modelOptions.contains(where: { $0.id == trimmedModel }) else {
+            throw OpenRouterClientError.modelUnavailable
+        }
 
         settingsStore.modelIdentifier = trimmedModel
         modelIdentifier = trimmedModel
 
+        try persistReplacementAPIKey()
+    }
+
+    private func persistReplacementAPIKey() throws {
+        let trimmedKey = replacementAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedKey.isEmpty {
             try secretStore.setSecret(trimmedKey, for: .openRouterAPIKey)
             replacementAPIKey = ""
             hasStoredAPIKey = true
         }
+    }
+
+    private func selectAvailableModelIfNeeded() {
+        guard !modelOptions.contains(where: { $0.id == modelIdentifier }) else { return }
+        modelIdentifier = modelOptions.first?.id ?? ""
     }
 }

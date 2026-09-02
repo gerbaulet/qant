@@ -63,6 +63,41 @@ struct OpenRouterSettingsViewModelTests {
         #expect(catalog.requestCount == 1)
     }
 
+    @Test("Loading replaces a model that is absent from the catalog")
+    func replacesUnavailableStoredModel() {
+        let settings = SettingsStoreStub()
+        settings.modelIdentifier = "removed/model"
+        settings.modelCatalogCache = OpenRouterModelCatalogCache(
+            options: cachedOptions,
+            fetchedAt: currentDate
+        )
+        let viewModel = makeViewModel(
+            settings: settings,
+            catalog: ModelCatalogStub(result: .success(refreshedOptions))
+        )
+
+        viewModel.load()
+
+        #expect(viewModel.modelIdentifier == "cached/model")
+    }
+
+    @Test("Saving rejects model identifiers outside the loaded catalog")
+    func rejectsUnavailableModel() {
+        let settings = SettingsStoreStub()
+        let viewModel = makeViewModel(
+            settings: settings,
+            catalog: ModelCatalogStub(result: .success(refreshedOptions))
+        )
+        viewModel.modelIdentifier = "invented/model"
+
+        viewModel.save()
+
+        #expect(settings.modelIdentifier.isEmpty)
+        #expect(viewModel.testState == .failure(
+            "Bitte wähle ein aktuell verfügbares Modell aus der geladenen Liste."
+        ))
+    }
+
     @Test("Failed refresh does not postpone the next automatic attempt")
     func failedRefreshDoesNotAdvanceCache() async {
         let settings = SettingsStoreStub()

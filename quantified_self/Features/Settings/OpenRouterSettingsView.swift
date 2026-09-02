@@ -101,16 +101,8 @@ struct OpenRouterSettingsView: View {
                             }
                         }
                     }
-                    .disabled(viewModel.isLoadingModels || !viewModel.hasStoredAPIKey)
+                    .disabled(viewModel.isLoadingModels || !viewModel.canLoadModels)
                     .accessibilityIdentifier("settings.loadOpenRouterModels")
-
-                    DisclosureGroup("Erweiterte Modellauswahl") {
-                        TextField("anbieter/modell", text: $viewModel.modelIdentifier)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .accessibilityLabel("OpenRouter Modell-ID")
-                            .accessibilityIdentifier("settings.openRouterModel")
-                    }
 
                     Button("Konfiguration speichern") {
                         viewModel.save()

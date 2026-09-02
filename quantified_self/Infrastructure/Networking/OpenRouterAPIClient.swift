@@ -32,6 +32,7 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
     case invalidAPIKey
     case accessForbidden
     case invalidModelIdentifier
+    case modelUnavailable
     case modelNotFound
     case invalidRequest
     case insufficientCredits
@@ -50,6 +51,8 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
             "Dieser API-Schlüssel darf die angeforderte Ressource nicht verwenden."
         case .invalidModelIdentifier:
             "Gib eine Modell-ID im Format anbieter/modell ein."
+        case .modelUnavailable:
+            "Bitte wähle ein aktuell verfügbares Modell aus der geladenen Liste."
         case .modelNotFound:
             "Das konfigurierte OpenRouter-Modell wurde nicht gefunden."
         case .invalidRequest:

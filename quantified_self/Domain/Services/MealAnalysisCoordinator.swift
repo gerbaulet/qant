@@ -365,7 +365,7 @@ final class MealAnalysisCoordinator {
             return true
         case let .apiError(statusCode, _):
             return statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)
-        case .invalidAPIKey, .accessForbidden, .invalidModelIdentifier, .modelNotFound,
+        case .invalidAPIKey, .accessForbidden, .invalidModelIdentifier, .modelUnavailable, .modelNotFound,
                 .invalidRequest, .insufficientCredits:
             return false
         }
