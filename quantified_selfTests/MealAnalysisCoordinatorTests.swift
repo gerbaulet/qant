@@ -152,6 +152,57 @@ struct MealAnalysisCoordinatorTests {
         #expect(InitialAnalysisRunMetadata.decode(meal.activeRevision?.providerMetadata).count == 3)
     }
 
+    @Test("A timed out initial request retries only its missing result")
+    func retriesOnlyTimedOutInitialRequest() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let valid = NutritionAnalysisValidatorTests.validResult()
+        let provider = SequencedAnalysisProviderStub(outcomes: [
+            .success(valid),
+            .failure(OpenRouterClientError.timedOut),
+            .success(valid),
+            .success(valid),
+        ])
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(provider.requestCount == 4)
+        #expect(meal.analysisState == .confirmed)
+    }
+
+    @Test("Unreadable responses are retried up to three times per initial request")
+    func retriesMalformedInitialResponses() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let valid = NutritionAnalysisValidatorTests.validResult()
+        let provider = SequencedAnalysisProviderStub(outcomes: [
+            .success(valid), .failure(NutritionAnalysisError.malformedResponse), .success(valid),
+            .failure(NutritionAnalysisError.malformedResponse),
+            .success(valid),
+        ])
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(provider.requestCount == 5)
+        #expect(meal.analysisState == .confirmed)
+    }
+
     @Test("Invalid analysis values restart the complete initial analysis")
     func retriesInvalidResults() async throws {
         let container = try makeContainer()

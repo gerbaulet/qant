@@ -254,19 +254,15 @@ final class MealAnalysisCoordinator {
                 let result = try await provider.analyze(request)
                 try NutritionAnalysisValidator.validate(result)
                 return (result, [])
-            } catch let error as NutritionAnalysisError {
-                guard case .invalidResult = error,
-                      attempt < Self.maximumAutomaticAttemptCount else {
-                    throw error
+            } catch {
+                guard Self.isRetryable(error),
+                      attempt < Self.maximumAutomaticAttemptCount else { throw error }
+                if Self.isTransportFailure(error) {
+                    AppLogger.nutritionAnalysis.info("Waiting for network before retrying analysis")
+                    try await networkAvailabilityWaiter.waitUntilAvailable()
+                } else {
+                    AppLogger.nutritionAnalysis.info("Retrying failed analysis request")
                 }
-                AppLogger.nutritionAnalysis.info("Retrying analysis after invalid result")
-            } catch let error as OpenRouterClientError {
-                guard error == .transportFailure,
-                      attempt < Self.maximumAutomaticAttemptCount else {
-                    throw error
-                }
-                AppLogger.nutritionAnalysis.info("Waiting for network before retrying analysis")
-                try await networkAvailabilityWaiter.waitUntilAvailable()
             }
         }
         throw NutritionAnalysisError.invalidResult("automatic retry limit reached")
@@ -295,15 +291,10 @@ final class MealAnalysisCoordinator {
                     } catch {
                         retryError = error
                     }
-                case let .failure(error as NutritionAnalysisError):
-                    guard case .invalidResult = error else { throw error }
-                    retryError = error
-                case let .failure(error as OpenRouterClientError):
-                    guard error == .transportFailure else { throw error }
-                    retryError = error
-                    encounteredTransportFailure = true
                 case let .failure(error):
-                    throw error
+                    guard Self.isRetryable(error) else { throw error }
+                    retryError = error
+                    encounteredTransportFailure = encounteredTransportFailure || Self.isTransportFailure(error)
                 }
             }
 
@@ -352,6 +343,31 @@ final class MealAnalysisCoordinator {
             return .success(try await provider.analyze(request))
         } catch {
             return .failure(error)
+        }
+    }
+
+    private static func isTransportFailure(_ error: Error) -> Bool {
+        (error as? OpenRouterClientError) == .transportFailure
+    }
+
+    private static func isRetryable(_ error: Error) -> Bool {
+        if let analysisError = error as? NutritionAnalysisError {
+            switch analysisError {
+            case .malformedResponse, .invalidResult:
+                return true
+            case .missingConfiguration, .invalidState:
+                return false
+            }
+        }
+        guard let clientError = error as? OpenRouterClientError else { return false }
+        switch clientError {
+        case .transportFailure, .timedOut, .serverError, .rateLimited, .invalidResponse:
+            return true
+        case let .apiError(statusCode, _):
+            return statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)
+        case .invalidAPIKey, .accessForbidden, .invalidModelIdentifier, .modelNotFound,
+                .invalidRequest, .insufficientCredits:
+            return false
         }
     }
 
