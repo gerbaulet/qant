@@ -92,6 +92,10 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.analysisRevisions.count == 1)
         #expect(meal.analysisRevisions.first?.status == .failed)
         #expect(meal.analysisRevisions.first?.failureMessage == "OpenRouter ist momentan nicht verfügbar.")
+        let calls = InitialAnalysisRunMetadata.decodeCalls(meal.analysisRevisions.first?.providerMetadata)
+        #expect(calls.count == 9)
+        #expect(calls.allSatisfy { $0.status == .failed })
+        #expect(calls.map(\.attemptNumber) == [1, 1, 1, 2, 2, 2, 3, 3, 3])
         #expect(try context.fetch(FetchDescriptor<Meal>()).count == 1)
     }
 
@@ -123,6 +127,11 @@ struct MealAnalysisCoordinatorTests {
         #expect(waiter.waitCount == 1)
         #expect(meal.analysisState == .confirmed)
         #expect(InitialAnalysisRunMetadata.decode(meal.activeRevision?.providerMetadata).count == 3)
+        let calls = InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata)
+        #expect(calls.count == 4)
+        #expect(calls.map(\.status) == [.succeeded, .succeeded, .failed, .succeeded])
+        #expect(calls.map(\.sampleNumber) == [1, 2, 3, 3])
+        #expect(calls.map(\.attemptNumber) == [1, 1, 1, 2])
     }
 
     @Test("An invalid initial result retries only its missing result")

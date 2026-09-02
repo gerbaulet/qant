@@ -391,27 +391,65 @@ struct MealReviewView: View {
                     .textSelection(.enabled)
             }
 
-            let runs = InitialAnalysisRunMetadata.decode(revision.providerMetadata)
-            if !runs.isEmpty {
+            let calls = InitialAnalysisRunMetadata.decodeCalls(revision.providerMetadata)
+            let legacyRuns = calls.isEmpty
+                ? InitialAnalysisRunMetadata.decode(revision.providerMetadata)
+                : []
+            if !calls.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Einzelne Modelläufe")
+                    Text("Einzelne Aufrufe")
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
-                    ForEach(runs) { run in
+                    ForEach(calls) { call in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text("Lauf \(run.runNumber)")
+                            Image(systemName: call.status == .succeeded
+                                ? "checkmark.circle.fill"
+                                : "exclamationmark.triangle.fill")
+                                .foregroundStyle(call.status == .succeeded ? Color.green : Color.orange)
+                            Text("Aufruf \(call.callNumber)")
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(run.modelIdentifier)
+                                Text(call.modelIdentifier ?? "Keine Modellantwort")
                                     .font(.caption)
                                     .lineLimit(2)
-                                if let provider = run.providerIdentifier, !provider.isEmpty {
+                                if let provider = call.providerIdentifier, !provider.isEmpty {
                                     Text(provider)
                                         .font(.caption2)
                                         .foregroundStyle(.tertiary)
                                 }
+                                Text(call.sampleNumber.map {
+                                    "Schätzung \($0) · Versuch \(call.attemptNumber)"
+                                } ?? "Versuch \(call.attemptNumber)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                if let error = call.errorMessage, !error.isEmpty {
+                                    Text(error)
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                }
                             }
+                            Spacer(minLength: 8)
+                            if let energy = call.energyKilocalories {
+                                Text("~\(wholeNumber(energy)) kcal")
+                                    .font(.caption.bold().monospacedDigit())
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            } else if !legacyRuns.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Einzelne Modelläufe")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    ForEach(legacyRuns) { run in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("Lauf \(run.runNumber)")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                            Text(run.modelIdentifier)
+                                .font(.caption)
                             Spacer(minLength: 8)
                             Text("~\(wholeNumber(run.energyKilocalories)) kcal")
                                 .font(.caption.bold().monospacedDigit())
@@ -453,7 +491,8 @@ struct MealReviewView: View {
     }
 
     private func hasInitialRunSummaries(_ revision: MealAnalysisRevision) -> Bool {
-        !InitialAnalysisRunMetadata.decode(revision.providerMetadata).isEmpty
+        !InitialAnalysisRunMetadata.decodeCalls(revision.providerMetadata).isEmpty ||
+            !InitialAnalysisRunMetadata.decode(revision.providerMetadata).isEmpty
     }
 
     private var unavailableState: some View {

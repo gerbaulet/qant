@@ -123,6 +123,7 @@ final class MealAnalysisCoordinator {
         clarificationAnswer: String? = nil,
         userCorrection: String? = nil
     ) async {
+        let callRecorder = AnalysisCallRecorder()
         let previousMealState = meal.analysisState
         let preservedPortionMultiplier = meal.activeRevision?.normalizedPortionMultiplier ?? 1
         let previousAnalysis = meal.activeRevision.map(makeBaselineAnalysisResult)
@@ -159,7 +160,8 @@ final class MealAnalysisCoordinator {
             )
             let (result, initialResults) = try await requestValidAnalysis(
                 request,
-                trigger: trigger
+                trigger: trigger,
+                callRecorder: callRecorder
             )
             persist(
                 result,
@@ -168,6 +170,7 @@ final class MealAnalysisCoordinator {
                 clarificationAnswer: clarificationAnswer,
                 userCorrection: userCorrection,
                 initialResults: initialResults,
+                calls: callRecorder.calls,
                 portionMultiplier: preservedPortionMultiplier,
                 for: meal
             )
@@ -185,6 +188,7 @@ final class MealAnalysisCoordinator {
                 trigger: trigger,
                 userCorrection: userCorrection,
                 error: error,
+                calls: callRecorder.calls,
                 for: meal
             )
             meal.analysisState = .failed
@@ -212,10 +216,11 @@ final class MealAnalysisCoordinator {
 
     private func requestValidAnalysis(
         _ request: NutritionAnalysisRequest,
-        trigger: AnalysisTrigger
+        trigger: AnalysisTrigger,
+        callRecorder: AnalysisCallRecorder
     ) async throws -> (NutritionAnalysisResult, [NutritionAnalysisResult]) {
         if trigger == .initial {
-            let sampleResults = try await requestInitialSample(request)
+            let sampleResults = try await requestInitialSample(request, callRecorder: callRecorder)
             let result = try NutritionAnalysisConsensus.combine(
                 sampleResults,
                 allowsClarification: request.allowsClarification
@@ -226,7 +231,7 @@ final class MealAnalysisCoordinator {
         if trigger == .clarification {
             for attempt in 1...Self.maximumAutomaticAttemptCount {
                 do {
-                    let sampleResults = try await requestInitialSample(request)
+                    let sampleResults = try await requestInitialSample(request, callRecorder: callRecorder)
                     let result = try NutritionAnalysisConsensus.combine(
                         sampleResults,
                         allowsClarification: request.allowsClarification
@@ -253,8 +258,10 @@ final class MealAnalysisCoordinator {
             do {
                 let result = try await provider.analyze(request)
                 try NutritionAnalysisValidator.validate(result)
+                callRecorder.recordSuccess(result, sampleNumber: nil, attemptNumber: attempt)
                 return (result, [])
             } catch {
+                callRecorder.recordFailure(error, sampleNumber: nil, attemptNumber: attempt)
                 guard Self.isRetryable(error),
                       attempt < Self.maximumAutomaticAttemptCount else { throw error }
                 if Self.isTransportFailure(error) {
@@ -269,7 +276,8 @@ final class MealAnalysisCoordinator {
     }
 
     private func requestInitialSample(
-        _ request: NutritionAnalysisRequest
+        _ request: NutritionAnalysisRequest,
+        callRecorder: AnalysisCallRecorder
     ) async throws -> [NutritionAnalysisResult] {
         var results = Array<NutritionAnalysisResult?>(
             repeating: nil,
@@ -288,10 +296,26 @@ final class MealAnalysisCoordinator {
                     do {
                         try NutritionAnalysisValidator.validate(result)
                         results[index] = result
+                        callRecorder.recordSuccess(
+                            result,
+                            sampleNumber: index + 1,
+                            attemptNumber: attempt
+                        )
                     } catch {
+                        callRecorder.recordFailure(
+                            error,
+                            result: result,
+                            sampleNumber: index + 1,
+                            attemptNumber: attempt
+                        )
                         retryError = error
                     }
                 case let .failure(error):
+                    callRecorder.recordFailure(
+                        error,
+                        sampleNumber: index + 1,
+                        attemptNumber: attempt
+                    )
                     guard Self.isRetryable(error) else { throw error }
                     retryError = error
                     encounteredTransportFailure = encounteredTransportFailure || Self.isTransportFailure(error)
@@ -384,6 +408,7 @@ final class MealAnalysisCoordinator {
         trigger: AnalysisTrigger,
         userCorrection: String?,
         error: Error,
+        calls: [AnalysisCallSummary],
         for meal: Meal
     ) {
         meal.analysisRevisions.append(Self.failureRevision(
@@ -392,7 +417,8 @@ final class MealAnalysisCoordinator {
             trigger: trigger,
             userCorrection: userCorrection,
             message: error.localizedDescription,
-            previousRevision: meal.activeRevision
+            previousRevision: meal.activeRevision,
+            providerMetadata: InitialAnalysisRunMetadata.encodeCalls(calls)
         ))
     }
 
@@ -402,13 +428,15 @@ final class MealAnalysisCoordinator {
         trigger: AnalysisTrigger,
         userCorrection: String? = nil,
         message: String,
-        previousRevision: MealAnalysisRevision?
+        previousRevision: MealAnalysisRevision?,
+        providerMetadata: String? = nil
     ) -> MealAnalysisRevision {
         MealAnalysisRevision(
             createdAt: createdAt,
             requestDate: requestDate,
             modelIdentifier: previousRevision?.modelIdentifier ?? "Nicht verfügbar",
             providerIdentifier: previousRevision?.providerIdentifier,
+            providerMetadata: providerMetadata,
             promptVersion: NutritionAnalysisPrompt.currentVersion,
             trigger: trigger,
             status: .failed,
@@ -428,6 +456,7 @@ final class MealAnalysisCoordinator {
         clarificationAnswer: String?,
         userCorrection: String?,
         initialResults: [NutritionAnalysisResult],
+        calls: [AnalysisCallSummary],
         portionMultiplier: Double,
         for meal: Meal
     ) {
@@ -448,7 +477,7 @@ final class MealAnalysisCoordinator {
             requestDate: requestDate,
             modelIdentifier: result.modelIdentifier,
             providerIdentifier: result.providerIdentifier,
-            providerMetadata: InitialAnalysisRunMetadata.encode(initialResults),
+            providerMetadata: InitialAnalysisRunMetadata.encodeCalls(calls) ?? InitialAnalysisRunMetadata.encode(initialResults),
             promptVersion: NutritionAnalysisPrompt.currentVersion,
             trigger: trigger,
             status: status,
@@ -526,6 +555,61 @@ final class MealAnalysisCoordinator {
             unit: nutrient.unit,
             confidence: nutrient.confidence,
             provenance: nutrient.provenance
+        )
+    }
+}
+
+@MainActor
+private final class AnalysisCallRecorder {
+    private(set) var calls: [AnalysisCallSummary] = []
+
+    func recordSuccess(
+        _ result: NutritionAnalysisResult,
+        sampleNumber: Int?,
+        attemptNumber: Int
+    ) {
+        calls.append(summary(
+            status: .succeeded,
+            result: result,
+            sampleNumber: sampleNumber,
+            attemptNumber: attemptNumber,
+            errorMessage: nil
+        ))
+    }
+
+    func recordFailure(
+        _ error: Error,
+        result: NutritionAnalysisResult? = nil,
+        sampleNumber: Int?,
+        attemptNumber: Int
+    ) {
+        calls.append(summary(
+            status: .failed,
+            result: result,
+            sampleNumber: sampleNumber,
+            attemptNumber: attemptNumber,
+            errorMessage: error.localizedDescription
+        ))
+    }
+
+    private func summary(
+        status: AnalysisCallStatus,
+        result: NutritionAnalysisResult?,
+        sampleNumber: Int?,
+        attemptNumber: Int,
+        errorMessage: String?
+    ) -> AnalysisCallSummary {
+        AnalysisCallSummary(
+            callNumber: calls.count + 1,
+            sampleNumber: sampleNumber,
+            attemptNumber: attemptNumber,
+            status: status,
+            modelIdentifier: result?.modelIdentifier,
+            providerIdentifier: result?.providerIdentifier,
+            energyKilocalories: result?.nutrients.first {
+                $0.identifier == .energy && $0.unit == .kilocalorie
+            }?.value,
+            errorMessage: errorMessage
         )
     }
 }
