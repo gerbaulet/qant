@@ -31,6 +31,7 @@ struct OpenRouterNutritionAnalysisServiceTests {
         let body = try #require(client.receivedBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["model"] as? String == "example/vision-model")
+        #expect(json["temperature"] as? Int == 0)
         let responseFormat = try #require(json["response_format"] as? [String: Any])
         let jsonSchema = try #require(responseFormat["json_schema"] as? [String: Any])
         #expect(jsonSchema["strict"] as? Bool == true)
@@ -69,6 +70,54 @@ struct OpenRouterNutritionAnalysisServiceTests {
         await #expect(throws: NutritionAnalysisError.malformedResponse) {
             try await service.analyze(NutritionAnalysisRequest(images: [], userComment: nil))
         }
+    }
+
+    @Test("Minor structural nutrient mistakes are normalized before validation")
+    func normalizesNutrientStructure() async throws {
+        var nutrients = Self.encodedCoreNutrients
+        nutrients[1]["unit"] = "mg"
+        nutrients.append([
+            "identifier": "protein",
+            "value": 34,
+            "unit": "g",
+            "confidence": "high",
+            "provenance": "visualEstimate",
+        ])
+        let client = ChatClientStub(responseData: try Self.chatResponseData(nutrients: nutrients))
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "secret"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/model"),
+            client: client
+        )
+
+        let result = try await service.analyze(NutritionAnalysisRequest(images: [], userComment: nil))
+
+        let proteins = result.nutrients.filter { $0.identifier == .protein }
+        #expect(proteins.count == 1)
+        #expect(proteins.first?.value == 34)
+        #expect(proteins.first?.unit == .gram)
+        #expect(proteins.first?.confidence == .high)
+    }
+
+    @Test("The prompt requires a shared quantity basis and calorie cross-check")
+    func requestsInternallyConsistentEstimate() async throws {
+        let client = ChatClientStub(responseData: try Self.chatResponseData())
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "secret"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/model"),
+            client: client
+        )
+
+        _ = try await service.analyze(NutritionAnalysisRequest(images: [], userComment: nil))
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        let systemText = try #require(messages.first?["content"] as? String)
+        #expect(systemText.contains("estimate its grams once"))
+        #expect(systemText.contains("approximately equal the component sums"))
+        #expect(systemText.contains("4/4/9/2 kcal per gram"))
+        #expect(systemText.contains("Do not emit duplicate"))
     }
 
     @Test("Best-estimate requests include prior context and reject another question")
@@ -304,7 +353,8 @@ struct OpenRouterNutritionAnalysisServiceTests {
     }
 
     private static func chatResponseData(
-        clarificationQuestion: Any = NSNull()
+        clarificationQuestion: Any = NSNull(),
+        nutrients: [[String: Any]]? = nil
     ) throws -> Data {
         let payload: [String: Any] = [
             "mealName": "Gemüsecurry mit Reis",
@@ -312,15 +362,7 @@ struct OpenRouterNutritionAnalysisServiceTests {
             "confidence": "medium",
             "uncertaintySummary": "Menge des verwendeten Öls",
             "clarificationQuestion": clarificationQuestion,
-            "nutrients": NutritionAnalysisValidatorTests.coreNutrients.map { nutrient in
-                [
-                    "identifier": nutrient.identifier.rawValue,
-                    "value": nutrient.value,
-                    "unit": nutrient.unit.rawValue,
-                    "confidence": nutrient.confidence.rawValue,
-                    "provenance": nutrient.provenance.rawValue,
-                ]
-            },
+            "nutrients": nutrients ?? encodedCoreNutrients,
             "components": [],
         ]
         let payloadData = try JSONSerialization.data(withJSONObject: payload)
@@ -330,6 +372,18 @@ struct OpenRouterNutritionAnalysisServiceTests {
             "model": "resolved/vision-model",
             "provider": "Example Provider",
         ])
+    }
+
+    private static var encodedCoreNutrients: [[String: Any]] {
+        NutritionAnalysisValidatorTests.coreNutrients.map { nutrient in
+            [
+                "identifier": nutrient.identifier.rawValue,
+                "value": nutrient.value,
+                "unit": nutrient.unit.rawValue,
+                "confidence": nutrient.confidence.rawValue,
+                "provenance": nutrient.provenance.rawValue,
+            ]
+        }
     }
 }
 

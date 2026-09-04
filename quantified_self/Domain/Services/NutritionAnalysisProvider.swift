@@ -170,3 +170,68 @@ enum NutritionAnalysisValidator {
         }
     }
 }
+
+enum NutritionAnalysisResultNormalizer {
+    static func normalize(_ result: NutritionAnalysisResult) -> NutritionAnalysisResult {
+        NutritionAnalysisResult(
+            mealName: result.mealName.trimmingCharacters(in: .whitespacesAndNewlines),
+            estimatedTotalWeightGrams: result.estimatedTotalWeightGrams,
+            confidence: result.confidence,
+            uncertaintySummary: normalizedOptionalText(result.uncertaintySummary),
+            clarificationQuestion: normalizedOptionalText(result.clarificationQuestion),
+            nutrients: normalizedNutrients(result.nutrients),
+            components: normalizedComponents(result.components),
+            modelIdentifier: result.modelIdentifier,
+            providerIdentifier: result.providerIdentifier
+        )
+    }
+
+    private static func normalizedComponents(
+        _ components: [AnalyzedFoodComponent]
+    ) -> [AnalyzedFoodComponent] {
+        var seenNames: Set<String> = []
+        return components.compactMap { component in
+            let name = component.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return nil }
+            let comparisonName = name.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: .current
+            )
+            guard seenNames.insert(comparisonName).inserted else { return nil }
+            return AnalyzedFoodComponent(
+                name: name,
+                estimatedWeightGrams: component.estimatedWeightGrams,
+                nutrients: normalizedNutrients(component.nutrients)
+            )
+        }
+    }
+
+    private static func normalizedNutrients(
+        _ nutrients: [AnalyzedNutrient]
+    ) -> [AnalyzedNutrient] {
+        Dictionary(grouping: nutrients, by: \.identifier)
+            .compactMap { identifier, candidates in
+                guard let selected = candidates.first(where: {
+                    $0.unit == NutritionAnalysisValidator.expectedUnit(for: identifier)
+                }) ?? candidates.first else { return nil }
+                return AnalyzedNutrient(
+                    identifier: identifier,
+                    value: selected.value,
+                    unit: NutritionAnalysisValidator.expectedUnit(for: identifier),
+                    confidence: selected.confidence,
+                    provenance: selected.provenance
+                )
+            }
+            .sorted { nutrientOrder($0.identifier) < nutrientOrder($1.identifier) }
+    }
+
+    private static func nutrientOrder(_ identifier: NutrientIdentifier) -> Int {
+        NutrientIdentifier.allCases.firstIndex(of: identifier) ?? .max
+    }
+
+    private static func normalizedOptionalText(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
+    }
+}

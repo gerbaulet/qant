@@ -73,7 +73,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             throw NutritionAnalysisError.malformedResponse
         }
 
-        let result = NutritionAnalysisResult(
+        let result = NutritionAnalysisResultNormalizer.normalize(NutritionAnalysisResult(
             mealName: payload.mealName,
             estimatedTotalWeightGrams: payload.estimatedTotalWeightGrams,
             confidence: payload.confidence,
@@ -83,7 +83,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             components: payload.components,
             modelIdentifier: response.model ?? modelIdentifier,
             providerIdentifier: response.provider
-        )
+        ))
         try NutritionAnalysisValidator.validate(result)
         return result
     }
@@ -107,7 +107,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
 
         var body: [String: Any] = [
             "model": modelIdentifier,
-            "temperature": 0.2,
+            "temperature": 0,
             "provider": [
                 "require_parameters": true,
             ],
@@ -144,7 +144,9 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             ? "Ask at most one concise clarification question, and only when its answer could materially change the calorie estimate."
             : "Do not ask another clarification question. Return the best complete estimate from the available evidence."
         return """
-        Analyze the meal using every supplied image and the user's comment. Inspect packaging and nutrition labels explicitly. Prefer readable label values over visual estimates. Return realistic estimates without false precision. Always include energy, protein, carbohydrates, fat, fiber, sugar, saturatedFat, and sodium; include every additional listed micronutrient that can be responsibly estimated. Nutrient provenance must distinguish label, calculatedFromLabel, visualEstimate, textProvidedByUser, mixedEstimate, or unknown. Return only the JSON object required by the schema.
+        Analyze the meal using every supplied image and the user's comment. Inspect packaging and nutrition labels explicitly. Prefer readable label values over visual estimates. Return realistic estimates without false precision.
+        Use one internally consistent estimate: identify each distinct food once, estimate its grams once from visible scale and portions, and reuse those same quantities for components, total weight, calories, and nutrients. When no readable label is available, calculate each component from a typical value per 100 g and its estimated grams. Total weight and total nutrients must approximately equal the component sums. Cross-check calories against protein, carbohydrates, fat, and fiber (4/4/9/2 kcal per gram) and resolve material inconsistencies before answering. Do not emit duplicate component names or nutrient identifiers.
+        Always include energy, protein, carbohydrates, fat, fiber, sugar, saturatedFat, and sodium; include every additional listed micronutrient that can be responsibly estimated. Use kcal for energy; g for protein, carbohydrates, fat, fiber, sugar, saturatedFat, and salt; mg for sodium, most minerals, and most vitamins; and µg only for the identifiers whose schema convention requires it. Nutrient provenance must distinguish label, calculatedFromLabel, visualEstimate, textProvidedByUser, mixedEstimate, or unknown. Return only the JSON object required by the schema.
         \(outputLanguageRule)
         \(clarificationRule)
         """
