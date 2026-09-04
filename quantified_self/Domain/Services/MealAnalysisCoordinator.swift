@@ -83,9 +83,19 @@ final class MealAnalysisCoordinator {
         )
     }
 
-    func useBestEstimate(for meal: Meal) async {
-        guard meal.analysisState == .needsClarification, meal.activeRevision != nil else { return }
-        await performAnalysis(meal, trigger: .bestEstimate)
+    func useBestEstimate(for meal: Meal) throws {
+        guard
+            meal.analysisState == .needsClarification,
+            let revision = meal.activeRevision,
+            revision.status == .needsClarification
+        else {
+            throw NutritionAnalysisError.invalidState
+        }
+
+        revision.status = .confirmed
+        meal.analysisState = .confirmed
+        meal.modifiedAt = now()
+        try context.save()
     }
 
     func correct(_ correction: String, for meal: Meal) async {

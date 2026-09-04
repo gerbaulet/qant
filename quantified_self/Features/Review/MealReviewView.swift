@@ -567,7 +567,7 @@ struct MealReviewView: View {
                     )
                     .accessibilityIdentifier("meal.submitClarification")
 
-                    Button("Beste Schätzung verwenden", action: useBestEstimate)
+                    Button("Beste Schätzung übernehmen", action: useBestEstimate)
                         .disabled(isWorking)
                         .accessibilityIdentifier("meal.bestEstimate")
                 }
@@ -712,10 +712,10 @@ struct MealReviewView: View {
     }
 
     private func useBestEstimate() {
-        isWorking = true
-        Task {
-            await makeCoordinator().useBestEstimate(for: meal)
-            isWorking = false
+        do {
+            try makeCoordinator().useBestEstimate(for: meal)
+        } catch {
+            alertMessage = error.localizedDescription
         }
     }
 

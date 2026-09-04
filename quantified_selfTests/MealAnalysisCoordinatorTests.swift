@@ -394,8 +394,8 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.requestCount == 3)
     }
 
-    @Test("Best estimate reruns without permitting another question")
-    func usesBestEstimate() async throws {
+    @Test("Best estimate confirms the existing revision without another request")
+    func usesBestEstimate() throws {
         let container = try makeContainer()
         let context = container.mainContext
         let previousRevision = makeRevision(
@@ -416,12 +416,15 @@ struct MealAnalysisCoordinatorTests {
             imageStorage: AnalysisImageStorage(dataByKey: [:])
         )
 
-        await coordinator.useBestEstimate(for: meal)
+        try coordinator.useBestEstimate(for: meal)
 
-        #expect(meal.analysisState == .awaitingConfirmation)
-        #expect(meal.activeRevision?.trigger == .bestEstimate)
-        #expect(provider.receivedRequest?.requestsBestEstimate == true)
-        #expect(provider.receivedRequest?.allowsClarification == false)
+        #expect(meal.analysisState == .confirmed)
+        #expect(meal.activeRevision?.id == previousRevision.id)
+        #expect(meal.activeRevision?.status == .confirmed)
+        #expect(meal.activeRevision?.trigger == .initial)
+        #expect(meal.activeRevision?.clarificationQuestion == "Wie viel Öl wurde verwendet?")
+        #expect(meal.analysisRevisions.count == 1)
+        #expect(provider.requestCount == 0)
     }
 
     @Test("Follow-up baseline omits representative component quantities")
