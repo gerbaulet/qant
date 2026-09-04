@@ -105,7 +105,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             ]
         })
 
-        return [
+        var body: [String: Any] = [
             "model": modelIdentifier,
             "temperature": 0.2,
             "provider": [
@@ -130,6 +130,13 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
                 ],
             ],
         ]
+        if modelIdentifier.isOpenRouterAutoRouterIdentifier {
+            body["plugins"] = [[
+                "id": "auto-router",
+                "cost_tier": settingsStore.costTier.rawValue,
+            ]]
+        }
+        return body
     }
 
     private func systemPrompt(allowsClarification: Bool) -> String {

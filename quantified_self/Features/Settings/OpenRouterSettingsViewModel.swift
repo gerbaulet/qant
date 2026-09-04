@@ -13,6 +13,7 @@ final class OpenRouterSettingsViewModel {
 
     var replacementAPIKey = ""
     var modelIdentifier = ""
+    var costTier: OpenRouterCostTier = .low
     private(set) var modelOptions: [OpenRouterModelOption] = []
     private(set) var hasStoredAPIKey = false
     private(set) var isTesting = false
@@ -22,6 +23,10 @@ final class OpenRouterSettingsViewModel {
 
     var canLoadModels: Bool {
         hasStoredAPIKey || !replacementAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var isAutoRouterSelected: Bool {
+        modelIdentifier.isOpenRouterAutoRouterIdentifier
     }
 
     private let secretStore: any SecretStoring
@@ -46,6 +51,7 @@ final class OpenRouterSettingsViewModel {
 
     func load() {
         modelIdentifier = settingsStore.modelIdentifier
+        costTier = settingsStore.costTier
         modelOptions = settingsStore.modelCatalogCache?.options ?? []
         selectAvailableModelIfNeeded()
         do {
@@ -144,6 +150,7 @@ final class OpenRouterSettingsViewModel {
         }
 
         settingsStore.modelIdentifier = trimmedModel
+        settingsStore.costTier = costTier
         modelIdentifier = trimmedModel
 
         try persistReplacementAPIKey()

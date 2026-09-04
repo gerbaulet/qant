@@ -264,6 +264,45 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(provider["require_parameters"] as? Bool == true)
     }
 
+    @Test("Auto Router requests include the selected cost tier")
+    func includesAutoRouterCostTier() async throws {
+        for modelIdentifier in ["openrouter/auto", "openrouter/auto-beta"] {
+            let client = ChatClientStub(responseData: try Self.chatResponseData())
+            let settings = AnalysisSettingsStore(modelIdentifier: modelIdentifier)
+            settings.costTier = .xhigh
+            let service = OpenRouterNutritionAnalysisService(
+                secretStore: AnalysisSecretStore(secret: "test-key"),
+                settingsStore: settings,
+                client: client
+            )
+
+            _ = try await service.analyze(NutritionAnalysisRequest(images: [], userComment: nil))
+
+            let body = try #require(client.receivedBody)
+            let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let plugins = try #require(json["plugins"] as? [[String: Any]])
+            #expect(plugins.count == 1)
+            #expect(plugins.first?["id"] as? String == "auto-router")
+            #expect(plugins.first?["cost_tier"] as? String == "xhigh")
+        }
+    }
+
+    @Test("Fixed-model requests omit Auto Router settings")
+    func omitsAutoRouterSettingsForFixedModel() async throws {
+        let client = ChatClientStub(responseData: try Self.chatResponseData())
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "test-key"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/vision-model"),
+            client: client
+        )
+
+        _ = try await service.analyze(NutritionAnalysisRequest(images: [], userComment: nil))
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["plugins"] == nil)
+    }
+
     private static func chatResponseData(
         clarificationQuestion: Any = NSNull()
     ) throws -> Data {
@@ -321,6 +360,7 @@ private struct AnalysisSecretStore: SecretStoring {
 
 private final class AnalysisSettingsStore: OpenRouterSettingsStoring {
     var modelIdentifier: String
+    var costTier: OpenRouterCostTier = .low
     var modelCatalogCache: OpenRouterModelCatalogCache?
 
     init(modelIdentifier: String) {

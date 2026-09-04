@@ -17,6 +17,19 @@ struct OpenRouterSettingsStoreTests {
         #expect(secondStore.modelIdentifier == "google/gemini-test")
     }
 
+    @Test("The Auto Router cost tier persists and defaults to low")
+    func costTierPersistence() throws {
+        let suiteName = "quantified-self-settings-tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let firstStore = UserDefaultsOpenRouterSettingsStore(defaults: defaults)
+        #expect(firstStore.costTier == .low)
+        firstStore.costTier = .xhigh
+
+        #expect(UserDefaultsOpenRouterSettingsStore(defaults: defaults).costTier == .xhigh)
+    }
+
     @Test("Model catalog cache persists options and refresh time")
     func modelCatalogCachePersistence() throws {
         let suiteName = "quantified-self-settings-tests.\(UUID().uuidString)"

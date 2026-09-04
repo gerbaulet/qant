@@ -118,6 +118,30 @@ struct OpenRouterSettingsViewModelTests {
         #expect(settings.modelCatalogCache == staleCache)
     }
 
+    @Test("Loading and saving preserve the selected Auto Router cost tier")
+    func preservesAutoRouterCostTier() {
+        let settings = SettingsStoreStub()
+        settings.modelIdentifier = "openrouter/auto-beta"
+        settings.costTier = .high
+        settings.modelCatalogCache = OpenRouterModelCatalogCache(
+            options: [OpenRouterModelOption(id: "openrouter/auto-beta", name: "Auto Router (Beta)")],
+            fetchedAt: currentDate
+        )
+        let viewModel = makeViewModel(
+            settings: settings,
+            catalog: ModelCatalogStub(result: .success(refreshedOptions))
+        )
+
+        viewModel.load()
+        #expect(viewModel.isAutoRouterSelected)
+        #expect(viewModel.costTier == .high)
+
+        viewModel.costTier = .max
+        viewModel.save()
+
+        #expect(settings.costTier == .max)
+    }
+
     private func makeViewModel(
         settings: SettingsStoreStub,
         catalog: ModelCatalogStub
@@ -135,6 +159,7 @@ struct OpenRouterSettingsViewModelTests {
 @MainActor
 private final class SettingsStoreStub: OpenRouterSettingsStoring {
     var modelIdentifier = ""
+    var costTier: OpenRouterCostTier = .low
     var modelCatalogCache: OpenRouterModelCatalogCache?
 }
 

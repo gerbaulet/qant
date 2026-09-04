@@ -90,6 +90,19 @@ struct OpenRouterSettingsView: View {
                         .accessibilityIdentifier("settings.openRouterModelPicker")
                     }
 
+                    if viewModel.isAutoRouterSelected {
+                        Picker("Kostenstufe", selection: $viewModel.costTier) {
+                            ForEach(OpenRouterCostTier.allCases) { tier in
+                                Text(tier.title).tag(tier)
+                            }
+                        }
+                        .accessibilityIdentifier("settings.openRouterCostTier")
+
+                        Text("Niedrig priorisiert günstigere passende Modelle; Maximal erlaubt die leistungsfähigsten und potenziell teuersten Modelle.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Button {
                         Task { await viewModel.loadModelOptions(forceRefresh: true) }
                     } label: {
