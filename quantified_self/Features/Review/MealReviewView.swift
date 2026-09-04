@@ -17,6 +17,8 @@ struct MealReviewView: View {
     @State private var showsMoreNutrients = false
     @State private var showsCorrectionEntry = false
     @State private var showsDeleteConfirmation = false
+    @State private var showsTimestampEditor = false
+    @State private var editedTimestamp: Date
 #if DEBUG
     @State private var hasTriggeredUITestQuickCapture = false
 #endif
@@ -31,6 +33,7 @@ struct MealReviewView: View {
         self.analysisProvider = analysisProvider
         self.imageStorage = imageStorage
         self.onDelete = onDelete
+        _editedTimestamp = State(initialValue: meal.timestamp)
     }
 
     var body: some View {
@@ -77,6 +80,9 @@ struct MealReviewView: View {
         }
         .sheet(isPresented: $showsCorrectionEntry) {
             correctionEntry
+        }
+        .sheet(isPresented: $showsTimestampEditor) {
+            timestampEditor
         }
         .confirmationDialog(
             "Mahlzeit löschen?",
@@ -132,16 +138,28 @@ struct MealReviewView: View {
             Text(meal.activeRevision?.mealName ?? "Mahlzeit")
                 .font(.largeTitle.bold())
             HStack(spacing: 10) {
-                Text(
-                    meal.timestamp,
-                    format: .dateTime
-                        .weekday()
-                        .day()
-                        .month()
-                        .hour()
-                        .minute()
-                        .locale(Locale(identifier: "de_DE"))
-                )
+                Button {
+                    editedTimestamp = meal.timestamp
+                    showsTimestampEditor = true
+                } label: {
+                    Label {
+                        Text(
+                            meal.timestamp,
+                            format: .dateTime
+                                .weekday()
+                                .day()
+                                .month()
+                                .hour()
+                                .minute()
+                                .locale(Locale(identifier: "de_DE"))
+                        )
+                    } icon: {
+                        Image(systemName: "pencil")
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Zeitpunkt ändern")
+                .accessibilityIdentifier("meal.editTimestamp")
                 Label(meal.analysisState.reviewTitle, systemImage: meal.analysisState.reviewSystemImage)
                     .foregroundStyle(meal.analysisState.reviewColor)
             }
@@ -621,6 +639,31 @@ struct MealReviewView: View {
         }
     }
 
+    private var timestampEditor: some View {
+        NavigationStack {
+            Form {
+                DatePicker(
+                    "Zeitpunkt",
+                    selection: $editedTimestamp,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .datePickerStyle(.graphical)
+                .accessibilityIdentifier("meal.timestampEditor")
+            }
+            .navigationTitle("Zeitpunkt ändern")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Abbrechen") { showsTimestampEditor = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Speichern", action: saveTimestamp)
+                        .accessibilityIdentifier("meal.saveTimestamp")
+                }
+            }
+        }
+    }
+
     private func actionBar<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(.horizontal)
@@ -644,6 +687,18 @@ struct MealReviewView: View {
             try makeCoordinator().confirm(meal)
         } catch {
             alertMessage = error.localizedDescription
+        }
+    }
+
+    private func saveTimestamp() {
+        do {
+            try SwiftDataMealRepository(context: modelContext).updateTimestamp(
+                editedTimestamp,
+                for: meal
+            )
+            showsTimestampEditor = false
+        } catch {
+            alertMessage = "Der Zeitpunkt konnte nicht gespeichert werden."
         }
     }
 

@@ -26,6 +26,8 @@ protocol MealRepository {
     @discardableResult
     func createMeal(from draft: MealDraft, now: Date) throws -> Meal
 
+    func updateTimestamp(_ timestamp: Date, for meal: Meal, now: Date) throws
+
     @discardableResult
     func deleteMeal(_ meal: Meal) throws -> [StoredMealImage]
 }
@@ -69,6 +71,23 @@ final class SwiftDataMealRepository: MealRepository {
         } catch {
             context.delete(meal)
             AppLogger.persistence.error("Local meal save failed")
+            throw error
+        }
+    }
+
+    func updateTimestamp(_ timestamp: Date, for meal: Meal, now: Date = .now) throws {
+        let previousTimestamp = meal.timestamp
+        let previousModifiedAt = meal.modifiedAt
+        meal.timestamp = timestamp
+        meal.modifiedAt = now
+
+        do {
+            try context.save()
+            AppLogger.persistence.info("Meal timestamp updated locally")
+        } catch {
+            meal.timestamp = previousTimestamp
+            meal.modifiedAt = previousModifiedAt
+            AppLogger.persistence.error("Meal timestamp update failed")
             throw error
         }
     }

@@ -73,6 +73,27 @@ struct MealRepositoryTests {
         #expect(created.userComment == nil)
     }
 
+    @Test("Updating a meal timestamp persists the new time and modification date")
+    func updateTimestamp() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let repository = SwiftDataMealRepository(context: context)
+        let originalTimestamp = Date(timeIntervalSince1970: 1_787_500_000)
+        let originalModifiedAt = Date(timeIntervalSince1970: 1_787_500_100)
+        let meal = Meal(modifiedAt: originalModifiedAt, timestamp: originalTimestamp)
+        context.insert(meal)
+        try context.save()
+        let updatedTimestamp = Date(timeIntervalSince1970: 1_787_600_000)
+        let updatedAt = Date(timeIntervalSince1970: 1_787_600_100)
+
+        try repository.updateTimestamp(updatedTimestamp, for: meal, now: updatedAt)
+
+        context.rollback()
+        let persistedMeal = try #require(context.fetch(FetchDescriptor<Meal>()).first)
+        #expect(persistedMeal.timestamp == updatedTimestamp)
+        #expect(persistedMeal.modifiedAt == updatedAt)
+    }
+
     @Test("Deleting a meal persists its removal and returns its stored images")
     func deleteMeal() throws {
         let container = try makeContainer()
