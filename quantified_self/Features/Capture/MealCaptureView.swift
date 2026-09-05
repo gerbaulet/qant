@@ -401,5 +401,5 @@ private extension MealCategory {
 
 #Preview {
     MealCaptureView()
-        .modelContainer(for: NutritionSchemaV1.models, inMemory: true)
+        .modelContainer(for: NutritionSchemaV2.models, inMemory: true)
 }

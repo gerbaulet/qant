@@ -21,7 +21,7 @@ enum NutritionModelContainerFactory {
         mode: NutritionStoreMode = .current,
         isStoredInMemoryOnly: Bool = false
     ) throws -> ModelContainer {
-        let schema = Schema(NutritionSchemaV1.models)
+        let schema = Schema(NutritionSchemaV2.models)
         let configuration: ModelConfiguration
 
         switch mode {
