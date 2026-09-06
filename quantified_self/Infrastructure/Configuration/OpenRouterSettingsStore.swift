@@ -27,7 +27,7 @@ enum OpenRouterCostTier: String, CaseIterable, Codable, Equatable, Identifiable 
 }
 
 extension String {
-    var isOpenRouterAutoRouterIdentifier: Bool {
+    nonisolated var isOpenRouterAutoRouterIdentifier: Bool {
         self == "openrouter/auto" || self == "openrouter/auto-beta"
     }
 }

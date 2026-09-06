@@ -32,7 +32,8 @@ struct OpenRouterTrafficLogTests {
         let requestID = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
         let imageData = String(repeating: "A", count: 1_024)
         let body = try JSONSerialization.data(withJSONObject: [
-            "model": "example/model",
+            "model": "openrouter/auto-beta",
+            "plugins": [["id": "auto-router", "cost_tier": "xhigh"]],
             "messages": [[
                 "role": "user",
                 "content": [
@@ -56,7 +57,7 @@ struct OpenRouterTrafficLogTests {
             id: requestID,
             statusCode: 200,
             headers: ["Content-Type": "application/json"],
-            body: Data(#"{"choices":[{"message":{"content":"Antworttext"}}]}"#.utf8)
+            body: Data(#"{"choices":[{"message":{"content":"Antworttext"}}],"model":"resolved/model","provider":"Example Provider","usage":{"cost":0.001234}}"#.utf8)
         )
 
         let entry = try #require(await fixture.log.entries().first)
@@ -71,6 +72,12 @@ struct OpenRouterTrafficLogTests {
         #expect(!entry.requestText.contains(imageData))
         #expect(entry.statusCode == 200)
         #expect(entry.responseText?.contains("Antworttext") == true)
+        #expect(entry.requestedModelIdentifier == "openrouter/auto-beta")
+        #expect(entry.resolvedModelIdentifier == "resolved/model")
+        #expect(entry.providerIdentifier == "Example Provider")
+        #expect(entry.autoRouterVariant == "openrouter/auto-beta")
+        #expect(entry.autoRouterCostTier == "xhigh")
+        #expect(entry.usageCostUSD == 0.001234)
     }
 
     @Test("Disabled traffic logging does not create model entries")

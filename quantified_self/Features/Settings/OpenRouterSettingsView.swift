@@ -498,6 +498,25 @@ private struct OpenRouterTrafficLogRow: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            Text(modelAndProvider)
+                .font(.subheadline)
+                .lineLimit(1)
+            HStack(spacing: 8) {
+                if let variant = entry.autoRouterVariant {
+                    Text("Auto-Router: \(variant.replacingOccurrences(of: "openrouter/", with: ""))")
+                    if let tier = entry.autoRouterCostTier {
+                        Text("Setting: \(OpenRouterCostTier(rawValue: tier)?.title ?? tier)")
+                    }
+                } else {
+                    Text("Direkte Modellwahl")
+                }
+                if let cost = entry.usageCostUSD {
+                    Text("Kosten: \(formattedCost(cost))")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
         }
         .padding(.vertical, 2)
     }
@@ -519,6 +538,16 @@ private struct OpenRouterTrafficLogRow: View {
     private var endpoint: String {
         guard let url = URL(string: entry.url) else { return entry.url }
         return url.lastPathComponent.isEmpty ? url.host ?? entry.url : url.lastPathComponent
+    }
+
+    private var modelAndProvider: String {
+        let model = entry.resolvedModelIdentifier ?? entry.requestedModelIdentifier ?? "Modell unbekannt"
+        guard let provider = entry.providerIdentifier, !provider.isEmpty else { return model }
+        return "\(model) · \(provider)"
+    }
+
+    private func formattedCost(_ cost: Double) -> String {
+        cost.formatted(.number.precision(.fractionLength(0...6))) + " USD"
     }
 }
 

@@ -17,6 +17,12 @@ nonisolated struct OpenRouterTrafficLogEntry: Codable, Identifiable, Sendable, E
     var responseHeaders: [String: String]
     var responseText: String?
     var failureDescription: String?
+    var requestedModelIdentifier: String? = nil
+    var resolvedModelIdentifier: String? = nil
+    var providerIdentifier: String? = nil
+    var autoRouterVariant: String? = nil
+    var autoRouterCostTier: String? = nil
+    var usageCostUSD: Double? = nil
 }
 
 nonisolated struct OpenRouterTrafficLogTextPreview: Equatable, Sendable {
@@ -72,6 +78,7 @@ actor FileOpenRouterTrafficLog: OpenRouterTrafficLogging {
     func recordRequest(id: UUID, method: String, url: URL, headers: [String: String], body: Data?) {
         guard isEnabled else { return }
         do {
+            let summary = requestSummary(from: body)
             var entries = try storedEntries()
             entries.removeAll { $0.id == id }
             entries.append(OpenRouterTrafficLogEntry(
@@ -85,7 +92,10 @@ actor FileOpenRouterTrafficLog: OpenRouterTrafficLogging {
                 statusCode: nil,
                 responseHeaders: [:],
                 responseText: nil,
-                failureDescription: nil
+                failureDescription: nil,
+                requestedModelIdentifier: summary.modelIdentifier,
+                autoRouterVariant: summary.autoRouterVariant,
+                autoRouterCostTier: summary.autoRouterCostTier
             ))
             try persist(entries)
         } catch {
@@ -96,6 +106,7 @@ actor FileOpenRouterTrafficLog: OpenRouterTrafficLogging {
     func recordResponse(id: UUID, statusCode: Int, headers: [String: String], body: Data) {
         guard isEnabled else { return }
         do {
+            let summary = responseSummary(from: body)
             var entries = try storedEntries()
             guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
             entries[index].respondedAt = now()
@@ -103,6 +114,9 @@ actor FileOpenRouterTrafficLog: OpenRouterTrafficLogging {
             entries[index].responseHeaders = safeHeaders(headers)
             entries[index].responseText = formattedBody(body, contentType: contentType(in: headers))
             entries[index].failureDescription = nil
+            entries[index].resolvedModelIdentifier = summary.modelIdentifier
+            entries[index].providerIdentifier = summary.providerIdentifier
+            entries[index].usageCostUSD = summary.usageCostUSD
             try persist(entries)
         } catch {
             AppLogger.nutritionAnalysis.error("OpenRouter response log could not be persisted")
@@ -193,6 +207,36 @@ actor FileOpenRouterTrafficLog: OpenRouterTrafficLogging {
             return "<Nichttext entfernt: \(body.count) Bytes>"
         }
         return text
+    }
+
+    private func requestSummary(from body: Data?) -> (
+        modelIdentifier: String?,
+        autoRouterVariant: String?,
+        autoRouterCostTier: String?
+    ) {
+        guard
+            let body,
+            let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        else { return (nil, nil, nil) }
+        let model = json["model"] as? String
+        let autoRouterVariant = model?.isOpenRouterAutoRouterIdentifier == true ? model : nil
+        let autoRouterPlugin = (json["plugins"] as? [[String: Any]])?
+            .first { $0["id"] as? String == "auto-router" }
+        return (model, autoRouterVariant, autoRouterPlugin?["cost_tier"] as? String)
+    }
+
+    private func responseSummary(from body: Data) -> (
+        modelIdentifier: String?,
+        providerIdentifier: String?,
+        usageCostUSD: Double?
+    ) {
+        guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return (nil, nil, nil)
+        }
+        let usage = json["usage"] as? [String: Any]
+        let cost = (usage?["cost"] as? NSNumber)?.doubleValue
+            ?? (usage?["cost"] as? String).flatMap(Double.init)
+        return (json["model"] as? String, json["provider"] as? String, cost)
     }
 
     private func sanitizedJSON(_ value: Any) -> Any {
