@@ -43,6 +43,10 @@ struct PersistenceModelTests {
         #expect(fetchedMeals.first?.activeRevision?.mealName == "Chicken Curry mit Reis")
         #expect(fetchedMeals.first?.activeRevision?.nutrients.first?.value == 785)
         #expect(fetchedMeals.first?.activeRevision?.portionMultiplier == 1.7)
+
+        fetchedMeals.first?.activeRevision?.portionMultiplier = 5
+        #expect(fetchedMeals.first?.activeRevision?.portionMultiplier == 4)
+        #expect(fetchedMeals.first?.activeRevision?.normalizedPortionMultiplier == 4)
     }
 
     @Test("CloudKit mode can validate the full schema without contacting iCloud")

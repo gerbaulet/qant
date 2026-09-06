@@ -106,11 +106,11 @@ enum InitialAnalysisRunMetadata {
               multiplier.isFinite else {
             return 1
         }
-        return min(max(multiplier, 0), 5)
+        return min(max(multiplier, 0), 4)
     }
 
     static func settingPortionMultiplier(_ multiplier: Double, in metadata: String?) -> String? {
-        let normalized = multiplier.isFinite ? min(max(multiplier, 0), 5) : 1
+        let normalized = multiplier.isFinite ? min(max(multiplier, 0), 4) : 1
         let data: Data?
         if let existing = payloadV2(from: metadata) {
             data = try? JSONEncoder().encode(PayloadV2(

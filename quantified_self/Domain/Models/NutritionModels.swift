@@ -189,7 +189,7 @@ final class MealAnalysisRevision {
 
     var normalizedPortionMultiplier: Double {
         guard portionMultiplier.isFinite else { return 1 }
-        return min(max(portionMultiplier, 0), 5)
+        return min(max(portionMultiplier, 0), 4)
     }
 
     var portionMultiplier: Double {

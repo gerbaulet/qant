@@ -207,14 +207,14 @@ struct MealReviewView: View {
                 }
                 Slider(
                     value: portionMultiplierBinding(for: revision),
-                    in: 0...5,
+                    in: 0...4,
                     step: 0.1
                 ) {
                     Text("Portionenmultiplikator")
                 } minimumValueLabel: {
                     Text("0")
                 } maximumValueLabel: {
-                    Text("5")
+                    Text("4")
                 }
                 .accessibilityIdentifier("meal.portionMultiplier")
                 .accessibilityValue("\(formattedMultiplier(revision.normalizedPortionMultiplier))-fach")
