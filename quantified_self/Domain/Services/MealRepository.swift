@@ -7,17 +7,20 @@ struct MealDraft: Sendable {
     let comment: String
     let category: MealCategory
     let images: [StoredMealImage]
+    let analysisState: AnalysisState
 
     init(
         timestamp: Date,
         comment: String,
         category: MealCategory,
-        images: [StoredMealImage] = []
+        images: [StoredMealImage] = [],
+        analysisState: AnalysisState = .pending
     ) {
         self.timestamp = timestamp
         self.comment = comment
         self.category = category
         self.images = images
+        self.analysisState = analysisState
     }
 }
 
@@ -27,6 +30,8 @@ protocol MealRepository {
     func createMeal(from draft: MealDraft, now: Date) throws -> Meal
 
     func updateTimestamp(_ timestamp: Date, for meal: Meal, now: Date) throws
+
+    func addDescription(_ description: String, to meal: Meal, now: Date) throws
 
     @discardableResult
     func deleteMeal(_ meal: Meal) throws -> [StoredMealImage]
@@ -50,7 +55,7 @@ final class SwiftDataMealRepository: MealRepository {
             userComment: trimmedComment.isEmpty ? nil : trimmedComment,
             category: draft.category,
             mealState: .captured,
-            analysisState: .pending,
+            analysisState: draft.analysisState,
             images: draft.images.enumerated().map { index, image in
                 MealImage(
                     id: image.id,
@@ -71,6 +76,30 @@ final class SwiftDataMealRepository: MealRepository {
         } catch {
             context.delete(meal)
             AppLogger.persistence.error("Local meal save failed")
+            throw error
+        }
+    }
+
+    func addDescription(_ description: String, to meal: Meal, now: Date = .now) throws {
+        let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard meal.analysisState == .awaitingDescription, !trimmedDescription.isEmpty else {
+            throw NutritionAnalysisError.invalidState
+        }
+        let previousComment = meal.userComment
+        let previousState = meal.analysisState
+        let previousModifiedAt = meal.modifiedAt
+        meal.userComment = trimmedDescription
+        meal.analysisState = .pending
+        meal.modifiedAt = now
+
+        do {
+            try context.save()
+            AppLogger.persistence.info("Meal description saved locally")
+        } catch {
+            meal.userComment = previousComment
+            meal.analysisState = previousState
+            meal.modifiedAt = previousModifiedAt
+            AppLogger.persistence.error("Meal description update failed")
             throw error
         }
     }

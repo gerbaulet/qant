@@ -82,7 +82,7 @@ enum MealHistoryBuilder {
         let includesNutrition = revision.map { revision in
             switch revision.status {
             case .needsClarification, .awaitingConfirmation, .confirmed: true
-            case .pending, .analyzing, .failed: false
+            case .awaitingDescription, .pending, .analyzing, .failed: false
             }
         } ?? false
         let energy = includesNutrition

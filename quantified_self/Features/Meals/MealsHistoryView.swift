@@ -225,6 +225,7 @@ private extension MealCategory {
 private extension AnalysisState {
     var historyTitle: LocalizedStringKey {
         switch self {
+        case .awaitingDescription: "Beschreibung fehlt"
         case .pending: "Ausstehend"
         case .analyzing: "Analyse"
         case .needsClarification: "Rückfrage"
@@ -236,6 +237,7 @@ private extension AnalysisState {
 
     var historySystemImage: String {
         switch self {
+        case .awaitingDescription: "text.bubble"
         case .pending: "clock"
         case .analyzing: "sparkles"
         case .needsClarification: "questionmark.circle"
@@ -247,6 +249,7 @@ private extension AnalysisState {
 
     var historyColor: Color {
         switch self {
+        case .awaitingDescription: .orange
         case .pending, .analyzing: .secondary
         case .needsClarification, .awaitingConfirmation: .orange
         case .confirmed: .green

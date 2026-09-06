@@ -401,6 +401,7 @@ private extension NutrientIdentifier {
 private extension AnalysisState {
     var dashboardTitle: LocalizedStringKey {
         switch self {
+        case .awaitingDescription: "Beschreibung fehlt"
         case .pending: "Ausstehend"
         case .analyzing: "Wird analysiert"
         case .needsClarification: "Rückfrage"
@@ -412,6 +413,7 @@ private extension AnalysisState {
 
     var dashboardSystemImage: String {
         switch self {
+        case .awaitingDescription: "text.bubble"
         case .pending: "clock"
         case .analyzing: "sparkles"
         case .needsClarification: "questionmark.circle"
@@ -423,6 +425,7 @@ private extension AnalysisState {
 
     var dashboardColor: Color {
         switch self {
+        case .awaitingDescription: .orange
         case .pending, .analyzing: .secondary
         case .needsClarification, .awaitingConfirmation: .orange
         case .confirmed: .green

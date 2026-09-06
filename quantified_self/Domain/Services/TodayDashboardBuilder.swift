@@ -163,7 +163,7 @@ enum TodayDashboardBuilder {
         switch state {
         case .needsClarification, .awaitingConfirmation, .confirmed:
             true
-        case .pending, .analyzing, .failed:
+        case .awaitingDescription, .pending, .analyzing, .failed:
             false
         }
     }

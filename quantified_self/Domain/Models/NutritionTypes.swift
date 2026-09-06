@@ -13,6 +13,7 @@ enum MealState: String, Codable, CaseIterable, Sendable {
 }
 
 enum AnalysisState: String, Codable, CaseIterable, Sendable {
+    case awaitingDescription
     case pending
     case analyzing
     case needsClarification

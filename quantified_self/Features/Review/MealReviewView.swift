@@ -12,6 +12,7 @@ struct MealReviewView: View {
 
     @State private var clarificationAnswer = ""
     @State private var correctionText = ""
+    @State private var descriptionText = ""
     @State private var isWorking = false
     @State private var alertMessage: String?
     @State private var showsMoreNutrients = false
@@ -515,10 +516,12 @@ struct MealReviewView: View {
 
     private var unavailableState: some View {
         ContentUnavailableView(
-            meal.analysisState == .failed ? "Analyse fehlgeschlagen" : "Analyse läuft",
-            systemImage: meal.analysisState == .failed ? "exclamationmark.triangle" : "sparkles",
+            unavailableTitle,
+            systemImage: unavailableSystemImage,
             description: Text(
-                meal.analysisState == .failed
+                meal.analysisState == .awaitingDescription
+                    ? "Ergänze eine Beschreibung, damit die gespeicherte Schnellaufnahme analysiert werden kann."
+                    : meal.analysisState == .failed
                     ? "Die Mahlzeit und ihre Fotos sind sicher gespeichert."
                     : meal.analysisRevisions.isEmpty
                         ? "Drei unabhängige Schätzungen werden verglichen. Du kannst diese Ansicht schließen und die App weiterverwenden."
@@ -529,9 +532,43 @@ struct MealReviewView: View {
         .padding(.vertical, 40)
     }
 
+    private var unavailableTitle: LocalizedStringKey {
+        switch meal.analysisState {
+        case .awaitingDescription: "Beschreibung ergänzen"
+        case .failed: "Analyse fehlgeschlagen"
+        default: "Analyse läuft"
+        }
+    }
+
+    private var unavailableSystemImage: String {
+        switch meal.analysisState {
+        case .awaitingDescription: "text.bubble"
+        case .failed: "exclamationmark.triangle"
+        default: "sparkles"
+        }
+    }
+
     @ViewBuilder
     private var bottomAction: some View {
-        if meal.analysisState == .awaitingConfirmation {
+        if meal.analysisState == .awaitingDescription {
+            actionBar {
+                VStack(alignment: .leading, spacing: 10) {
+                    TextField("Mahlzeit beschreiben", text: $descriptionText, axis: .vertical)
+                        .lineLimit(2...5)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(isWorking)
+                        .accessibilityIdentifier("meal.description")
+                    Button(action: saveDescriptionAndAnalyze) {
+                        Label("Beschreibung speichern und analysieren", systemImage: "sparkles")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(isWorking || descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("meal.submitDescription")
+                }
+            }
+        } else if meal.analysisState == .awaitingConfirmation {
             actionBar {
                 VStack(spacing: 10) {
                     Button(action: confirm) {
@@ -738,6 +775,21 @@ struct MealReviewView: View {
         }
     }
 
+    private func saveDescriptionAndAnalyze() {
+        isWorking = true
+        do {
+            try SwiftDataMealRepository(context: modelContext).addDescription(descriptionText, to: meal)
+            descriptionText = ""
+            Task {
+                await makeCoordinator().analyze(meal)
+                isWorking = false
+            }
+        } catch {
+            isWorking = false
+            alertMessage = "Die Beschreibung konnte nicht gespeichert werden."
+        }
+    }
+
     private func makeCoordinator() -> MealAnalysisCoordinator {
         MealAnalysisCoordinator(
             context: modelContext,
@@ -798,6 +850,7 @@ struct MealReviewView: View {
 private extension AnalysisState {
     var reviewTitle: LocalizedStringKey {
         switch self {
+        case .awaitingDescription: "Beschreibung fehlt"
         case .pending: "Ausstehend"
         case .analyzing: "Wird analysiert"
         case .needsClarification: "Rückfrage"
@@ -809,6 +862,7 @@ private extension AnalysisState {
 
     var reviewSystemImage: String {
         switch self {
+        case .awaitingDescription: "text.bubble.fill"
         case .pending: "clock"
         case .analyzing: "sparkles"
         case .needsClarification: "questionmark.circle.fill"
@@ -820,6 +874,7 @@ private extension AnalysisState {
 
     var reviewColor: Color {
         switch self {
+        case .awaitingDescription: .orange
         case .pending, .analyzing: .secondary
         case .needsClarification, .awaitingConfirmation: .orange
         case .confirmed: .green

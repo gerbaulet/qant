@@ -100,7 +100,7 @@ struct MealCaptureView: View {
 
                 if !opensCameraOnAppear {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Speichern", action: save)
+                        Button("Speichern") { save() }
                             .fontWeight(.semibold)
                             .disabled(isSaving || isImportingImages)
                             .accessibilityIdentifier("meal.save")
@@ -336,7 +336,7 @@ struct MealCaptureView: View {
         }
     }
 
-    private func save() {
+    private func save(shouldAnalyze: Bool = true) {
         guard !isSaving else { return }
         isSaving = true
 
@@ -352,7 +352,8 @@ struct MealCaptureView: View {
                     timestamp: timestamp,
                     comment: comment,
                     category: category,
-                    images: storedImages
+                    images: storedImages,
+                    analysisState: shouldAnalyze ? .pending : .awaitingDescription
                 ))
                 let coordinator = MealAnalysisCoordinator(
                     context: modelContext,
@@ -360,7 +361,9 @@ struct MealCaptureView: View {
                     imageStorage: imageStorage
                 )
                 dismiss()
-                await coordinator.analyze(meal)
+                if shouldAnalyze {
+                    await coordinator.analyze(meal)
+                }
             } catch {
                 for image in storedImages {
                     await imageStorage.deleteImage(image)
@@ -379,7 +382,8 @@ struct MealCaptureView: View {
             return
         }
         attachedImages = [PendingMealImage(data: imageData)]
-        save()
+        timestamp = .now
+        save(shouldAnalyze: false)
     }
 
     private func openSettings() {

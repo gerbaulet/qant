@@ -73,6 +73,33 @@ struct MealRepositoryTests {
         #expect(created.userComment == nil)
     }
 
+    @Test("A quick capture waits for a description before analysis")
+    func quickCaptureDescription() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let repository = SwiftDataMealRepository(context: context)
+        let capturedAt = Date(timeIntervalSince1970: 1_787_500_000)
+        let describedAt = Date(timeIntervalSince1970: 1_787_500_100)
+        let meal = try repository.createMeal(from: MealDraft(
+            timestamp: capturedAt,
+            comment: "",
+            category: .lunch,
+            analysisState: .awaitingDescription
+        ))
+
+        #expect(meal.analysisState == .awaitingDescription)
+        #expect(meal.analysisRevisions.isEmpty)
+
+        try repository.addDescription("  Nudeln mit Tomatensoße  ", to: meal, now: describedAt)
+
+        context.rollback()
+        let persistedMeal = try #require(context.fetch(FetchDescriptor<Meal>()).first)
+        #expect(persistedMeal.userComment == "Nudeln mit Tomatensoße")
+        #expect(persistedMeal.analysisState == .pending)
+        #expect(persistedMeal.timestamp == capturedAt)
+        #expect(persistedMeal.modifiedAt == describedAt)
+    }
+
     @Test("Updating a meal timestamp persists the new time and modification date")
     func updateTimestamp() throws {
         let container = try makeContainer()
