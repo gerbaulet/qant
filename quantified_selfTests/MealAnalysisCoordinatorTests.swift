@@ -21,11 +21,13 @@ struct MealAnalysisCoordinatorTests {
         try context.save()
         let provider = AnalysisProviderStub(result: NutritionAnalysisValidatorTests.validResult())
         let storage = AnalysisImageStorage(dataByKey: ["meal/image.jpg": Data([7, 8, 9])])
+        let backgroundExecutionManager = BackgroundExecutionManagerSpy()
         let now = Date(timeIntervalSince1970: 1_787_600_000)
         let coordinator = MealAnalysisCoordinator(
             context: context,
             provider: provider,
             imageStorage: storage,
+            backgroundExecutionManager: backgroundExecutionManager,
             now: { now }
         )
 
@@ -39,6 +41,8 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.receivedRequest?.userComment == "Große Portion")
         #expect(provider.receivedRequest?.images.first?.data == Data([7, 8, 9]))
         #expect(provider.requestCount == 3)
+        #expect(backgroundExecutionManager.beginCount == 1)
+        #expect(backgroundExecutionManager.endedIdentifiers == [backgroundExecutionManager.identifier])
         let runs = InitialAnalysisRunMetadata.decode(meal.activeRevision?.providerMetadata)
         #expect(runs.count == 3)
         #expect(runs.map(\.runNumber) == [1, 2, 3])
@@ -920,6 +924,22 @@ private final class NetworkAvailabilityWaiterStub: NetworkAvailabilityWaiting {
 
     func waitUntilAvailable() async throws {
         waitCount += 1
+    }
+}
+
+@MainActor
+private final class BackgroundExecutionManagerSpy: BackgroundExecutionManaging {
+    let identifier = UUID()
+    private(set) var beginCount = 0
+    private(set) var endedIdentifiers: [UUID] = []
+
+    func begin(name: String, expirationHandler: @escaping @Sendable () -> Void) -> UUID? {
+        beginCount += 1
+        return identifier
+    }
+
+    func end(_ identifier: UUID) {
+        endedIdentifiers.append(identifier)
     }
 }
 

@@ -30,6 +30,7 @@ final class MealAnalysisCoordinator {
     private let provider: any NutritionAnalysisProviding
     private let imageStorage: any ImageStorageProviding
     private let networkAvailabilityWaiter: any NetworkAvailabilityWaiting
+    private let backgroundExecutionManager: any BackgroundExecutionManaging
     private let now: () -> Date
 
     init(
@@ -37,12 +38,14 @@ final class MealAnalysisCoordinator {
         provider: any NutritionAnalysisProviding,
         imageStorage: any ImageStorageProviding,
         networkAvailabilityWaiter: any NetworkAvailabilityWaiting = SystemNetworkAvailabilityWaiter(),
+        backgroundExecutionManager: (any BackgroundExecutionManaging)? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.context = context
         self.provider = provider
         self.imageStorage = imageStorage
         self.networkAvailabilityWaiter = networkAvailabilityWaiter
+        self.backgroundExecutionManager = backgroundExecutionManager ?? SystemBackgroundExecutionManager.shared
         self.now = now
     }
 
@@ -133,6 +136,14 @@ final class MealAnalysisCoordinator {
         clarificationAnswer: String? = nil,
         userCorrection: String? = nil
     ) async {
+        let backgroundTask = backgroundExecutionManager.begin(name: "Mahlzeit analysieren") {
+            AppLogger.nutritionAnalysis.info("Nutrition analysis background time expired")
+        }
+        defer {
+            if let backgroundTask {
+                backgroundExecutionManager.end(backgroundTask)
+            }
+        }
         let callRecorder = AnalysisCallRecorder()
         let previousMealState = meal.analysisState
         let preservedPortionMultiplier = meal.activeRevision?.normalizedPortionMultiplier ?? 1
