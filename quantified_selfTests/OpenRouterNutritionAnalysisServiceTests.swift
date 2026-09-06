@@ -8,10 +8,12 @@ struct OpenRouterNutritionAnalysisServiceTests {
     func sendsMultimodalStructuredRequest() async throws {
         let client = ChatClientStub(responseData: try Self.chatResponseData())
         let settings = AnalysisSettingsStore(modelIdentifier: "example/vision-model")
+        let requestedAt = Date(timeIntervalSince1970: 1_788_000_000)
         let service = OpenRouterNutritionAnalysisService(
             secretStore: AnalysisSecretStore(secret: "test-secret"),
             settingsStore: settings,
-            client: client
+            client: client,
+            now: { requestedAt }
         )
 
         let result = try await service.analyze(NutritionAnalysisRequest(
@@ -26,6 +28,12 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(result.nutrients.first?.value == 640)
         #expect(result.modelIdentifier == "resolved/vision-model")
         #expect(result.providerIdentifier == "Example Provider")
+        #expect(result.requestMetrics == AnalysisRequestMetrics(
+            requestedAt: requestedAt,
+            inputTokens: 1_234,
+            outputTokens: 321,
+            costUSD: 0.001234
+        ))
         #expect(client.receivedAPIKey == "test-secret")
 
         let body = try #require(client.receivedBody)
@@ -371,6 +379,11 @@ struct OpenRouterNutritionAnalysisServiceTests {
             "choices": [["message": ["content": content]]],
             "model": "resolved/vision-model",
             "provider": "Example Provider",
+            "usage": [
+                "prompt_tokens": 1_234,
+                "completion_tokens": 321,
+                "cost": 0.001234,
+            ],
         ])
     }
 

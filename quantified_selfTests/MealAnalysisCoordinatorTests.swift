@@ -48,6 +48,10 @@ struct MealAnalysisCoordinatorTests {
         #expect(runs.map(\.runNumber) == [1, 2, 3])
         #expect(runs.allSatisfy { $0.modelIdentifier == "example/vision-model" })
         #expect(runs.allSatisfy { $0.energyKilocalories == 640 })
+        let calls = InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata)
+        #expect(calls.allSatisfy { $0.requestedAt == now })
+        #expect(calls.allSatisfy { $0.clarificationQuestion == nil })
+        #expect(calls.allSatisfy { $0.clarificationAnswer == nil })
 
         meal.activeRevision?.portionMultiplier = 1.5
         #expect(meal.activeRevision?.normalizedPortionMultiplier == 1.5)
@@ -396,6 +400,10 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.receivedRequest?.clarificationAnswer == "Etwa zwei Esslöffel")
         #expect(provider.receivedRequest?.allowsClarification == true)
         #expect(provider.requestCount == 3)
+        let calls = InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata)
+        #expect(calls.count == 3)
+        #expect(calls.allSatisfy { $0.clarificationQuestion == "Wie viel Dressing wurde verwendet?" })
+        #expect(calls.allSatisfy { $0.clarificationAnswer == "Etwa zwei Esslöffel" })
     }
 
     @Test("Best estimate confirms the existing revision without another request")

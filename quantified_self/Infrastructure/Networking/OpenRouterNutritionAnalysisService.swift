@@ -10,9 +10,22 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             let message: Message
         }
 
+        struct Usage: Decodable {
+            let promptTokens: Int?
+            let completionTokens: Int?
+            let cost: Double?
+
+            private enum CodingKeys: String, CodingKey {
+                case promptTokens = "prompt_tokens"
+                case completionTokens = "completion_tokens"
+                case cost
+            }
+        }
+
         let choices: [Choice]
         let model: String?
         let provider: String?
+        let usage: Usage?
     }
 
     private struct AnalysisPayload: Decodable {
@@ -29,17 +42,20 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
     private let settingsStore: any OpenRouterSettingsStoring
     private let client: any OpenRouterChatCompleting
     private let preferredLanguageIdentifier: String
+    private let now: @Sendable () -> Date
 
     init(
         secretStore: any SecretStoring = KeychainSecretStore(),
         settingsStore: any OpenRouterSettingsStoring = UserDefaultsOpenRouterSettingsStore(),
         client: any OpenRouterChatCompleting = OpenRouterAPIClient(),
-        preferredLanguageIdentifier: String = Locale.preferredLanguages.first ?? Locale.autoupdatingCurrent.identifier
+        preferredLanguageIdentifier: String = Locale.preferredLanguages.first ?? Locale.autoupdatingCurrent.identifier,
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.secretStore = secretStore
         self.settingsStore = settingsStore
         self.client = client
         self.preferredLanguageIdentifier = preferredLanguageIdentifier
+        self.now = now
     }
 
     func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult {
@@ -61,6 +77,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             throw NutritionAnalysisError.malformedResponse
         }
 
+        let requestedAt = now()
         let responseData = try await client.sendChatCompletion(apiKey: apiKey, body: requestBody)
         let decoder = JSONDecoder()
         guard
@@ -82,7 +99,13 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             nutrients: payload.nutrients,
             components: payload.components,
             modelIdentifier: response.model ?? modelIdentifier,
-            providerIdentifier: response.provider
+            providerIdentifier: response.provider,
+            requestMetrics: AnalysisRequestMetrics(
+                requestedAt: requestedAt,
+                inputTokens: response.usage?.promptTokens,
+                outputTokens: response.usage?.completionTokens,
+                costUSD: response.usage?.cost
+            )
         ))
         try NutritionAnalysisValidator.validate(result)
         return result

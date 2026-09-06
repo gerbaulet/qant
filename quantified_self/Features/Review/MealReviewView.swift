@@ -369,7 +369,7 @@ struct MealReviewView: View {
     }
 
     private func revisionHistoryRow(_ revision: MealAnalysisRevision) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label(revision.trigger.reviewTitle, systemImage: revision.trigger.reviewSystemImage)
                     .font(.subheadline.bold())
@@ -380,34 +380,10 @@ struct MealReviewView: View {
                         .foregroundStyle(.tint)
                 }
             }
-            HStack {
-                Text(revision.createdAt, format: .dateTime.day().month().hour().minute())
-                Spacer()
-                Text(nutrientText(.energy, in: revision, estimated: true))
-                    .font(.subheadline.monospacedDigit())
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
 
             if let correction = revision.userCorrection, !correction.isEmpty {
-                Text("„\(correction)“")
+                Text("Korrektur: „\(correction)“")
                     .font(.footnote)
-            } else if let answer = revision.clarificationAnswer, !answer.isEmpty {
-                Text("Antwort: „\(answer)“")
-                    .font(.footnote)
-            }
-
-            if let question = revision.clarificationQuestion, !question.isEmpty {
-                Text("Rückfrage: „\(question)“")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            if let failureMessage = revision.failureMessage, !failureMessage.isEmpty {
-                Text("Fehler: \(failureMessage)")
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
             }
 
             let calls = InitialAnalysisRunMetadata.decodeCalls(revision.providerMetadata)
@@ -416,69 +392,132 @@ struct MealReviewView: View {
                 : []
             if !calls.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Einzelne Aufrufe")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
                     ForEach(calls) { call in
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Image(systemName: call.status == .succeeded
-                                ? "checkmark.circle.fill"
-                                : "exclamationmark.triangle.fill")
-                                .foregroundStyle(call.status == .succeeded ? Color.green : Color.orange)
-                            Text("Aufruf \(call.callNumber)")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(call.modelIdentifier ?? "Keine Modellantwort")
-                                    .font(.caption)
-                                    .lineLimit(2)
-                                if let provider = call.providerIdentifier, !provider.isEmpty {
-                                    Text(provider)
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                }
-                                Text(call.sampleNumber.map {
-                                    "Schätzung \($0) · Versuch \(call.attemptNumber)"
-                                } ?? "Versuch \(call.attemptNumber)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                if let error = call.errorMessage, !error.isEmpty {
-                                    Text(error)
-                                        .font(.caption2)
-                                        .foregroundStyle(.orange)
-                                }
-                            }
-                            Spacer(minLength: 8)
-                            if let energy = call.energyKilocalories {
-                                Text("~\(wholeNumber(energy)) kcal")
-                                    .font(.caption.bold().monospacedDigit())
-                            }
-                        }
+                        analysisRunRow(
+                            title: "Aufruf \(call.callNumber)",
+                            subtitle: call.sampleNumber.map {
+                                "Schätzung \($0) · Versuch \(call.attemptNumber)"
+                            } ?? "Versuch \(call.attemptNumber)",
+                            status: call.status,
+                            modelIdentifier: call.modelIdentifier,
+                            providerIdentifier: call.providerIdentifier,
+                            requestedAt: call.requestedAt ?? revision.requestDate,
+                            clarificationQuestion: call.clarificationQuestion,
+                            clarificationAnswer: call.clarificationAnswer,
+                            energyKilocalories: call.energyKilocalories,
+                            inputTokens: call.inputTokens,
+                            outputTokens: call.outputTokens,
+                            costUSD: call.costUSD,
+                            errorMessage: call.errorMessage
+                        )
                     }
                 }
                 .padding(.top, 4)
             } else if !legacyRuns.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Einzelne Modelläufe")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
                     ForEach(legacyRuns) { run in
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text("Lauf \(run.runNumber)")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                            Text(run.modelIdentifier)
-                                .font(.caption)
-                            Spacer(minLength: 8)
-                            Text("~\(wholeNumber(run.energyKilocalories)) kcal")
-                                .font(.caption.bold().monospacedDigit())
-                        }
+                        analysisRunRow(
+                            title: "Aufruf \(run.runNumber)",
+                            subtitle: "Schätzung \(run.runNumber)",
+                            status: .succeeded,
+                            modelIdentifier: run.modelIdentifier,
+                            providerIdentifier: run.providerIdentifier,
+                            requestedAt: revision.requestDate,
+                            clarificationQuestion: revision.clarificationQuestion,
+                            clarificationAnswer: revision.clarificationAnswer,
+                            energyKilocalories: run.energyKilocalories
+                        )
                     }
                 }
                 .padding(.top, 4)
+            } else {
+                analysisRunRow(
+                    title: "Aufruf 1",
+                    subtitle: "Übernommener Verlaufseintrag",
+                    status: revision.status == .failed ? .failed : .succeeded,
+                    modelIdentifier: revision.modelIdentifier,
+                    providerIdentifier: revision.providerIdentifier,
+                    requestedAt: revision.requestDate,
+                    clarificationQuestion: revision.clarificationQuestion,
+                    clarificationAnswer: revision.clarificationAnswer,
+                    energyKilocalories: energyKilocalories(in: revision),
+                    errorMessage: revision.failureMessage
+                )
             }
         }
         .padding(.vertical, 10)
+    }
+
+    private func analysisRunRow(
+        title: String,
+        subtitle: String,
+        status: AnalysisCallStatus,
+        modelIdentifier: String?,
+        providerIdentifier: String?,
+        requestedAt: Date,
+        clarificationQuestion: String?,
+        clarificationAnswer: String?,
+        energyKilocalories: Double?,
+        inputTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        costUSD: Double? = nil,
+        errorMessage: String? = nil
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Label(title, systemImage: status == .succeeded
+                    ? "checkmark.circle.fill"
+                    : "exclamationmark.triangle.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(status == .succeeded ? Color.green : Color.orange)
+                Spacer()
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            LabeledContent("Modell", value: modelAndProvider(modelIdentifier, providerIdentifier))
+            LabeledContent("Zeitpunkt") {
+                Text(requestedAt, format: .dateTime.day().month().year().hour().minute().second())
+            }
+            LabeledContent("Rückfrage", value: nonempty(clarificationQuestion) ?? "—")
+            LabeledContent("Antwort", value: nonempty(clarificationAnswer) ?? "—")
+            LabeledContent("Kalorien", value: energyKilocalories.map { "~\(wholeNumber($0)) kcal" } ?? "—")
+            if inputTokens != nil || outputTokens != nil || costUSD != nil {
+                LabeledContent("Tokens") {
+                    Text("Input \(inputTokens?.formatted() ?? "—") · Output \(outputTokens?.formatted() ?? "—")")
+                }
+                LabeledContent("Kosten", value: costUSD.map(formattedCost) ?? "—")
+            }
+            if let errorMessage = nonempty(errorMessage) {
+                Text("Fehler: \(errorMessage)")
+                    .foregroundStyle(.orange)
+            }
+        }
+        .font(.caption)
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: 10))
+    }
+
+    private func modelAndProvider(_ model: String?, _ provider: String?) -> String {
+        let model = nonempty(model) ?? "—"
+        guard let provider = nonempty(provider) else { return model }
+        return "\(model) · \(provider)"
+    }
+
+    private func nonempty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func formattedCost(_ cost: Double) -> String {
+        cost.formatted(.number.precision(.fractionLength(0...6))) + " USD"
+    }
+
+    private func energyKilocalories(in revision: MealAnalysisRevision) -> Double? {
+        revision.nutrients.first {
+            $0.knownIdentifier == .energy && $0.knownUnit == .kilocalorie
+        }.map { revision.scaled($0.value) }
     }
 
     private var sortedRevisions: [MealAnalysisRevision] {

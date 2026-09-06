@@ -144,10 +144,16 @@ final class MealAnalysisCoordinator {
                 backgroundExecutionManager.end(backgroundTask)
             }
         }
-        let callRecorder = AnalysisCallRecorder()
         let previousMealState = meal.analysisState
         let preservedPortionMultiplier = meal.activeRevision?.normalizedPortionMultiplier ?? 1
         let previousAnalysis = meal.activeRevision.map(makeBaselineAnalysisResult)
+        let callRecorder = AnalysisCallRecorder(
+            clarificationQuestion: trigger == .clarification
+                ? meal.activeRevision?.clarificationQuestion
+                : nil,
+            clarificationAnswer: clarificationAnswer,
+            now: now
+        )
         let nextClarificationCount = trigger == .clarification
             ? meal.clarificationCount + 1
             : meal.clarificationCount
@@ -549,7 +555,8 @@ final class MealAnalysisCoordinator {
                     )
                 },
             modelIdentifier: revision.modelIdentifier,
-            providerIdentifier: revision.providerIdentifier
+            providerIdentifier: revision.providerIdentifier,
+            requestMetrics: nil
         )
     }
 
@@ -583,6 +590,19 @@ final class MealAnalysisCoordinator {
 @MainActor
 private final class AnalysisCallRecorder {
     private(set) var calls: [AnalysisCallSummary] = []
+    private let clarificationQuestion: String?
+    private let clarificationAnswer: String?
+    private let now: () -> Date
+
+    init(
+        clarificationQuestion: String?,
+        clarificationAnswer: String?,
+        now: @escaping () -> Date
+    ) {
+        self.clarificationQuestion = clarificationQuestion
+        self.clarificationAnswer = clarificationAnswer
+        self.now = now
+    }
 
     func recordSuccess(
         _ result: NutritionAnalysisResult,
@@ -630,7 +650,13 @@ private final class AnalysisCallRecorder {
             energyKilocalories: result?.nutrients.first {
                 $0.identifier == .energy && $0.unit == .kilocalorie
             }?.value,
-            errorMessage: errorMessage
+            errorMessage: errorMessage,
+            requestedAt: result?.requestMetrics?.requestedAt ?? now(),
+            clarificationQuestion: result?.clarificationQuestion ?? clarificationQuestion,
+            clarificationAnswer: clarificationAnswer,
+            inputTokens: result?.requestMetrics?.inputTokens,
+            outputTokens: result?.requestMetrics?.outputTokens,
+            costUSD: result?.requestMetrics?.costUSD
         )
     }
 }

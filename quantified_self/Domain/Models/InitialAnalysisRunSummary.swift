@@ -23,6 +23,44 @@ struct AnalysisCallSummary: Codable, Identifiable, Sendable, Equatable {
     let providerIdentifier: String?
     let energyKilocalories: Double?
     let errorMessage: String?
+    let requestedAt: Date?
+    let clarificationQuestion: String?
+    let clarificationAnswer: String?
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let costUSD: Double?
+
+    init(
+        callNumber: Int,
+        sampleNumber: Int?,
+        attemptNumber: Int,
+        status: AnalysisCallStatus,
+        modelIdentifier: String?,
+        providerIdentifier: String?,
+        energyKilocalories: Double?,
+        errorMessage: String?,
+        requestedAt: Date? = nil,
+        clarificationQuestion: String? = nil,
+        clarificationAnswer: String? = nil,
+        inputTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        costUSD: Double? = nil
+    ) {
+        self.callNumber = callNumber
+        self.sampleNumber = sampleNumber
+        self.attemptNumber = attemptNumber
+        self.status = status
+        self.modelIdentifier = modelIdentifier
+        self.providerIdentifier = providerIdentifier
+        self.energyKilocalories = energyKilocalories
+        self.errorMessage = errorMessage
+        self.requestedAt = requestedAt
+        self.clarificationQuestion = clarificationQuestion
+        self.clarificationAnswer = clarificationAnswer
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.costUSD = costUSD
+    }
 
     var id: Int { callNumber }
 }

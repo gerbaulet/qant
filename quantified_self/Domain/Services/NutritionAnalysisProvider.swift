@@ -60,6 +60,13 @@ struct AnalyzedFoodComponent: Codable, Sendable, Equatable {
     let nutrients: [AnalyzedNutrient]
 }
 
+struct AnalysisRequestMetrics: Codable, Sendable, Equatable {
+    let requestedAt: Date
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let costUSD: Double?
+}
+
 struct NutritionAnalysisResult: Codable, Sendable, Equatable {
     let mealName: String
     let estimatedTotalWeightGrams: Double?
@@ -70,6 +77,31 @@ struct NutritionAnalysisResult: Codable, Sendable, Equatable {
     let components: [AnalyzedFoodComponent]
     let modelIdentifier: String
     let providerIdentifier: String?
+    let requestMetrics: AnalysisRequestMetrics?
+
+    init(
+        mealName: String,
+        estimatedTotalWeightGrams: Double?,
+        confidence: EstimateConfidence,
+        uncertaintySummary: String?,
+        clarificationQuestion: String?,
+        nutrients: [AnalyzedNutrient],
+        components: [AnalyzedFoodComponent],
+        modelIdentifier: String,
+        providerIdentifier: String?,
+        requestMetrics: AnalysisRequestMetrics? = nil
+    ) {
+        self.mealName = mealName
+        self.estimatedTotalWeightGrams = estimatedTotalWeightGrams
+        self.confidence = confidence
+        self.uncertaintySummary = uncertaintySummary
+        self.clarificationQuestion = clarificationQuestion
+        self.nutrients = nutrients
+        self.components = components
+        self.modelIdentifier = modelIdentifier
+        self.providerIdentifier = providerIdentifier
+        self.requestMetrics = requestMetrics
+    }
 }
 
 protocol NutritionAnalysisProviding {
@@ -182,7 +214,8 @@ enum NutritionAnalysisResultNormalizer {
             nutrients: normalizedNutrients(result.nutrients),
             components: normalizedComponents(result.components),
             modelIdentifier: result.modelIdentifier,
-            providerIdentifier: result.providerIdentifier
+            providerIdentifier: result.providerIdentifier,
+            requestMetrics: result.requestMetrics
         )
     }
 
