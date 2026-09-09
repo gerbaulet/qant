@@ -1,3 +1,4 @@
+import Observation
 import SwiftData
 import SwiftUI
 
@@ -20,7 +21,7 @@ struct MealReviewView: View {
     @State private var showsDeleteConfirmation = false
     @State private var showsTimestampEditor = false
     @State private var editedTimestamp: Date
-    @State private var portionMultiplierDraft: Double?
+    @State private var portionAdjustment: PortionAdjustmentDraft
 #if DEBUG
     @State private var hasTriggeredUITestQuickCapture = false
 #endif
@@ -36,7 +37,9 @@ struct MealReviewView: View {
         self.imageStorage = imageStorage
         self.onDelete = onDelete
         _editedTimestamp = State(initialValue: meal.timestamp)
-        _portionMultiplierDraft = State(initialValue: meal.activeRevision?.normalizedPortionMultiplier)
+        _portionAdjustment = State(initialValue: PortionAdjustmentDraft(
+            multiplier: meal.activeRevision?.normalizedPortionMultiplier ?? 1
+        ))
     }
 
     var body: some View {
@@ -48,11 +51,22 @@ struct MealReviewView: View {
                 failureSection
 
                 if let revision = meal.activeRevision {
-                    nutritionSummary(revision)
+                    PortionNutritionSummary(
+                        revision: revision,
+                        adjustment: portionAdjustment,
+                        onCommit: { persistPortionMultiplier(for: revision) }
+                    )
                     confidenceSection(revision)
                     clarificationSection(revision)
-                    componentsSection(revision)
-                    additionalNutrientsSection(revision)
+                    PortionComponentsSection(
+                        revision: revision,
+                        adjustment: portionAdjustment
+                    )
+                    PortionAdditionalNutrientsSection(
+                        revision: revision,
+                        adjustment: portionAdjustment,
+                        isExpanded: $showsMoreNutrients
+                    )
                     revisionHistorySection(portionMultipliers: portionMultipliers)
                     revisionFootnote(revision)
                 } else {
@@ -118,7 +132,7 @@ struct MealReviewView: View {
 #endif
         }
         .onChange(of: meal.activeRevisionID) {
-            portionMultiplierDraft = meal.activeRevision?.normalizedPortionMultiplier
+            portionAdjustment.multiplier = meal.activeRevision?.normalizedPortionMultiplier ?? 1
         }
         .onDisappear {
             guard let revision = meal.activeRevision else { return }
@@ -185,91 +199,6 @@ struct MealReviewView: View {
         }
     }
 
-    private func nutritionSummary(_ revision: MealAnalysisRevision) -> some View {
-        let multiplier = displayedPortionMultiplier(for: revision)
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Kalorien")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text(nutrientText(.energy, in: revision, estimated: true))
-                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                }
-                Spacer()
-                if let weight = revision.estimatedTotalWeightGrams {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("Portion")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text("~\(wholeNumber(weight * multiplier)) g")
-                            .font(.title3.bold())
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Menge anpassen")
-                        .font(.subheadline)
-                    Spacer()
-                    Text("\(formattedMultiplier(multiplier))×")
-                        .font(.subheadline.monospacedDigit().bold())
-                }
-                Slider(
-                    value: portionMultiplierBinding(for: revision),
-                    in: 0...4,
-                    step: 0.1
-                ) {
-                    Text("Portionenmultiplikator")
-                } minimumValueLabel: {
-                    Text("0")
-                } maximumValueLabel: {
-                    Text("4")
-                } onEditingChanged: { isEditing in
-                    if !isEditing {
-                        persistPortionMultiplier(for: revision)
-                    }
-                }
-                .accessibilityIdentifier("meal.portionMultiplier")
-                .accessibilityValue("\(formattedMultiplier(multiplier))-fach")
-            }
-
-            Grid(horizontalSpacing: 12, verticalSpacing: 12) {
-                GridRow {
-                    macroTile("Protein", identifier: .protein, revision: revision)
-                    macroTile("Kohlenhydrate", identifier: .carbohydrates, revision: revision)
-                }
-                GridRow {
-                    macroTile("Fett", identifier: .fat, revision: revision)
-                    macroTile("Ballaststoffe", identifier: .fiber, revision: revision)
-                }
-            }
-        }
-        .padding(20)
-        .background(.background, in: .rect(cornerRadius: 22))
-    }
-
-    private func macroTile(
-        _ title: LocalizedStringKey,
-        identifier: NutrientIdentifier,
-        revision: MealAnalysisRevision
-    ) -> some View {
-        let multiplier = displayedPortionMultiplier(for: revision)
-        return VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-            Text(nutrientText(identifier, in: revision, multiplier: multiplier, estimated: true))
-                .font(.headline.monospacedDigit())
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("meal.nutrient.\(identifier.rawValue)")
-    }
-
     private func confidenceSection(_ revision: MealAnalysisRevision) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             LabeledContent("Vertrauen") {
@@ -314,50 +243,6 @@ struct MealReviewView: View {
             .padding(18)
             .background(.orange.opacity(0.1), in: .rect(cornerRadius: 18))
         }
-    }
-
-    @ViewBuilder
-    private func componentsSection(_ revision: MealAnalysisRevision) -> some View {
-        let components = revision.components.sorted { $0.sortIndex < $1.sortIndex }
-        let multiplier = displayedPortionMultiplier(for: revision)
-        if !components.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Bestandteile")
-                    .font(.headline)
-                ForEach(components) { component in
-                    HStack {
-                        Text(component.name)
-                        Spacer()
-                        if let weight = component.estimatedWeightGrams {
-                            Text("~\(wholeNumber(weight * multiplier)) g")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    if component.id != components.last?.id {
-                        Divider()
-                    }
-                }
-            }
-            .padding(18)
-            .background(.background, in: .rect(cornerRadius: 18))
-        }
-    }
-
-    private func additionalNutrientsSection(_ revision: MealAnalysisRevision) -> some View {
-        let multiplier = displayedPortionMultiplier(for: revision)
-        return DisclosureGroup("Weitere Nährwerte", isExpanded: $showsMoreNutrients) {
-            VStack(spacing: 10) {
-                ForEach(additionalNutrients(in: revision)) { nutrient in
-                    LabeledContent(
-                        nutrient.knownIdentifier?.reviewTitle ?? nutrient.identifierRawValue,
-                        value: "~\(formattedValue(nutrient.value * multiplier)) \(nutrient.unitRawValue)"
-                    )
-                }
-            }
-            .padding(.top, 12)
-        }
-        .padding(18)
-        .background(.background, in: .rect(cornerRadius: 18))
     }
 
     private func revisionFootnote(_ revision: MealAnalysisRevision) -> some View {
@@ -538,6 +423,10 @@ struct MealReviewView: View {
 
     private func formattedCost(_ cost: Double) -> String {
         cost.formatted(.number.precision(.fractionLength(0...6))) + " USD"
+    }
+
+    private func wholeNumber(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0)))
     }
 
     private func energyKilocalories(
@@ -866,27 +755,136 @@ struct MealReviewView: View {
         )
     }
 
+    private func persistPortionMultiplier(for revision: MealAnalysisRevision) {
+        let normalized = portionAdjustment.multiplier
+        guard revision.normalizedPortionMultiplier != normalized else { return }
+
+        revision.portionMultiplier = normalized
+        meal.modifiedAt = .now
+        do {
+            try modelContext.save()
+        } catch {
+            alertMessage = "Die angepasste Menge konnte nicht gespeichert werden."
+        }
+    }
+}
+
+@Observable
+final class PortionAdjustmentDraft {
+    var multiplier: Double
+
+    init(multiplier: Double) {
+        self.multiplier = Self.normalized(multiplier)
+    }
+
+    func update(_ value: Double) {
+        multiplier = Self.normalized(value)
+    }
+
+    private static func normalized(_ value: Double) -> Double {
+        guard value.isFinite else { return 1 }
+        return min(max((value * 10).rounded() / 10, 0), 4)
+    }
+}
+
+private struct PortionNutritionSummary: View {
+    let revision: MealAnalysisRevision
+    let adjustment: PortionAdjustmentDraft
+    let onCommit: () -> Void
+
+    var body: some View {
+        let multiplier = adjustment.multiplier
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Kalorien")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text(nutrientText(.energy, multiplier: multiplier))
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                }
+                Spacer()
+                if let weight = revision.estimatedTotalWeightGrams {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("Portion")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text("~\(wholeNumber(weight * multiplier)) g")
+                            .font(.title3.bold())
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Menge anpassen")
+                        .font(.subheadline)
+                    Spacer()
+                    Text("\(formattedMultiplier(multiplier))×")
+                        .font(.subheadline.monospacedDigit().bold())
+                }
+                Slider(
+                    value: Binding(
+                        get: { adjustment.multiplier },
+                        set: adjustment.update
+                    ),
+                    in: 0...4,
+                    step: 0.1
+                ) {
+                    Text("Portionenmultiplikator")
+                } minimumValueLabel: {
+                    Text("0")
+                } maximumValueLabel: {
+                    Text("4")
+                } onEditingChanged: { isEditing in
+                    if !isEditing { onCommit() }
+                }
+                .accessibilityIdentifier("meal.portionMultiplier")
+                .accessibilityValue("\(formattedMultiplier(multiplier))-fach")
+            }
+
+            Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+                GridRow {
+                    macroTile("Protein", identifier: .protein, multiplier: multiplier)
+                    macroTile("Kohlenhydrate", identifier: .carbohydrates, multiplier: multiplier)
+                }
+                GridRow {
+                    macroTile("Fett", identifier: .fat, multiplier: multiplier)
+                    macroTile("Ballaststoffe", identifier: .fiber, multiplier: multiplier)
+                }
+            }
+        }
+        .padding(20)
+        .background(.background, in: .rect(cornerRadius: 22))
+    }
+
+    private func macroTile(
+        _ title: LocalizedStringKey,
+        identifier: NutrientIdentifier,
+        multiplier: Double
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(nutrientText(identifier, multiplier: multiplier))
+                .font(.headline.monospacedDigit())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("meal.nutrient.\(identifier.rawValue)")
+    }
+
     private func nutrientText(
         _ identifier: NutrientIdentifier,
-        in revision: MealAnalysisRevision,
-        multiplier: Double? = nil,
-        estimated: Bool
+        multiplier: Double
     ) -> String {
         guard let nutrient = revision.nutrients.first(where: {
             $0.identifierRawValue == identifier.rawValue
         }) else { return "–" }
-        let multiplier = multiplier ?? displayedPortionMultiplier(for: revision)
-        return "\(estimated ? "~" : "")\(formattedValue(nutrient.value * multiplier)) \(nutrient.unitRawValue)"
-    }
-
-    private func additionalNutrients(in revision: MealAnalysisRevision) -> [NutrientValue] {
-        let primary: Set<NutrientIdentifier> = [.energy, .protein, .carbohydrates, .fat, .fiber]
-        return revision.nutrients
-            .filter { nutrient in
-                guard let identifier = nutrient.knownIdentifier else { return true }
-                return !primary.contains(identifier)
-            }
-            .sorted { $0.identifierRawValue < $1.identifierRawValue }
+        return "~\(formattedValue(nutrient.value * multiplier)) \(nutrient.unitRawValue)"
     }
 
     private func wholeNumber(_ value: Double) -> String {
@@ -900,37 +898,77 @@ struct MealReviewView: View {
     private func formattedMultiplier(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(1)))
     }
+}
 
-    private func portionMultiplierBinding(for revision: MealAnalysisRevision) -> Binding<Double> {
-        Binding(
-            get: { displayedPortionMultiplier(for: revision) },
-            set: { newValue in
-                portionMultiplierDraft = normalizedPortionMultiplier(newValue)
+private struct PortionComponentsSection: View {
+    let revision: MealAnalysisRevision
+    let adjustment: PortionAdjustmentDraft
+
+    var body: some View {
+        let components = revision.components.sorted { $0.sortIndex < $1.sortIndex }
+        let multiplier = adjustment.multiplier
+        if !components.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Bestandteile")
+                    .font(.headline)
+                ForEach(components) { component in
+                    HStack {
+                        Text(component.name)
+                        Spacer()
+                        if let weight = component.estimatedWeightGrams {
+                            Text("~\(wholeNumber(weight * multiplier)) g")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if component.id != components.last?.id {
+                        Divider()
+                    }
+                }
             }
-        )
-    }
-
-    private func displayedPortionMultiplier(for revision: MealAnalysisRevision) -> Double {
-        portionMultiplierDraft ?? revision.normalizedPortionMultiplier
-    }
-
-    private func normalizedPortionMultiplier(_ value: Double) -> Double {
-        guard value.isFinite else { return 1 }
-        return min(max((value * 10).rounded() / 10, 0), 4)
-    }
-
-    private func persistPortionMultiplier(for revision: MealAnalysisRevision) {
-        guard let portionMultiplierDraft else { return }
-        let normalized = normalizedPortionMultiplier(portionMultiplierDraft)
-        guard revision.normalizedPortionMultiplier != normalized else { return }
-
-        revision.portionMultiplier = normalized
-        meal.modifiedAt = .now
-        do {
-            try modelContext.save()
-        } catch {
-            alertMessage = "Die angepasste Menge konnte nicht gespeichert werden."
+            .padding(18)
+            .background(.background, in: .rect(cornerRadius: 18))
         }
+    }
+
+    private func wholeNumber(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0)))
+    }
+}
+
+private struct PortionAdditionalNutrientsSection: View {
+    let revision: MealAnalysisRevision
+    let adjustment: PortionAdjustmentDraft
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        let multiplier = adjustment.multiplier
+        DisclosureGroup("Weitere Nährwerte", isExpanded: $isExpanded) {
+            VStack(spacing: 10) {
+                ForEach(additionalNutrients) { nutrient in
+                    LabeledContent(
+                        nutrient.knownIdentifier?.reviewTitle ?? nutrient.identifierRawValue,
+                        value: "~\(formattedValue(nutrient.value * multiplier)) \(nutrient.unitRawValue)"
+                    )
+                }
+            }
+            .padding(.top, 12)
+        }
+        .padding(18)
+        .background(.background, in: .rect(cornerRadius: 18))
+    }
+
+    private var additionalNutrients: [NutrientValue] {
+        let primary: Set<NutrientIdentifier> = [.energy, .protein, .carbohydrates, .fat, .fiber]
+        return revision.nutrients
+            .filter { nutrient in
+                guard let identifier = nutrient.knownIdentifier else { return true }
+                return !primary.contains(identifier)
+            }
+            .sorted { $0.identifierRawValue < $1.identifierRawValue }
+    }
+
+    private func formattedValue(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(value < 10 ? 1 : 0)))
     }
 }
 
