@@ -7,6 +7,15 @@ enum NutritionTrendRange: String, CaseIterable, Identifiable, Sendable {
     case year
 
     var id: Self { self }
+
+    var dayCount: Int {
+        switch self {
+        case .day: 1
+        case .week: 7
+        case .month: 30
+        case .year: 365
+        }
+    }
 }
 
 struct NutritionTrendPoint: Identifiable, Sendable {
@@ -29,7 +38,7 @@ struct DailyCumulativeNutritionTrend: Sendable {
     let averageDayCount: Int
 }
 
-struct MonthlyNutritionSummary: Sendable {
+struct NutritionPeriodSummary: Sendable {
     let interval: DateInterval
     let calendarDayCount: Int
     let trackedDayCount: Int
@@ -43,9 +52,9 @@ struct MonthlyNutritionSummary: Sendable {
     }
 }
 
-struct MonthlyNutritionComparison: Sendable {
-    let current: MonthlyNutritionSummary
-    let previous: MonthlyNutritionSummary
+struct NutritionPeriodComparison: Sendable {
+    let current: NutritionPeriodSummary
+    let previous: NutritionPeriodSummary
 
     func percentChange(for nutrient: NutrientIdentifier) -> Double? {
         guard let currentValue = current.average(for: nutrient),
@@ -61,7 +70,7 @@ struct NutritionTrendsSnapshot: Sendable {
     let interval: DateInterval
     let points: [NutritionTrendPoint]
     let dailyCumulativeTrend: DailyCumulativeNutritionTrend
-    let monthlyComparison: MonthlyNutritionComparison
+    let periodComparison: NutritionPeriodComparison
 }
 
 @MainActor
@@ -105,8 +114,9 @@ enum NutritionTrendsBuilder {
                 calendar: calendar,
                 portionMultipliers: portionMultipliers
             ),
-            monthlyComparison: makeMonthlyComparison(
-                for: date,
+            periodComparison: makePeriodComparison(
+                currentInterval: interval,
+                dayCount: range.dayCount,
                 meals: meals,
                 goals: goals,
                 calendar: calendar,
@@ -227,50 +237,25 @@ enum NutritionTrendsBuilder {
             Double(components.second ?? 0) / 3_600
     }
 
-    private static func makeMonthlyComparison(
-        for date: Date,
+    private static func makePeriodComparison(
+        currentInterval: DateInterval,
+        dayCount: Int,
         meals: [Meal],
         goals: [NutritionGoalPeriod],
         calendar: Calendar,
         portionMultipliers: PortionMultiplierSnapshot
-    ) -> MonthlyNutritionComparison {
-        guard let currentMonth = calendar.dateInterval(of: .month, for: date),
-              let previousReference = calendar.date(byAdding: .day, value: -1, to: currentMonth.start),
-              let previousMonth = calendar.dateInterval(of: .month, for: previousReference),
-              let dayAfterReference = calendar.date(
-                byAdding: .day,
-                value: 1,
-                to: calendar.startOfDay(for: date)
-              ) else {
-            let fallback = DateInterval(start: date, duration: 1)
-            let empty = MonthlyNutritionSummary(
-                interval: fallback,
-                calendarDayCount: 1,
-                trackedDayCount: 0,
-                totals: [:],
-                daysAboveEnergyTarget: 0,
-                daysAtOrBelowEnergyTarget: 0
-            )
-            return MonthlyNutritionComparison(current: empty, previous: empty)
-        }
+    ) -> NutritionPeriodComparison {
+        let previousStart = calendar.date(
+            byAdding: .day,
+            value: -dayCount,
+            to: currentInterval.start
+        ) ?? currentInterval.start
+        let previousInterval = DateInterval(start: previousStart, end: currentInterval.start)
 
-        let currentEnd = min(dayAfterReference, currentMonth.end)
-        let elapsedDays = max(
-            1,
-            calendar.dateComponents([.day], from: currentMonth.start, to: currentEnd).day ?? 1
-        )
-        let previousEnd = min(
-            calendar.date(byAdding: .day, value: elapsedDays, to: previousMonth.start)
-                ?? previousMonth.end,
-            previousMonth.end
-        )
-        let currentInterval = DateInterval(start: currentMonth.start, end: currentEnd)
-        let previousInterval = DateInterval(start: previousMonth.start, end: previousEnd)
-
-        return MonthlyNutritionComparison(
+        return NutritionPeriodComparison(
             current: summary(
                 for: currentInterval,
-                calendarDayCount: elapsedDays,
+                calendarDayCount: dayCount,
                 meals: meals,
                 goals: goals,
                 calendar: calendar,
@@ -278,11 +263,7 @@ enum NutritionTrendsBuilder {
             ),
             previous: summary(
                 for: previousInterval,
-                calendarDayCount: calendar.dateComponents(
-                    [.day],
-                    from: previousInterval.start,
-                    to: previousInterval.end
-                ).day ?? elapsedDays,
+                calendarDayCount: dayCount,
                 meals: meals,
                 goals: goals,
                 calendar: calendar,
@@ -298,7 +279,7 @@ enum NutritionTrendsBuilder {
         goals: [NutritionGoalPeriod],
         calendar: Calendar,
         portionMultipliers: PortionMultiplierSnapshot
-    ) -> MonthlyNutritionSummary {
+    ) -> NutritionPeriodSummary {
         let days = dailyTotals(
             meals: meals,
             within: interval,
@@ -322,7 +303,7 @@ enum NutritionTrendsBuilder {
             if energy > target { above += 1 } else { atOrBelow += 1 }
         }
 
-        return MonthlyNutritionSummary(
+        return NutritionPeriodSummary(
             interval: interval,
             calendarDayCount: calendarDayCount,
             trackedDayCount: days.count,
@@ -374,11 +355,15 @@ enum NutritionTrendsBuilder {
         range: NutritionTrendRange,
         calendar: Calendar
     ) -> DateInterval? {
-        switch range {
-        case .day: calendar.dateInterval(of: .day, for: date)
-        case .week: calendar.dateInterval(of: .weekOfYear, for: date)
-        case .month: calendar.dateInterval(of: .month, for: date)
-        case .year: calendar.dateInterval(of: .year, for: date)
-        }
+        guard let end = calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: calendar.startOfDay(for: date)
+        ), let start = calendar.date(
+            byAdding: .day,
+            value: -range.dayCount,
+            to: end
+        ) else { return nil }
+        return DateInterval(start: start, end: end)
     }
 }

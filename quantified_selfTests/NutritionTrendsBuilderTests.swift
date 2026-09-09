@@ -31,24 +31,45 @@ struct NutritionTrendsBuilderTests {
         #expect(snapshot.points.first?.value == 1_200)
     }
 
-    @Test("Month-to-date compares the same number of previous-month calendar days")
-    func fairPartialMonthComparison() {
-        let currentOne = meal(at: date(2026, 8, 2, 12), state: .confirmed, energy: 2_000, protein: 100)
-        let currentTwo = meal(at: date(2026, 8, 20, 12), state: .confirmed, energy: 2_200, protein: 120)
-        let previousIncluded = meal(at: date(2026, 7, 10, 12), state: .confirmed, energy: 1_800, protein: 90)
-        let previousTooLate = meal(at: date(2026, 7, 28, 12), state: .confirmed, energy: 5_000, protein: 200)
+    @Test("Week, month, and year use rolling calendar-day windows")
+    func rollingRangeIntervals() {
+        let reference = date(2026, 8, 23, 12)
+
+        let week = snapshot(for: reference, range: .week)
+        #expect(week.interval.start == date(2026, 8, 17))
+        #expect(week.interval.end == date(2026, 8, 24))
+
+        let month = snapshot(for: reference, range: .month)
+        #expect(month.interval.start == date(2026, 7, 25))
+        #expect(month.interval.end == date(2026, 8, 24))
+
+        let year = snapshot(for: reference, range: .year)
+        #expect(year.interval.start == date(2025, 8, 24))
+        #expect(year.interval.end == date(2026, 8, 24))
+    }
+
+    @Test("Selected range compares its rolling window with the preceding window")
+    func rollingPeriodComparison() {
+        let currentOne = meal(at: date(2026, 8, 18, 12), state: .confirmed, energy: 2_000, protein: 100)
+        let currentTwo = meal(at: date(2026, 8, 23, 12), state: .confirmed, energy: 2_200, protein: 120)
+        let previousIncluded = meal(at: date(2026, 8, 12, 12), state: .confirmed, energy: 1_800, protein: 90)
+        let beforePrevious = meal(at: date(2026, 8, 9, 12), state: .confirmed, energy: 5_000, protein: 200)
 
         let comparison = NutritionTrendsBuilder.makeSnapshot(
             for: date(2026, 8, 23, 12),
-            range: .month,
+            range: .week,
             nutrient: .energy,
-            meals: [currentOne, currentTwo, previousIncluded, previousTooLate],
+            meals: [currentOne, currentTwo, previousIncluded, beforePrevious],
             goals: [],
             calendar: calendar
-        ).monthlyComparison
+        ).periodComparison
 
-        #expect(comparison.current.calendarDayCount == 23)
-        #expect(comparison.previous.calendarDayCount == 23)
+        #expect(comparison.current.interval.start == date(2026, 8, 17))
+        #expect(comparison.current.interval.end == date(2026, 8, 24))
+        #expect(comparison.previous.interval.start == date(2026, 8, 10))
+        #expect(comparison.previous.interval.end == date(2026, 8, 17))
+        #expect(comparison.current.calendarDayCount == 7)
+        #expect(comparison.previous.calendarDayCount == 7)
         #expect(comparison.current.trackedDayCount == 2)
         #expect(comparison.previous.trackedDayCount == 1)
         #expect(comparison.current.average(for: .energy) == 2_100)
@@ -73,12 +94,26 @@ struct NutritionTrendsBuilderTests {
             meals: [tracked],
             goals: [goal],
             calendar: calendar
-        ).monthlyComparison.current
+        ).periodComparison.current
 
         #expect(current.trackedDayCount == 1)
-        #expect(current.calendarDayCount == 23)
+        #expect(current.calendarDayCount == 30)
         #expect(current.average(for: .energy) == 2_000)
         #expect(current.daysAtOrBelowEnergyTarget == 1)
+    }
+
+    private func snapshot(
+        for reference: Date,
+        range: NutritionTrendRange
+    ) -> NutritionTrendsSnapshot {
+        NutritionTrendsBuilder.makeSnapshot(
+            for: reference,
+            range: range,
+            nutrient: .energy,
+            meals: [],
+            goals: [],
+            calendar: calendar
+        )
     }
 
     @Test("Daily trend accumulates meals at their local time")

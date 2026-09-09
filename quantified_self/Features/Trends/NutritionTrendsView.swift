@@ -41,7 +41,7 @@ struct NutritionTrendsView: View {
                 LazyVStack(alignment: .leading, spacing: 18) {
                     controls
                     chartCard
-                    monthlyComparisonCard
+                    periodComparisonCard
                 }
                 .padding()
             }
@@ -194,12 +194,12 @@ struct NutritionTrendsView: View {
         }
     }
 
-    private var monthlyComparisonCard: some View {
-        let comparison = snapshot.monthlyComparison
+    private var periodComparisonCard: some View {
+        let comparison = snapshot.periodComparison
         return VStack(alignment: .leading, spacing: 14) {
-            Text("Monatsvergleich")
+            Text(comparisonTitle)
                 .font(.title2.bold())
-            Text("Monat bis heute im Vergleich mit demselben Zeitraum des Vormonats")
+            Text(comparisonDescription)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
@@ -225,7 +225,7 @@ struct NutritionTrendsView: View {
 
     private func comparisonRow(
         _ nutrient: NutrientIdentifier,
-        comparison: MonthlyNutritionComparison
+        comparison: NutritionPeriodComparison
     ) -> some View {
         let current = comparison.current.average(for: nutrient)
         let previous = comparison.previous.average(for: nutrient)
@@ -249,6 +249,17 @@ struct NutritionTrendsView: View {
                 }
             }
         }
+    }
+
+    private var comparisonTitle: String {
+        range == .day ? "Tagesvergleich" : "\(range.dayCount)-Tage-Vergleich"
+    }
+
+    private var comparisonDescription: String {
+        if range == .day {
+            return "Heute im Vergleich mit gestern"
+        }
+        return "Letzte \(range.dayCount) Tage im Vergleich mit den \(range.dayCount) Tagen davor"
     }
 
     private func formatted(_ value: Double?) -> String {
