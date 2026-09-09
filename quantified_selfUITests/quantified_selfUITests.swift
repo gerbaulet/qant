@@ -239,6 +239,33 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testPersistsAdjustedPortionAfterSliderInteraction() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-confirmation",
+        ])
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+
+        let slider = app.sliders["meal.portionMultiplier"]
+        XCTAssertTrue(slider.waitForExistence(timeout: 2))
+        slider.adjust(toNormalizedSliderPosition: 0.5)
+        XCTAssertTrue((slider.value as? String)?.contains("2") == true)
+
+        app.buttons["Fertig"].tap()
+        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForNonExistence(timeout: 2))
+        mealName.tap()
+
+        let reopenedSlider = app.sliders["meal.portionMultiplier"]
+        XCTAssertTrue(reopenedSlider.waitForExistence(timeout: 2))
+        XCTAssertTrue((reopenedSlider.value as? String)?.contains("2") == true)
+    }
+
+    @MainActor
     func testDeletesMealFromReview() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [
