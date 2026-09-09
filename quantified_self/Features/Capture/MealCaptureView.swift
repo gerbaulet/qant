@@ -16,6 +16,7 @@ struct MealCaptureView: View {
     private let imageStorage: any ImageStorageProviding
     private let analysisProvider: any NutritionAnalysisProviding
     private let opensCameraOnAppear: Bool
+    private let cameraCaptureFlow: CameraCaptureFlow
 
     @State private var timestamp: Date
     @State private var comment = ""
@@ -45,6 +46,7 @@ struct MealCaptureView: View {
         self.imageStorage = imageStorage
         self.analysisProvider = analysisProvider
         self.opensCameraOnAppear = opensCameraOnAppear
+        self.cameraCaptureFlow = .forCapture(openedFromShortcut: opensCameraOnAppear)
         _timestamp = State(initialValue: now)
         _category = State(initialValue: classificationSchedule.category(
             for: now,
@@ -133,20 +135,26 @@ struct MealCaptureView: View {
                 requestCamera()
             }
             .fullScreenCover(isPresented: $showsCamera) {
-                CameraPicker { imageData in
-                    if opensCameraOnAppear {
+                if cameraCaptureFlow == .useImmediately {
+                    DirectCameraCaptureView { imageData in
                         saveQuickCapture(imageData)
-                    } else {
+                    } onCancel: {
+                        showsCamera = false
+                        dismiss()
+                    } onFailure: {
+                        showsCamera = false
+                        alert = .cameraCaptureFailed
+                    }
+                    .ignoresSafeArea()
+                } else {
+                    CameraPicker { imageData in
                         showsCamera = false
                         addImageData(imageData)
+                    } onCancel: {
+                        showsCamera = false
                     }
-                } onCancel: {
-                    showsCamera = false
-                    if opensCameraOnAppear {
-                        dismiss()
-                    }
+                    .ignoresSafeArea()
                 }
-                .ignoresSafeArea()
             }
             .alert(item: $alert) { alert in
                 if alert.offersSettings {

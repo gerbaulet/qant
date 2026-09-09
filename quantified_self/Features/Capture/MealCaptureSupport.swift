@@ -6,6 +6,15 @@ struct PendingMealImage: Identifiable {
     let data: Data
 }
 
+nonisolated enum CameraCaptureFlow: Equatable {
+    case confirmBeforeUsing
+    case useImmediately
+
+    static func forCapture(openedFromShortcut: Bool) -> Self {
+        openedFromShortcut ? .useImmediately : .confirmBeforeUsing
+    }
+}
+
 struct PendingMealImageThumbnail: View {
     let image: PendingMealImage
     let onRemove: () -> Void
@@ -36,6 +45,7 @@ struct PendingMealImageThumbnail: View {
 
 enum CaptureAlert: Identifiable {
     case imageImportFailed
+    case cameraCaptureFailed
     case cameraUnavailable
     case cameraDenied
     case saveFailed
@@ -43,6 +53,7 @@ enum CaptureAlert: Identifiable {
     var id: String {
         switch self {
         case .imageImportFailed: "imageImportFailed"
+        case .cameraCaptureFailed: "cameraCaptureFailed"
         case .cameraUnavailable: "cameraUnavailable"
         case .cameraDenied: "cameraDenied"
         case .saveFailed: "saveFailed"
@@ -52,6 +63,7 @@ enum CaptureAlert: Identifiable {
     var title: String {
         switch self {
         case .imageImportFailed: "Foto konnte nicht hinzugefügt werden"
+        case .cameraCaptureFailed: "Foto konnte nicht aufgenommen werden"
         case .cameraUnavailable: "Kamera nicht verfügbar"
         case .cameraDenied: "Kein Kamerazugriff"
         case .saveFailed: "Mahlzeit konnte nicht gespeichert werden"
@@ -62,6 +74,8 @@ enum CaptureAlert: Identifiable {
         switch self {
         case .imageImportFailed:
             "Bitte wähle ein anderes Bild."
+        case .cameraCaptureFailed:
+            "Bitte versuche die Aufnahme erneut."
         case .cameraUnavailable:
             "Auf diesem Gerät steht keine Kamera zur Verfügung."
         case .cameraDenied:
