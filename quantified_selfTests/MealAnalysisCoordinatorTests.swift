@@ -58,6 +58,39 @@ struct MealAnalysisCoordinatorTests {
         #expect(InitialAnalysisRunMetadata.decode(meal.activeRevision?.providerMetadata) == runs)
     }
 
+    @Test("Background execution remains active until the analysis finishes")
+    func keepsBackgroundExecutionActiveDuringAnalysis() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let provider = SuspendingFirstAnalysisProviderStub(
+            result: NutritionAnalysisValidatorTests.validResult()
+        )
+        let backgroundExecutionManager = BackgroundExecutionManagerSpy()
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:]),
+            backgroundExecutionManager: backgroundExecutionManager
+        )
+
+        let analysisTask = Task { await coordinator.analyze(meal) }
+        while provider.requestCount < NutritionAnalysisConsensus.initialSampleCount {
+            await Task.yield()
+        }
+
+        #expect(backgroundExecutionManager.begunNames == ["Mahlzeit analysieren"])
+        #expect(backgroundExecutionManager.endedIdentifiers.isEmpty)
+
+        provider.resumeFirstRequest()
+        await analysisTask.value
+
+        #expect(meal.analysisState == .confirmed)
+        #expect(backgroundExecutionManager.endedIdentifiers == [backgroundExecutionManager.identifier])
+    }
+
     @Test("A material clarification question changes the persisted state")
     func persistsClarificationState() async throws {
         let container = try makeContainer()
@@ -927,6 +960,32 @@ private final class SequencedAnalysisProviderStub: NutritionAnalysisProviding {
 }
 
 @MainActor
+private final class SuspendingFirstAnalysisProviderStub: NutritionAnalysisProviding {
+    private let result: NutritionAnalysisResult
+    private var firstRequestContinuation: CheckedContinuation<Void, Never>?
+    private(set) var requestCount = 0
+
+    init(result: NutritionAnalysisResult) {
+        self.result = result
+    }
+
+    func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult {
+        requestCount += 1
+        if requestCount == 1 {
+            await withCheckedContinuation { continuation in
+                firstRequestContinuation = continuation
+            }
+        }
+        return result
+    }
+
+    func resumeFirstRequest() {
+        firstRequestContinuation?.resume()
+        firstRequestContinuation = nil
+    }
+}
+
+@MainActor
 private final class NetworkAvailabilityWaiterStub: NetworkAvailabilityWaiting {
     private(set) var waitCount = 0
 
@@ -938,11 +997,13 @@ private final class NetworkAvailabilityWaiterStub: NetworkAvailabilityWaiting {
 @MainActor
 private final class BackgroundExecutionManagerSpy: BackgroundExecutionManaging {
     let identifier = UUID()
-    private(set) var beginCount = 0
+    private(set) var begunNames: [String] = []
     private(set) var endedIdentifiers: [UUID] = []
 
+    var beginCount: Int { begunNames.count }
+
     func begin(name: String, expirationHandler: @escaping @Sendable () -> Void) -> UUID? {
-        beginCount += 1
+        begunNames.append(name)
         return identifier
     }
 
