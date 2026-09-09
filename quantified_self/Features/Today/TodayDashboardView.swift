@@ -163,17 +163,6 @@ struct TodayDashboardView: View {
                         Text(change.formatted(.percent.scale(1).sign(strategy: .always()).precision(.fractionLength(0))))
                     }
                 }
-
-                if !weeklySummary.recommendations.isEmpty {
-                    Divider()
-                    Text("Tipps für nächste Woche")
-                        .font(.headline)
-                    ForEach(weeklySummary.recommendations) { recommendation in
-                        Label(recommendation.message, systemImage: recommendation.systemImage)
-                            .font(.subheadline)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
             }
         }
         .padding(18)

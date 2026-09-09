@@ -12,11 +12,6 @@ struct WeeklyNutritionSummaryBuilderTests {
         return calendar
     }
 
-    @Test("Fifteen additional weekly recommendation kinds are available")
-    func weeklyRecommendationCatalogSize() {
-        #expect(WeeklyNutritionRecommendationKind.allCases.count == 21)
-    }
-
     @Test("Sunday belongs to the Monday-based week and compares daily averages")
     func sundayBoundaryAndComparison() throws {
         let calendar = berlinCalendar
@@ -76,111 +71,6 @@ struct WeeklyNutritionSummaryBuilderTests {
         #expect(WeeklySummaryNotificationSchedule.testDelay == 5)
     }
 
-    @Test("Weekly tips adapt a familiar breakfast to low fiber and protein")
-    func personalizedWeeklyTips() throws {
-        let calendar = berlinCalendar
-        let goals = nutritionGoals(from: date(2026, 1, 1, calendar: calendar))
-        let meals = [17, 18, 19].map { day in
-            meal(
-                at: date(2026, 8, day, 8, calendar: calendar),
-                energy: 1_700,
-                protein: 60,
-                carbohydrates: 190,
-                fat: 60,
-                fiber: 12,
-                name: "Joghurt mit Banane"
-            )
-        }
-
-        let summary = try #require(WeeklyNutritionSummaryBuilder.makeSummary(
-            containing: date(2026, 8, 23, 20, calendar: calendar),
-            meals: meals,
-            goals: goals,
-            calendar: calendar
-        ))
-
-        #expect(summary.recommendations.map(\.kind) == [.increaseFiber, .increaseProtein])
-        #expect(summary.recommendations.count == 2)
-        #expect(summary.recommendations[0].message.contains("Joghurt"))
-        #expect(summary.recommendations[1].message.contains("Frühstück"))
-    }
-
-    @Test("English titles and components still produce personalized German tips")
-    func englishAnalysisTextProducesPersonalizedTips() throws {
-        let calendar = berlinCalendar
-        let meals = [17, 18, 19].map { day in
-            meal(
-                at: date(2026, 8, day, 8, calendar: calendar),
-                energy: 1_700,
-                protein: 60,
-                carbohydrates: 190,
-                fat: 60,
-                fiber: 12,
-                name: "Breakfast Bowl",
-                componentNames: ["Greek Yogurt", "Oat Granola"]
-            )
-        }
-
-        let summary = try #require(WeeklyNutritionSummaryBuilder.makeSummary(
-            containing: date(2026, 8, 23, 20, calendar: calendar),
-            meals: meals,
-            goals: nutritionGoals(from: date(2026, 1, 1, calendar: calendar)),
-            calendar: calendar
-        ))
-
-        #expect(summary.recommendations.map(\.kind) == [.increaseFiber, .increaseProtein])
-        #expect(summary.recommendations[0].message.contains("Joghurt"))
-        #expect(summary.recommendations[1].message.contains("Frühstück"))
-    }
-
-    @Test("Personal tips wait for three tracked days")
-    func recommendationDataThreshold() throws {
-        let calendar = berlinCalendar
-        let summary = try #require(WeeklyNutritionSummaryBuilder.makeSummary(
-            containing: date(2026, 8, 23, 20, calendar: calendar),
-            meals: [
-                meal(
-                    at: date(2026, 8, 22, 8, calendar: calendar),
-                    energy: 1_700,
-                    protein: 60,
-                    carbohydrates: 190,
-                    fat: 60,
-                    fiber: 12,
-                    name: "Joghurt mit Banane"
-                ),
-            ],
-            goals: nutritionGoals(from: date(2026, 1, 1, calendar: calendar)),
-            calendar: calendar
-        ))
-
-        #expect(summary.recommendations.isEmpty)
-    }
-
-    @Test("Weekly summary returns only the two most important matching tips")
-    func weeklyRecommendationPriorityLimit() throws {
-        let calendar = berlinCalendar
-        let meals = [17, 18, 19].map { day in
-            meal(
-                at: date(2026, 8, day, 12, calendar: calendar),
-                energy: 2_100,
-                protein: 125,
-                carbohydrates: 235,
-                fat: 70,
-                fiber: 28,
-                name: "Gemüsepfanne mit Vollkornreis"
-            )
-        }
-        let summary = try #require(WeeklyNutritionSummaryBuilder.makeSummary(
-            containing: date(2026, 8, 23, 20, calendar: calendar),
-            meals: meals,
-            goals: nutritionGoals(from: date(2026, 1, 1, calendar: calendar)),
-            calendar: calendar
-        ))
-
-        #expect(summary.recommendations.map(\.kind) == [.energyInRange, .proteinInRange])
-        #expect(summary.recommendations.count == 2)
-    }
-
     private func goal(from date: Date) -> NutritionGoalPeriod {
         NutritionGoalPeriod(
             validFrom: date,
@@ -198,7 +88,6 @@ struct WeeklyNutritionSummaryBuilderTests {
         fat: Double = 0,
         fiber: Double = 0,
         name: String = "Test",
-        componentNames: [String] = [],
         state: AnalysisState = .confirmed
     ) -> Meal {
         let revision = MealAnalysisRevision(
@@ -206,9 +95,6 @@ struct WeeklyNutritionSummaryBuilderTests {
             status: state,
             mealName: name,
             confidence: .medium,
-            components: componentNames.enumerated().map { index, name in
-                FoodComponent(sortIndex: index, name: name)
-            },
             nutrients: [
                 NutrientValue(identifier: .energy, value: energy, unit: .kilocalorie, confidence: .medium, provenance: .visualEstimate),
                 NutrientValue(identifier: .protein, value: protein, unit: .gram, confidence: .medium, provenance: .visualEstimate),
@@ -218,16 +104,6 @@ struct WeeklyNutritionSummaryBuilderTests {
             ]
         )
         return Meal(timestamp: timestamp, analysisState: state, activeRevisionID: revision.id, analysisRevisions: [revision])
-    }
-
-    private func nutritionGoals(from date: Date) -> [NutritionGoalPeriod] {
-        [
-            NutritionGoalPeriod(validFrom: date, nutrientIdentifier: .energy, targetValue: 2_200, unit: .kilocalorie),
-            NutritionGoalPeriod(validFrom: date, nutrientIdentifier: .protein, targetValue: 130, unit: .gram),
-            NutritionGoalPeriod(validFrom: date, nutrientIdentifier: .carbohydrates, targetValue: 240, unit: .gram),
-            NutritionGoalPeriod(validFrom: date, nutrientIdentifier: .fat, targetValue: 75, unit: .gram),
-            NutritionGoalPeriod(validFrom: date, nutrientIdentifier: .fiber, targetValue: 30, unit: .gram),
-        ]
     }
 
     private func date(
