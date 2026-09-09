@@ -77,7 +77,7 @@ struct MealAnalysisCoordinatorTests {
         )
 
         let analysisTask = Task { await coordinator.analyze(meal) }
-        while provider.requestCount < NutritionAnalysisConsensus.initialSampleCount {
+        while provider.requestCount < 1 {
             await Task.yield()
         }
 
@@ -89,6 +89,39 @@ struct MealAnalysisCoordinatorTests {
 
         #expect(meal.analysisState == .confirmed)
         #expect(backgroundExecutionManager.endedIdentifiers == [backgroundExecutionManager.identifier])
+    }
+
+    @Test("Three initial analyses run concurrently")
+    func runsInitialAnalysesConcurrently() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let provider = SuspendingFirstAnalysisProviderStub(
+            result: NutritionAnalysisValidatorTests.validResult()
+        )
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        let analysisTask = Task { await coordinator.analyze(meal) }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(1))
+        while provider.requestCount < NutritionAnalysisConsensus.initialSampleCount,
+              clock.now < deadline {
+            await Task.yield()
+        }
+        let allRequestsStartedWhileFirstWasSuspended =
+            provider.requestCount == NutritionAnalysisConsensus.initialSampleCount
+
+        provider.resumeFirstRequest()
+        await analysisTask.value
+
+        #expect(allRequestsStartedWhileFirstWasSuspended)
+        #expect(meal.analysisState == .confirmed)
     }
 
     @Test("A material clarification question changes the persisted state")
@@ -170,8 +203,11 @@ struct MealAnalysisCoordinatorTests {
         #expect(InitialAnalysisRunMetadata.decode(meal.activeRevision?.providerMetadata).count == 3)
         let calls = InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata)
         #expect(calls.count == 4)
-        #expect(calls.map(\.status) == [.succeeded, .succeeded, .failed, .succeeded])
-        #expect(calls.map(\.sampleNumber) == [1, 2, 3, 3])
+        #expect(calls.filter { $0.status == .succeeded }.count == 3)
+        #expect(calls.filter { $0.status == .failed }.count == 1)
+        #expect(Array(calls.prefix(3)).compactMap(\.sampleNumber).sorted() == [1, 2, 3])
+        let retriedSample = try #require(calls.last?.sampleNumber)
+        #expect(calls.filter { $0.sampleNumber == retriedSample }.count == 2)
         #expect(calls.map(\.attemptNumber) == [1, 1, 1, 2])
     }
 
