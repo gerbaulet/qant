@@ -63,9 +63,22 @@ enum WeeklyNutritionSummaryBuilder {
               let previousInterval = calendar.dateInterval(of: .weekOfYear, for: previousDate) else {
             return nil
         }
+        let portionMultipliers = PortionMultiplierSnapshot()
 
-        let current = aggregate(interval: interval, meals: meals, goals: goals, calendar: calendar)
-        let previous = aggregate(interval: previousInterval, meals: meals, goals: goals, calendar: calendar)
+        let current = aggregate(
+            interval: interval,
+            meals: meals,
+            goals: goals,
+            calendar: calendar,
+            portionMultipliers: portionMultipliers
+        )
+        let previous = aggregate(
+            interval: previousInterval,
+            meals: meals,
+            goals: goals,
+            calendar: calendar,
+            portionMultipliers: portionMultipliers
+        )
         let change: Double?
         if let currentAverage = current.averageEnergy,
            let previousAverage = previous.averageEnergy,
@@ -140,7 +153,8 @@ enum WeeklyNutritionSummaryBuilder {
         interval: DateInterval,
         meals: [Meal],
         goals: [NutritionGoalPeriod],
-        calendar: Calendar
+        calendar: Calendar,
+        portionMultipliers: PortionMultiplierSnapshot
     ) -> Aggregate {
         var result = Aggregate()
         result.weeklyTarget = try? GoalHistory.weeklyTarget(
@@ -166,24 +180,59 @@ enum WeeklyNutritionSummaryBuilder {
 
             if !revisions.isEmpty {
                 result.trackedDays += 1
-                let energy = nutrientTotal(.energy, unit: .kilocalorie, revisions: revisions)
+                let energy = nutrientTotal(
+                    .energy,
+                    unit: .kilocalorie,
+                    revisions: revisions,
+                    portionMultipliers: portionMultipliers
+                )
                 result.energy += energy
-                result.protein += nutrientTotal(.protein, unit: .gram, revisions: revisions)
-                result.carbohydrates += nutrientTotal(.carbohydrates, unit: .gram, revisions: revisions)
-                result.fat += nutrientTotal(.fat, unit: .gram, revisions: revisions)
-                result.fiber += nutrientTotal(.fiber, unit: .gram, revisions: revisions)
+                result.protein += nutrientTotal(
+                    .protein,
+                    unit: .gram,
+                    revisions: revisions,
+                    portionMultipliers: portionMultipliers
+                )
+                result.carbohydrates += nutrientTotal(
+                    .carbohydrates,
+                    unit: .gram,
+                    revisions: revisions,
+                    portionMultipliers: portionMultipliers
+                )
+                result.fat += nutrientTotal(
+                    .fat,
+                    unit: .gram,
+                    revisions: revisions,
+                    portionMultipliers: portionMultipliers
+                )
+                result.fiber += nutrientTotal(
+                    .fiber,
+                    unit: .gram,
+                    revisions: revisions,
+                    portionMultipliers: portionMultipliers
+                )
 
                 for revision in revisions {
                     let description = ([revision.mealName] + revision.components.map(\.name))
                         .joined(separator: " ")
                     result.foodDescriptions.append(description)
 
-                    let fiber = nutrientTotal(.fiber, unit: .gram, revisions: [revision])
+                    let fiber = nutrientTotal(
+                        .fiber,
+                        unit: .gram,
+                        revisions: [revision],
+                        portionMultipliers: portionMultipliers
+                    )
                     if result.highestFiberMeal.map({ fiber > $0.value }) ?? true {
                         result.highestFiberMeal = (revision.mealName, fiber)
                     }
 
-                    let protein = nutrientTotal(.protein, unit: .gram, revisions: [revision])
+                    let protein = nutrientTotal(
+                        .protein,
+                        unit: .gram,
+                        revisions: [revision],
+                        portionMultipliers: portionMultipliers
+                    )
                     if result.highestProteinMeal.map({ protein > $0.value }) ?? true {
                         result.highestProteinMeal = (revision.mealName, protein)
                     }
@@ -540,7 +589,8 @@ enum WeeklyNutritionSummaryBuilder {
     private static func nutrientTotal(
         _ identifier: NutrientIdentifier,
         unit: NutrientUnit,
-        revisions: [MealAnalysisRevision]
+        revisions: [MealAnalysisRevision],
+        portionMultipliers: PortionMultiplierSnapshot
     ) -> Double {
         revisions.reduce(0) { total, revision in
             total + revision.nutrients
@@ -548,7 +598,7 @@ enum WeeklyNutritionSummaryBuilder {
                     $0.identifierRawValue == identifier.rawValue &&
                         $0.unitRawValue == unit.rawValue
                 }
-                .reduce(0) { $0 + revision.scaled($1.value) }
+                .reduce(0) { $0 + portionMultipliers.scaled($1.value, for: revision) }
         }
     }
 }

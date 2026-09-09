@@ -45,6 +45,7 @@ enum MealHistoryBuilder {
         let visibleMeals = meals
             .filter { $0.mealState != .archived }
             .sorted { $0.timestamp > $1.timestamp }
+        let portionMultipliers = PortionMultiplierSnapshot()
         let grouped = Dictionary(grouping: visibleMeals) { meal in
             interval(for: meal.timestamp, grouping: grouping, calendar: calendar)?.start
                 ?? meal.timestamp
@@ -57,7 +58,9 @@ enum MealHistoryBuilder {
             return MealHistorySection(
                 id: start,
                 interval: interval,
-                entries: (grouped[start] ?? []).map(makeEntry)
+                entries: (grouped[start] ?? []).map {
+                    makeEntry($0, portionMultipliers: portionMultipliers)
+                }
             )
         }
     }
@@ -77,7 +80,10 @@ enum MealHistoryBuilder {
         }
     }
 
-    private static func makeEntry(_ meal: Meal) -> MealHistoryEntry {
+    private static func makeEntry(
+        _ meal: Meal,
+        portionMultipliers: PortionMultiplierSnapshot
+    ) -> MealHistoryEntry {
         let revision = meal.activeRevision
         let includesNutrition = revision.map { revision in
             switch revision.status {
@@ -89,7 +95,10 @@ enum MealHistoryBuilder {
             ? revision?.nutrients.first(where: {
                 $0.identifierRawValue == NutrientIdentifier.energy.rawValue &&
                     $0.unitRawValue == NutrientUnit.kilocalorie.rawValue
-            }).map { revision?.scaled($0.value) ?? $0.value }
+            }).map { nutrient in
+                guard let revision else { return nutrient.value }
+                return portionMultipliers.scaled(nutrient.value, for: revision)
+            }
             : nil
         return MealHistoryEntry(
             id: meal.id,

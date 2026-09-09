@@ -40,6 +40,7 @@ struct MealReviewView: View {
     }
 
     var body: some View {
+        let portionMultipliers = PortionMultiplierSnapshot()
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
                 photoStrip
@@ -52,7 +53,7 @@ struct MealReviewView: View {
                     clarificationSection(revision)
                     componentsSection(revision)
                     additionalNutrientsSection(revision)
-                    revisionHistorySection
+                    revisionHistorySection(portionMultipliers: portionMultipliers)
                     revisionFootnote(revision)
                 } else {
                     unavailableState
@@ -367,12 +368,14 @@ struct MealReviewView: View {
     }
 
     @ViewBuilder
-    private var revisionHistorySection: some View {
+    private func revisionHistorySection(
+        portionMultipliers: PortionMultiplierSnapshot
+    ) -> some View {
         if meal.analysisRevisions.count > 1 || sortedRevisions.contains(where: hasInitialRunSummaries) {
             DisclosureGroup("Analyseverlauf") {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(sortedRevisions) { revision in
-                        revisionHistoryRow(revision)
+                        revisionHistoryRow(revision, portionMultipliers: portionMultipliers)
                         if revision.id != sortedRevisions.last?.id {
                             Divider()
                         }
@@ -385,7 +388,10 @@ struct MealReviewView: View {
         }
     }
 
-    private func revisionHistoryRow(_ revision: MealAnalysisRevision) -> some View {
+    private func revisionHistoryRow(
+        _ revision: MealAnalysisRevision,
+        portionMultipliers: PortionMultiplierSnapshot
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label(revision.trigger.reviewTitle, systemImage: revision.trigger.reviewSystemImage)
@@ -457,7 +463,10 @@ struct MealReviewView: View {
                     requestedAt: revision.requestDate,
                     clarificationQuestion: revision.clarificationQuestion,
                     clarificationAnswer: revision.clarificationAnswer,
-                    energyKilocalories: energyKilocalories(in: revision),
+                    energyKilocalories: energyKilocalories(
+                        in: revision,
+                        portionMultipliers: portionMultipliers
+                    ),
                     errorMessage: revision.failureMessage
                 )
             }
@@ -531,10 +540,13 @@ struct MealReviewView: View {
         cost.formatted(.number.precision(.fractionLength(0...6))) + " USD"
     }
 
-    private func energyKilocalories(in revision: MealAnalysisRevision) -> Double? {
+    private func energyKilocalories(
+        in revision: MealAnalysisRevision,
+        portionMultipliers: PortionMultiplierSnapshot
+    ) -> Double? {
         revision.nutrients.first {
             $0.knownIdentifier == .energy && $0.knownUnit == .kilocalorie
-        }.map { revision.scaled($0.value) }
+        }.map { portionMultipliers.scaled($0.value, for: revision) }
     }
 
     private var sortedRevisions: [MealAnalysisRevision] {

@@ -62,6 +62,7 @@ enum TodayDashboardBuilder {
                     $0.timestamp < dayInterval.end
             }
             .sorted { $0.timestamp > $1.timestamp }
+        let portionMultipliers = PortionMultiplierSnapshot()
 
         let includedRevisions = todaysMeals.compactMap { meal -> MealAnalysisRevision? in
             guard let revision = meal.activeRevision,
@@ -75,13 +76,15 @@ enum TodayDashboardBuilder {
             for: date,
             meals: meals,
             goals: goals,
-            calendar: calendar
+            calendar: calendar,
+            portionMultipliers: portionMultipliers
         )
 
         let energy = progress(
             for: .energy,
             unit: .kilocalorie,
             revisions: includedRevisions,
+            portionMultipliers: portionMultipliers,
             goals: goals,
             at: dayInterval.start
         )
@@ -90,6 +93,7 @@ enum TodayDashboardBuilder {
                 for: $0,
                 unit: .gram,
                 revisions: includedRevisions,
+                portionMultipliers: portionMultipliers,
                 goals: goals,
                 at: dayInterval.start
             )
@@ -98,6 +102,7 @@ enum TodayDashboardBuilder {
             for: .fiber,
             unit: .gram,
             revisions: includedRevisions,
+            portionMultipliers: portionMultipliers,
             goals: goals,
             at: dayInterval.start
         )
@@ -110,7 +115,12 @@ enum TodayDashboardBuilder {
                 timestamp: meal.timestamp,
                 name: revision?.mealName,
                 energyKilocalories: included
-                    ? nutrientTotal(for: .energy, unit: .kilocalorie, in: [revision].compactMap { $0 })
+                    ? nutrientTotal(
+                        for: .energy,
+                        unit: .kilocalorie,
+                        in: [revision].compactMap { $0 },
+                        portionMultipliers: portionMultipliers
+                    )
                     : nil,
                 analysisState: meal.analysisState,
                 isProvisional: included && revision?.status != .confirmed,
@@ -133,12 +143,18 @@ enum TodayDashboardBuilder {
         for identifier: NutrientIdentifier,
         unit: NutrientUnit,
         revisions: [MealAnalysisRevision],
+        portionMultipliers: PortionMultiplierSnapshot,
         goals: [NutritionGoalPeriod],
         at date: Date
     ) -> NutrientProgress {
         NutrientProgress(
             id: identifier,
-            consumed: nutrientTotal(for: identifier, unit: unit, in: revisions),
+            consumed: nutrientTotal(
+                for: identifier,
+                unit: unit,
+                in: revisions,
+                portionMultipliers: portionMultipliers
+            ),
             target: GoalHistory.goal(for: identifier, at: date, in: goals)?.targetValue,
             unit: unit
         )
@@ -147,7 +163,8 @@ enum TodayDashboardBuilder {
     private static func nutrientTotal(
         for identifier: NutrientIdentifier,
         unit: NutrientUnit,
-        in revisions: [MealAnalysisRevision]
+        in revisions: [MealAnalysisRevision],
+        portionMultipliers: PortionMultiplierSnapshot
     ) -> Double {
         revisions.reduce(0) { total, revision in
             total + revision.nutrients
@@ -155,7 +172,7 @@ enum TodayDashboardBuilder {
                     $0.identifierRawValue == identifier.rawValue &&
                         $0.unitRawValue == unit.rawValue
                 }
-                .reduce(0) { $0 + revision.scaled($1.value) }
+                .reduce(0) { $0 + portionMultipliers.scaled($1.value, for: revision) }
         }
     }
 
@@ -172,7 +189,8 @@ enum TodayDashboardBuilder {
         for date: Date,
         meals: [Meal],
         goals: [NutritionGoalPeriod],
-        calendar: Calendar
+        calendar: Calendar,
+        portionMultipliers: PortionMultiplierSnapshot
     ) -> NutrientProgress {
         guard let week = calendar.dateInterval(of: .weekOfYear, for: date) else {
             return NutrientProgress(id: .energy, consumed: 0, target: nil, unit: .kilocalorie)
@@ -194,7 +212,12 @@ enum TodayDashboardBuilder {
         )) ?? nil
         return NutrientProgress(
             id: .energy,
-            consumed: nutrientTotal(for: .energy, unit: .kilocalorie, in: revisions),
+            consumed: nutrientTotal(
+                for: .energy,
+                unit: .kilocalorie,
+                in: revisions,
+                portionMultipliers: portionMultipliers
+            ),
             target: target,
             unit: .kilocalorie
         )
