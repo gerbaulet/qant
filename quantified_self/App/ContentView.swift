@@ -62,6 +62,10 @@ struct ContentView: View {
                 presentRequestedQuickCapture()
             }
         }
+        .onOpenURL { url in
+            guard url == QuantWidgetConfiguration.todayURL else { return }
+            selectedSection = .today
+        }
     }
 
     private func presentRequestedQuickCapture() {
@@ -86,18 +90,25 @@ private struct TodayDashboardContainer: View {
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var selectedMeal: Meal?
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
+    private let widgetSynchronizer = WidgetCalorieSnapshotSynchronizer()
 
     let onAddFood: () -> Void
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
+            let snapshot = TodayDashboardBuilder.makeSnapshot(
+                for: context.date,
+                meals: meals,
+                goals: goals,
+                calendar: .autoupdatingCurrent
+            )
+            let widgetSnapshot = WidgetCalorieSnapshot(
+                dayStart: Calendar.autoupdatingCurrent.startOfDay(for: context.date),
+                energyKilocalories: snapshot.energy.consumed,
+                hasProvisionalValues: snapshot.hasProvisionalValues
+            )
             TodayDashboardView(
-                snapshot: TodayDashboardBuilder.makeSnapshot(
-                    for: context.date,
-                    meals: meals,
-                    goals: goals,
-                    calendar: .autoupdatingCurrent
-                ),
+                snapshot: snapshot,
                 weeklySummary: WeeklyNutritionSummaryBuilder.makeSummary(
                     containing: context.date,
                     meals: meals,
@@ -108,6 +119,9 @@ private struct TodayDashboardContainer: View {
                 onRetryMeal: retryAnalysis,
                 onOpenMeal: openMeal
             )
+            .task(id: widgetSnapshot) {
+                widgetSynchronizer.synchronize(widgetSnapshot)
+            }
         }
         .sheet(item: $selectedMeal) { meal in
             NavigationStack {

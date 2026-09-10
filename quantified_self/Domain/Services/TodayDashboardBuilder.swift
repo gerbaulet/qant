@@ -58,7 +58,8 @@ enum TodayDashboardBuilder {
 
         let todaysMeals = meals
             .filter {
-                $0.timestamp >= dayInterval.start &&
+                $0.mealState != .archived &&
+                    $0.timestamp >= dayInterval.start &&
                     $0.timestamp < dayInterval.end
             }
             .sorted { $0.timestamp > $1.timestamp }
@@ -196,7 +197,8 @@ enum TodayDashboardBuilder {
             return NutrientProgress(id: .energy, consumed: 0, target: nil, unit: .kilocalorie)
         }
         let revisions = meals.compactMap { meal -> MealAnalysisRevision? in
-            guard meal.timestamp >= week.start,
+            guard meal.mealState != .archived,
+                  meal.timestamp >= week.start,
                   meal.timestamp < week.end,
                   let revision = meal.activeRevision,
                   isIncludedInProvisionalTotals(revision.status) else {

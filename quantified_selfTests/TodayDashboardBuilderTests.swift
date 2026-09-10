@@ -97,6 +97,24 @@ struct TodayDashboardBuilderTests {
         #expect(snapshot.hasProvisionalValues)
     }
 
+    @Test("Archived meals do not count toward daily totals")
+    func archivedMealsAreExcluded() {
+        let reference = date(2026, 8, 23, 12)
+        let active = meal(at: reference, state: .confirmed, energy: 500, protein: 25)
+        let archived = meal(at: reference, state: .confirmed, energy: 900, protein: 35)
+        archived.mealState = .archived
+
+        let snapshot = TodayDashboardBuilder.makeSnapshot(
+            for: reference,
+            meals: [active, archived],
+            goals: goals(starting: date(2026, 8, 1)),
+            calendar: calendar
+        )
+
+        #expect(snapshot.energy.consumed == 500)
+        #expect(snapshot.meals.map(\.id) == [active.id])
+    }
+
     @Test("Weekly progress sums intake and effective-dated daily goals")
     func weeklyProgress() {
         let reference = date(2026, 8, 19, 12)
