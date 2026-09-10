@@ -4,6 +4,7 @@ struct TodayDashboardView: View {
     let snapshot: TodayDashboardSnapshot
     let weeklySummary: WeeklyNutritionSummary?
     let onAddFood: () -> Void
+    let onSuggestDinner: () -> Void
     let onRetryMeal: (UUID) -> Void
     let onOpenMeal: (UUID) -> Void
 
@@ -11,12 +12,14 @@ struct TodayDashboardView: View {
         snapshot: TodayDashboardSnapshot,
         weeklySummary: WeeklyNutritionSummary? = nil,
         onAddFood: @escaping () -> Void,
+        onSuggestDinner: @escaping () -> Void = {},
         onRetryMeal: @escaping (UUID) -> Void = { _ in },
         onOpenMeal: @escaping (UUID) -> Void = { _ in }
     ) {
         self.snapshot = snapshot
         self.weeklySummary = weeklySummary
         self.onAddFood = onAddFood
+        self.onSuggestDinner = onSuggestDinner
         self.onRetryMeal = onRetryMeal
         self.onOpenMeal = onOpenMeal
     }
@@ -27,6 +30,7 @@ struct TodayDashboardView: View {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     dateHeader
                     calorieCard
+                    dinnerSuggestionCard
                     hintsSection
                     weeklyCalorieCard
                     macroCard
@@ -117,6 +121,31 @@ struct TodayDashboardView: View {
         }
         .padding(20)
         .background(.background, in: .rect(cornerRadius: 22))
+    }
+
+    private var dinnerSuggestionCard: some View {
+        Button(action: onSuggestDinner) {
+            HStack(spacing: 14) {
+                Image(systemName: "sparkles")
+                    .font(.title2)
+                    .foregroundStyle(.purple)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Abendessen vorschlagen")
+                        .font(.headline)
+                    Text("Drei Ideen passend zu deinem verbleibenden Tagesbudget")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(18)
+            .background(.purple.opacity(0.09), in: .rect(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("today.suggestDinner")
     }
 
     private var weeklyCalorieCard: some View {
