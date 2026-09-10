@@ -10,7 +10,7 @@ struct WidgetCalorieSnapshotTests {
         return calendar
     }
 
-    @Test("The widget text uses the requested German date and rounded calories")
+    @Test("The widget text contains rounded calories without a duplicate date")
     func confirmedText() {
         let date = makeDate(2026, 9, 10, 12)
         let snapshot = WidgetCalorieSnapshot(
@@ -24,7 +24,7 @@ struct WidgetCalorieSnapshotTests {
             snapshot: snapshot,
             calendar: calendar,
             numberLocale: Locale(identifier: "de_DE")
-        ) == "Do. 10. · 2.123 kcal")
+        ) == "2.123 kcal")
     }
 
     @Test("Provisional calories receive a tilde")
@@ -41,7 +41,7 @@ struct WidgetCalorieSnapshotTests {
             snapshot: snapshot,
             calendar: calendar,
             numberLocale: Locale(identifier: "de_DE")
-        ) == "Do. 10. · ~2.123 kcal")
+        ) == "~2.123 kcal")
     }
 
     @Test("A stale snapshot becomes zero on the new local day")
@@ -59,7 +59,7 @@ struct WidgetCalorieSnapshotTests {
             snapshot: snapshot,
             calendar: calendar,
             numberLocale: Locale(identifier: "de_DE")
-        ) == "Fr. 11. · 0 kcal")
+        ) == "0 kcal")
     }
 
     @Test("The calorie number follows the device locale")
@@ -76,7 +76,7 @@ struct WidgetCalorieSnapshotTests {
             snapshot: snapshot,
             calendar: calendar,
             numberLocale: Locale(identifier: "en_US")
-        ) == "Do. 10. · 2,123 kcal")
+        ) == "2,123 kcal")
     }
 
     @Test("The shared store only reports changed payloads")

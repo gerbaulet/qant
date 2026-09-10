@@ -75,7 +75,7 @@ struct QuantInlineCaloriesWidget: Widget {
             QuantInlineCaloriesWidgetView(entry: entry)
         }
         .configurationDisplayName("Heutige Kalorien")
-        .description("Zeigt Datum und heute aufgenommene Kalorien über der Uhr.")
+        .description("Zeigt die heute aufgenommenen Kalorien über der Uhr.")
         .supportedFamilies([.accessoryInline])
     }
 }

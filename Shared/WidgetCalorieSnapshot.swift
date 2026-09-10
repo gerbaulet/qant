@@ -64,7 +64,6 @@ enum WidgetCalorieTextFormatter {
         for date: Date,
         snapshot: WidgetCalorieSnapshot,
         calendar: Calendar,
-        dateLocale: Locale = Locale(identifier: "de_DE"),
         numberLocale: Locale = .autoupdatingCurrent
     ) -> String {
         let currentSnapshot = snapshot.applies(to: date, calendar: calendar)
@@ -76,14 +75,13 @@ enum WidgetCalorieTextFormatter {
                 .precision(.fractionLength(0))
                 .locale(numberLocale)
         )
-        return "\(shortDate(date, calendar: calendar, locale: dateLocale)) · \(prefix)\(energy) kcal"
+        return "\(prefix)\(energy) kcal"
     }
 
     static func accessibilityText(
         for date: Date,
         snapshot: WidgetCalorieSnapshot,
         calendar: Calendar,
-        dateLocale: Locale = Locale(identifier: "de_DE"),
         numberLocale: Locale = .autoupdatingCurrent
     ) -> String {
         let currentSnapshot = snapshot.applies(to: date, calendar: calendar)
@@ -95,24 +93,6 @@ enum WidgetCalorieTextFormatter {
                 .locale(numberLocale)
         )
         let provisional = currentSnapshot.hasProvisionalValues ? ", vorläufig" : ""
-        return "\(longDate(date, calendar: calendar, locale: dateLocale)), \(energy) Kilokalorien\(provisional)"
-    }
-
-    private static func shortDate(_ date: Date, calendar: Calendar, locale: Locale) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = locale
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "EEE d."
-        return formatter.string(from: date)
-    }
-
-    private static func longDate(_ date: Date, calendar: Calendar, locale: Locale) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = locale
-        formatter.timeZone = calendar.timeZone
-        formatter.dateStyle = .full
-        return formatter.string(from: date)
+        return "\(energy) Kilokalorien\(provisional)"
     }
 }
