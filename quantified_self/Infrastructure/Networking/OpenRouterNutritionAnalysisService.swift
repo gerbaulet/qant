@@ -166,8 +166,8 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             : "Do not ask another clarification question. Return the best complete estimate from the available evidence."
         return """
         Analyze the meal using every supplied image, the user's comment, and the locally recognized label text. Prefer explicit user quantities and readable label values over visual estimates.
-        Return each distinct consumed component exactly once. For every component, provide its consumed weight and exactly these nutrients: energy, protein, carbohydrates, fat, and fiber. Use kcal for energy and g for the other four values. For readable labels or reliable standard values, return the values per 100 g and set nutrientBasis to per100Grams; the app performs the portion calculation. For a purely visual estimate, return values for the consumed amount and set nutrientBasis to consumedAmount.
-        The app deterministically sums component weights and nutrients, so component values are authoritative. Also return meal totals for compatibility, using the same component values. Cross-check calories against protein, carbohydrates, fat, and fiber (4/4/9/2 kcal per gram). Do not emit duplicate components or nutrient identifiers. Nutrient provenance must distinguish label, calculatedFromLabel, visualEstimate, textProvidedByUser, mixedEstimate, or unknown. Return only the JSON object required by the schema.
+        Return each distinct consumed component exactly once. For every component, provide its consumed weight and exactly these nutrients: energy, protein, carbohydrates, fat, fiber, and alcohol. Use kcal for energy and g for the other five values. Return zero alcohol for foods and drinks without alcohol. When alcohol by volume and consumed volume are known, calculate alcohol grams using an ethanol density of 0.789 g/ml. For readable labels or reliable standard values, return the values per 100 g and set nutrientBasis to per100Grams; the app performs the portion calculation. For a purely visual estimate, return values for the consumed amount and set nutrientBasis to consumedAmount.
+        The app deterministically sums component weights and nutrients, so component values are authoritative. Also return meal totals for compatibility, using the same component values. Cross-check calories against protein, carbohydrates, fat, fiber, and alcohol (4/4/9/2/7 kcal per gram). Do not emit duplicate components or nutrient identifiers. Nutrient provenance must distinguish label, calculatedFromLabel, visualEstimate, textProvidedByUser, mixedEstimate, or unknown. Return only the JSON object required by the schema.
         \(outputLanguageRule)
         \(clarificationRule)
         """
@@ -249,8 +249,8 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
                 "clarificationQuestion": nullableStringSchema,
                 "nutrients": [
                     "type": "array",
-                    "minItems": 5,
-                    "maxItems": 5,
+                    "minItems": 6,
+                    "maxItems": 6,
                     "items": nutrientSchema,
                 ],
                 "components": [
@@ -265,8 +265,8 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
                             "nutrientBasis": enumSchema(["per100Grams", "consumedAmount"]),
                             "nutrients": [
                                 "type": "array",
-                                "minItems": 5,
-                                "maxItems": 5,
+                                "minItems": 6,
+                                "maxItems": 6,
                                 "items": nutrientSchema,
                             ],
                         ],
@@ -310,6 +310,6 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
     }
 
     private var coreNutrientIdentifiers: [NutrientIdentifier] {
-        [.energy, .protein, .carbohydrates, .fat, .fiber]
+        [.energy, .protein, .carbohydrates, .fat, .fiber, .alcohol]
     }
 }

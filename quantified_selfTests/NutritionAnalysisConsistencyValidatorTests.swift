@@ -49,6 +49,18 @@ struct NutritionAnalysisConsistencyValidatorTests {
         }
     }
 
+    @Test("Calories from alcohol are included in the consistency check")
+    func acceptsAlcoholEnergy() throws {
+        try NutritionAnalysisConsistencyValidator.validate(wineResult(alcoholGrams: 35.5))
+    }
+
+    @Test("Alcohol calories still require a matching alcohol amount")
+    func rejectsUnexplainedWineEnergy() {
+        #expect(throws: NutritionAnalysisError.self) {
+            try NutritionAnalysisConsistencyValidator.validate(wineResult(alcoholGrams: 0))
+        }
+    }
+
     private func result(
         weight: Double = 480,
         components: [AnalyzedFoodComponent]? = nil
@@ -80,6 +92,36 @@ struct NutritionAnalysisConsistencyValidatorTests {
                     provenance: .visualEstimate
                 ),
             ]
+        )
+    }
+
+    private func wineResult(alcoholGrams: Double) -> NutritionAnalysisResult {
+        let values: [(NutrientIdentifier, Double)] = [
+            (.energy, 285),
+            (.protein, 0),
+            (.carbohydrates, 9),
+            (.fat, 0),
+            (.fiber, 0),
+            (.alcohol, alcoholGrams),
+        ]
+        return NutritionAnalysisResult(
+            mealName: "Eine halbe Flasche Rotwein",
+            estimatedTotalWeightGrams: 375,
+            confidence: .high,
+            uncertaintySummary: nil,
+            clarificationQuestion: nil,
+            nutrients: values.map { identifier, value in
+                AnalyzedNutrient(
+                    identifier: identifier,
+                    value: value,
+                    unit: NutritionAnalysisValidator.expectedUnit(for: identifier),
+                    confidence: .high,
+                    provenance: .textProvidedByUser
+                )
+            },
+            components: [],
+            modelIdentifier: "example/vision-model",
+            providerIdentifier: "Example"
         )
     }
 

@@ -58,8 +58,8 @@ struct OpenRouterNutritionAnalysisServiceTests {
         let schema = try #require(jsonSchema["schema"] as? [String: Any])
         let properties = try #require(schema["properties"] as? [String: Any])
         let nutrients = try #require(properties["nutrients"] as? [String: Any])
-        #expect(nutrients["minItems"] as? Int == 5)
-        #expect(nutrients["maxItems"] as? Int == 5)
+        #expect(nutrients["minItems"] as? Int == 6)
+        #expect(nutrients["maxItems"] as? Int == 6)
         let components = try #require(properties["components"] as? [String: Any])
         let componentItems = try #require(components["items"] as? [String: Any])
         let componentProperties = try #require(componentItems["properties"] as? [String: Any])
@@ -140,7 +140,8 @@ struct OpenRouterNutritionAnalysisServiceTests {
         let systemText = try #require(messages.first?["content"] as? String)
         #expect(systemText.contains("consumed weight"))
         #expect(systemText.contains("deterministically sums component weights"))
-        #expect(systemText.contains("4/4/9/2 kcal per gram"))
+        #expect(systemText.contains("4/4/9/2/7 kcal per gram"))
+        #expect(systemText.contains("ethanol density of 0.789 g/ml"))
         #expect(systemText.contains("Do not emit duplicate components"))
     }
 

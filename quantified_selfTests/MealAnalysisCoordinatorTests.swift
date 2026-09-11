@@ -37,7 +37,7 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.analysisState == .confirmed)
         #expect(meal.activeRevision?.mealName == "Gemüsecurry mit Reis")
         #expect(meal.activeRevision?.modelIdentifier == "example/vision-model")
-        #expect(meal.activeRevision?.nutrients.count == 5)
+        #expect(meal.activeRevision?.nutrients.count == 6)
         #expect(meal.activeRevision?.status == .confirmed)
         #expect(provider.receivedRequest?.userComment == "Große Portion")
         #expect(provider.receivedRequest?.images.first?.data == Data([7, 8, 9]))
@@ -645,7 +645,7 @@ struct MealAnalysisCoordinatorTests {
         #expect(component.name == "Reis")
         #expect(component.estimatedWeightGrams == nil)
         #expect(component.nutrients.isEmpty)
-        #expect(provider.receivedRequest?.previousAnalysis?.nutrients.count == 5)
+        #expect(provider.receivedRequest?.previousAnalysis?.nutrients.count == 6)
     }
 
     @Test("A later clarification includes every earlier stored exchange")

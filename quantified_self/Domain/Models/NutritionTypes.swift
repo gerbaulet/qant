@@ -60,6 +60,7 @@ enum NutrientIdentifier: String, Codable, CaseIterable, Sendable {
     case carbohydrates
     case fat
     case fiber
+    case alcohol
     case sugar
     case saturatedFat
     case sodium
@@ -88,5 +89,5 @@ enum NutrientIdentifier: String, Codable, CaseIterable, Sendable {
 }
 
 enum NutritionAnalysisPrompt {
-    static let currentVersion = 10
+    static let currentVersion = 11
 }

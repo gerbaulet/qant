@@ -62,9 +62,10 @@ enum NutritionAnalysisConsistencyValidator {
             let protein = nutrient(.protein, in: result.nutrients),
             let carbohydrates = nutrient(.carbohydrates, in: result.nutrients),
             let fat = nutrient(.fat, in: result.nutrients),
-            let fiber = nutrient(.fiber, in: result.nutrients)
+            let fiber = nutrient(.fiber, in: result.nutrients),
+            let alcohol = nutrient(.alcohol, in: result.nutrients)
         else { return }
-        let macroEnergy = protein * 4 + carbohydrates * 4 + fat * 9 + fiber * 2
+        let macroEnergy = protein * 4 + carbohydrates * 4 + fat * 9 + fiber * 2 + alcohol * 7
         let tolerance = max(minimumMacroToleranceKilocalories, energy * maximumMacroRelativeDifference)
         guard abs(macroEnergy - energy) <= tolerance else {
             throw NutritionAnalysisError.invalidResult("Kalorien und Makronährstoffe stimmen nicht überein.")

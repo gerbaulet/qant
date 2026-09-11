@@ -197,6 +197,7 @@ enum NutritionAnalysisValidator {
         .carbohydrates,
         .fat,
         .fiber,
+        .alcohol,
     ]
 
     static var coreNutrients: Set<NutrientIdentifier> { requiredNutrients }
@@ -252,7 +253,7 @@ enum NutritionAnalysisValidator {
         switch identifier {
         case .energy:
             .kilocalorie
-        case .protein, .carbohydrates, .fat, .fiber, .sugar, .saturatedFat, .salt:
+        case .protein, .carbohydrates, .fat, .fiber, .alcohol, .sugar, .saturatedFat, .salt:
             .gram
         case .vitaminA, .vitaminB7, .vitaminB9, .vitaminB12, .vitaminD, .vitaminK, .selenium, .iodine:
             .microgram

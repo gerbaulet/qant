@@ -55,6 +55,7 @@ struct NutritionAnalysisValidatorTests {
         nutrient(.carbohydrates, 71, .gram),
         nutrient(.fat, 22, .gram),
         nutrient(.fiber, 9, .gram),
+        nutrient(.alcohol, 0, .gram),
     ]
 
     static func validResult(

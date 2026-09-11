@@ -962,6 +962,7 @@ private struct PortionAdditionalNutrientsSection: View {
         return revision.nutrients
             .filter { nutrient in
                 guard let identifier = nutrient.knownIdentifier else { return true }
+                if identifier == .alcohol && nutrient.value == 0 { return false }
                 return !primary.contains(identifier)
             }
             .sorted { $0.identifierRawValue < $1.identifierRawValue }
@@ -1034,6 +1035,7 @@ private extension NutrientIdentifier {
         case .carbohydrates: "Kohlenhydrate"
         case .fat: "Fett"
         case .fiber: "Ballaststoffe"
+        case .alcohol: "Alkohol"
         case .sugar: "Zucker"
         case .saturatedFat: "Gesättigte Fettsäuren"
         case .sodium: "Natrium"
