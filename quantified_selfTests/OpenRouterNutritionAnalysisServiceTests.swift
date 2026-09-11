@@ -21,7 +21,8 @@ struct OpenRouterNutritionAnalysisServiceTests {
                 NutritionAnalysisImage(data: Data([1, 2, 3])),
                 NutritionAnalysisImage(data: Data([4, 5, 6])),
             ],
-            userComment: "Etwa 480 g, leichte Kokosmilch"
+            userComment: "Etwa 480 g, leichte Kokosmilch",
+            recognizedLabelText: ["", "Energie 248 kcal pro 100 g"]
         ))
 
         #expect(result.mealName == "Gemüsecurry mit Reis")
@@ -49,6 +50,21 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(content.count == 3)
         #expect((content[1]["image_url"] as? [String: String])?["url"] == "data:image/jpeg;base64,AQID")
         #expect((content[2]["image_url"] as? [String: String])?["url"] == "data:image/jpeg;base64,BAUG")
+        let prompt = try #require(content.first?["text"] as? String)
+        #expect(prompt.contains("Locally recognized packaging text"))
+        #expect(prompt.contains("Image 2:"))
+        #expect(prompt.contains("Energie 248 kcal pro 100 g"))
+
+        let schema = try #require(jsonSchema["schema"] as? [String: Any])
+        let properties = try #require(schema["properties"] as? [String: Any])
+        let nutrients = try #require(properties["nutrients"] as? [String: Any])
+        #expect(nutrients["minItems"] as? Int == 5)
+        #expect(nutrients["maxItems"] as? Int == 5)
+        let components = try #require(properties["components"] as? [String: Any])
+        let componentItems = try #require(components["items"] as? [String: Any])
+        let componentProperties = try #require(componentItems["properties"] as? [String: Any])
+        let nutrientBasis = try #require(componentProperties["nutrientBasis"] as? [String: Any])
+        #expect(nutrientBasis["enum"] as? [String] == ["per100Grams", "consumedAmount"])
     }
 
     @Test("Missing credentials fail before a network request")
@@ -122,10 +138,35 @@ struct OpenRouterNutritionAnalysisServiceTests {
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let messages = try #require(json["messages"] as? [[String: Any]])
         let systemText = try #require(messages.first?["content"] as? String)
-        #expect(systemText.contains("estimate its grams once"))
-        #expect(systemText.contains("approximately equal the component sums"))
+        #expect(systemText.contains("consumed weight"))
+        #expect(systemText.contains("deterministically sums component weights"))
         #expect(systemText.contains("4/4/9/2 kcal per gram"))
-        #expect(systemText.contains("Do not emit duplicate"))
+        #expect(systemText.contains("Do not emit duplicate components"))
+    }
+
+    @Test("A repair request includes the concrete validation failure")
+    func includesValidationFeedback() async throws {
+        let client = ChatClientStub(responseData: try Self.chatResponseData())
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "secret"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/model"),
+            client: client
+        )
+
+        _ = try await service.analyze(NutritionAnalysisRequest(
+            images: [],
+            userComment: nil,
+            validationFeedback: "Kalorien und Makronährstoffe stimmen nicht überein."
+        ))
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        let content = try #require(messages.last?["content"] as? [[String: Any]])
+        let prompt = try #require(content.first?["text"] as? String)
+        #expect(prompt.contains("failed local validation"))
+        #expect(prompt.contains("Kalorien und Makronährstoffe"))
+        #expect(prompt.contains("one corrected complete analysis"))
     }
 
     @Test("Best-estimate requests include prior context and reject another question")

@@ -90,7 +90,7 @@ enum InitialAnalysisRunMetadata {
                 energyKilocalories: energy.value
             )
         }
-        guard runs.count == NutritionAnalysisConsensus.initialSampleCount else { return nil }
+        guard !runs.isEmpty else { return nil }
         guard let data = try? JSONEncoder().encode(PayloadV1(
             version: 1,
             runs: runs,

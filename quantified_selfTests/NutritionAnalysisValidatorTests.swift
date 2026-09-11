@@ -10,7 +10,7 @@ struct NutritionAnalysisValidatorTests {
 
     @Test("Missing core nutrients are rejected")
     func rejectsMissingCoreNutrients() {
-        let result = Self.validResult(nutrients: Array(Self.coreNutrients.dropLast()))
+        let result = Self.validResult(nutrients: Self.coreNutrients.filter { $0.identifier != .fiber })
 
         #expect(throws: NutritionAnalysisError.self) {
             try NutritionAnalysisValidator.validate(result)
@@ -55,9 +55,6 @@ struct NutritionAnalysisValidatorTests {
         nutrient(.carbohydrates, 71, .gram),
         nutrient(.fat, 22, .gram),
         nutrient(.fiber, 9, .gram),
-        nutrient(.sugar, 8, .gram),
-        nutrient(.saturatedFat, 6, .gram),
-        nutrient(.sodium, 720, .milligram),
     ]
 
     static func validResult(

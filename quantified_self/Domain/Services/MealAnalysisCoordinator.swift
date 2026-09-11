@@ -5,7 +5,7 @@ import SwiftData
 @MainActor
 final class MealAnalysisCoordinator {
     static let maximumClarificationCount = 2
-    static let maximumAutomaticAttemptCount = 3
+    static let maximumAutomaticAttemptCount = 2
 
     static func recoverInterruptedAnalyses(in context: ModelContext, now: Date = .now) throws {
         let meals = try context.fetch(FetchDescriptor<Meal>())
@@ -31,6 +31,7 @@ final class MealAnalysisCoordinator {
     private let imageStorage: any ImageStorageProviding
     private let networkAvailabilityWaiter: any NetworkAvailabilityWaiting
     private let backgroundExecutionManager: any BackgroundExecutionManaging
+    private let textRecognizer: any NutritionLabelTextRecognizing
     private let now: () -> Date
 
     init(
@@ -39,6 +40,7 @@ final class MealAnalysisCoordinator {
         imageStorage: any ImageStorageProviding,
         networkAvailabilityWaiter: any NetworkAvailabilityWaiting = SystemNetworkAvailabilityWaiter(),
         backgroundExecutionManager: (any BackgroundExecutionManaging)? = nil,
+        textRecognizer: any NutritionLabelTextRecognizing = VisionNutritionLabelTextRecognizer(),
         now: @escaping () -> Date = Date.init
     ) {
         self.context = context
@@ -46,6 +48,7 @@ final class MealAnalysisCoordinator {
         self.imageStorage = imageStorage
         self.networkAvailabilityWaiter = networkAvailabilityWaiter
         self.backgroundExecutionManager = backgroundExecutionManager ?? SystemBackgroundExecutionManager.shared
+        self.textRecognizer = textRecognizer
         self.now = now
     }
 
@@ -175,15 +178,18 @@ final class MealAnalysisCoordinator {
                         data: try await imageStorage.data(forStorageKey: image.imageStorageKey)
                     )
                 }
+            let recognizedLabelText = await textRecognizer.recognizeText(in: images)
+            let uploadImages = await NutritionAnalysisImagePreparation.prepareForUpload(images)
             let request = NutritionAnalysisRequest(
-                images: images,
+                images: uploadImages,
                 userComment: meal.userComment,
                 previousAnalysis: previousAnalysis,
                 clarificationHistory: clarificationHistory(for: meal),
                 clarificationAnswer: clarificationAnswer,
                 userCorrection: userCorrection,
                 requestsBestEstimate: trigger == .bestEstimate,
-                allowsClarification: allowsClarification
+                allowsClarification: allowsClarification,
+                recognizedLabelText: recognizedLabelText
             )
             let (result, initialResults) = try await requestValidAnalysis(
                 request,
@@ -246,155 +252,46 @@ final class MealAnalysisCoordinator {
         trigger: AnalysisTrigger,
         callRecorder: AnalysisCallRecorder
     ) async throws -> (NutritionAnalysisResult, [NutritionAnalysisResult]) {
-        if trigger == .initial {
-            let sampleResults = try await requestInitialSample(request, callRecorder: callRecorder)
-            let result = try NutritionAnalysisConsensus.combine(
-                sampleResults,
-                allowsClarification: request.allowsClarification
-            )
-            try NutritionAnalysisValidator.validate(result)
-            return (result, sampleResults)
-        }
-        if trigger == .clarification {
-            for attempt in 1...Self.maximumAutomaticAttemptCount {
-                do {
-                    let sampleResults = try await requestInitialSample(request, callRecorder: callRecorder)
-                    let result = try NutritionAnalysisConsensus.combine(
-                        sampleResults,
-                        allowsClarification: request.allowsClarification
-                    )
-                    try NutritionAnalysisValidator.validate(result)
-                    try NutritionAnalysisConsistencyValidator.validate(result)
+        var nextRequest = request
+        for attempt in 1...Self.maximumAutomaticAttemptCount {
+            var candidate: NutritionAnalysisResult?
+            do {
+                let rawResult = try await provider.analyze(nextRequest)
+                candidate = rawResult
+                try NutritionAnalysisValidator.validate(rawResult)
+                let result = NutritionAnalysisCalculator.calculateTotals(from: rawResult)
+                try NutritionAnalysisValidator.validate(result)
+                try NutritionAnalysisConsistencyValidator.validate(result)
+                if trigger == .clarification {
                     try NutritionAnalysisDriftValidator.validate(
                         previous: request.previousAnalysis,
                         revised: result
                     )
-                    return (result, [])
-                } catch let error as NutritionAnalysisError {
-                    guard case .invalidResult = error,
-                          attempt < Self.maximumAutomaticAttemptCount else {
-                        throw error
-                    }
-                    AppLogger.nutritionAnalysis.info("Retrying clarification after inconsistent consensus")
                 }
-            }
-            throw NutritionAnalysisError.invalidResult("automatic retry limit reached")
-        }
-
-        for attempt in 1...Self.maximumAutomaticAttemptCount {
-            do {
-                let result = try await provider.analyze(request)
-                try NutritionAnalysisValidator.validate(result)
                 callRecorder.recordSuccess(result, sampleNumber: nil, attemptNumber: attempt)
                 return (result, [])
             } catch {
-                callRecorder.recordFailure(error, sampleNumber: nil, attemptNumber: attempt)
+                callRecorder.recordFailure(
+                    error,
+                    result: candidate,
+                    sampleNumber: nil,
+                    attemptNumber: attempt
+                )
                 guard Self.isRetryable(error),
                       attempt < Self.maximumAutomaticAttemptCount else { throw error }
                 if Self.isTransportFailure(error) {
                     AppLogger.nutritionAnalysis.info("Waiting for network before retrying analysis")
                     try await networkAvailabilityWaiter.waitUntilAvailable()
                 } else {
-                    AppLogger.nutritionAnalysis.info("Retrying failed analysis request")
-                }
-            }
-        }
-        throw NutritionAnalysisError.invalidResult("automatic retry limit reached")
-    }
-
-    private func requestInitialSample(
-        _ request: NutritionAnalysisRequest,
-        callRecorder: AnalysisCallRecorder
-    ) async throws -> [NutritionAnalysisResult] {
-        var results = Array<NutritionAnalysisResult?>(
-            repeating: nil,
-            count: NutritionAnalysisConsensus.initialSampleCount
-        )
-
-        for attempt in 1...Self.maximumAutomaticAttemptCount {
-            let missingIndexes = results.indices.filter { results[$0] == nil }
-            let outcomes = await requestOutcomes(for: missingIndexes, request: request)
-            var retryError: Error?
-            var encounteredTransportFailure = false
-
-            for (index, outcome) in zip(missingIndexes, outcomes) {
-                switch outcome {
-                case let .success(result):
-                    do {
-                        try NutritionAnalysisValidator.validate(result)
-                        results[index] = result
-                        callRecorder.recordSuccess(
-                            result,
-                            sampleNumber: index + 1,
-                            attemptNumber: attempt
-                        )
-                    } catch {
-                        callRecorder.recordFailure(
-                            error,
-                            result: result,
-                            sampleNumber: index + 1,
-                            attemptNumber: attempt
-                        )
-                        retryError = error
-                    }
-                case let .failure(error):
-                    callRecorder.recordFailure(
-                        error,
-                        sampleNumber: index + 1,
-                        attemptNumber: attempt
+                    nextRequest = request.repairing(
+                        previousAnalysis: candidate,
+                        feedback: error.localizedDescription
                     )
-                    guard Self.isRetryable(error) else { throw error }
-                    retryError = error
-                    encounteredTransportFailure = encounteredTransportFailure || Self.isTransportFailure(error)
+                    AppLogger.nutritionAnalysis.info("Requesting one corrected analysis")
                 }
             }
-
-            if results.allSatisfy({ $0 != nil }) {
-                return results.compactMap { $0 }
-            }
-            guard attempt < Self.maximumAutomaticAttemptCount else {
-                throw retryError ?? NutritionAnalysisError.invalidResult("automatic retry limit reached")
-            }
-            if encounteredTransportFailure {
-                AppLogger.nutritionAnalysis.info("Waiting for network before retrying missing analyses")
-                try await networkAvailabilityWaiter.waitUntilAvailable()
-            } else {
-                AppLogger.nutritionAnalysis.info("Retrying missing analysis after invalid result")
-            }
         }
-
-        throw NutritionAnalysisError.invalidResult("automatic retry limit reached")
-    }
-
-    private func requestOutcomes(
-        for indexes: [Int],
-        request: NutritionAnalysisRequest
-    ) async -> [Result<NutritionAnalysisResult, Error>] {
-        switch indexes.count {
-        case 1:
-            return [await requestOutcome(request)]
-        case 2:
-            async let first = requestOutcome(request)
-            async let second = requestOutcome(request)
-            return await [first, second]
-        case 3:
-            async let first = requestOutcome(request)
-            async let second = requestOutcome(request)
-            async let third = requestOutcome(request)
-            return await [first, second, third]
-        default:
-            return []
-        }
-    }
-
-    private func requestOutcome(
-        _ request: NutritionAnalysisRequest
-    ) async -> Result<NutritionAnalysisResult, Error> {
-        do {
-            return .success(try await provider.analyze(request))
-        } catch {
-            return .failure(error)
-        }
+        throw NutritionAnalysisError.invalidResult("Das automatische Korrekturlimit wurde erreicht.")
     }
 
     private static func isTransportFailure(_ error: Error) -> Bool {
@@ -544,7 +441,7 @@ final class MealAnalysisCoordinator {
             clarificationQuestion: revision.clarificationQuestion,
             nutrients: revision.nutrients.compactMap {
                 makeAnalyzedNutrient($0)
-            },
+            }.filter { NutritionAnalysisValidator.coreNutrients.contains($0.identifier) },
             components: revision.components
                 .sorted { $0.sortIndex < $1.sortIndex }
                 .map { component in

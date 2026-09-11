@@ -90,7 +90,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             throw NutritionAnalysisError.malformedResponse
         }
 
-        let result = NutritionAnalysisResultNormalizer.normalize(NutritionAnalysisResult(
+        return NutritionAnalysisResultNormalizer.normalize(NutritionAnalysisResult(
             mealName: payload.mealName,
             estimatedTotalWeightGrams: payload.estimatedTotalWeightGrams,
             confidence: payload.confidence,
@@ -107,8 +107,6 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
                 costUSD: response.usage?.cost
             )
         ))
-        try NutritionAnalysisValidator.validate(result)
-        return result
     }
 
     private func makeRequestBody(
@@ -167,9 +165,9 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             ? "Ask at most one concise clarification question, and only when its answer could materially change the calorie estimate."
             : "Do not ask another clarification question. Return the best complete estimate from the available evidence."
         return """
-        Analyze the meal using every supplied image and the user's comment. Inspect packaging and nutrition labels explicitly. Prefer readable label values over visual estimates. Return realistic estimates without false precision.
-        Use one internally consistent estimate: identify each distinct food once, estimate its grams once from visible scale and portions, and reuse those same quantities for components, total weight, calories, and nutrients. When no readable label is available, calculate each component from a typical value per 100 g and its estimated grams. Total weight and total nutrients must approximately equal the component sums. Cross-check calories against protein, carbohydrates, fat, and fiber (4/4/9/2 kcal per gram) and resolve material inconsistencies before answering. Do not emit duplicate component names or nutrient identifiers.
-        Always include energy, protein, carbohydrates, fat, fiber, sugar, saturatedFat, and sodium; include every additional listed micronutrient that can be responsibly estimated. Use kcal for energy; g for protein, carbohydrates, fat, fiber, sugar, saturatedFat, and salt; mg for sodium, most minerals, and most vitamins; and µg only for the identifiers whose schema convention requires it. Nutrient provenance must distinguish label, calculatedFromLabel, visualEstimate, textProvidedByUser, mixedEstimate, or unknown. Return only the JSON object required by the schema.
+        Analyze the meal using every supplied image, the user's comment, and the locally recognized label text. Prefer explicit user quantities and readable label values over visual estimates.
+        Return each distinct consumed component exactly once. For every component, provide its consumed weight and exactly these nutrients: energy, protein, carbohydrates, fat, and fiber. Use kcal for energy and g for the other four values. For readable labels or reliable standard values, return the values per 100 g and set nutrientBasis to per100Grams; the app performs the portion calculation. For a purely visual estimate, return values for the consumed amount and set nutrientBasis to consumedAmount.
+        The app deterministically sums component weights and nutrients, so component values are authoritative. Also return meal totals for compatibility, using the same component values. Cross-check calories against protein, carbohydrates, fat, and fiber (4/4/9/2 kcal per gram). Do not emit duplicate components or nutrient identifiers. Nutrient provenance must distinguish label, calculatedFromLabel, visualEstimate, textProvidedByUser, mixedEstimate, or unknown. Return only the JSON object required by the schema.
         \(outputLanguageRule)
         \(clarificationRule)
         """
@@ -193,6 +191,16 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             lines.append("Original user comment: \(trimmedComment)")
         } else {
             lines.append("No original user comment was provided.")
+        }
+        let recognizedLabels = request.recognizedLabelText.enumerated().filter {
+            !$0.element.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        if !recognizedLabels.isEmpty {
+            lines.append("Locally recognized packaging text (may contain OCR mistakes):")
+            for (index, text) in recognizedLabels {
+                lines.append("Image \(index + 1):\n\(text)")
+            }
+            lines.append("Use this text as reading assistance, verify it against the supplied images, and never treat package size as consumed amount unless the user says so.")
         }
         if let previousAnalysis = request.previousAnalysis,
            let data = try? JSONEncoder().encode(previousAnalysis) {
@@ -219,6 +227,10 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         if request.requestsBestEstimate {
             lines.append("The user chose to use the best estimate without further questions.")
         }
+        if let feedback = request.validationFeedback {
+            lines.append("The previous response failed local validation: \(feedback)")
+            lines.append("Return one corrected complete analysis. Fix the stated inconsistency and preserve all reliable image, label, and user evidence.")
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -228,29 +240,34 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             "additionalProperties": false,
             "properties": [
                 "mealName": ["type": "string"],
-                "estimatedTotalWeightGrams": nullableNumberSchema,
+                "estimatedTotalWeightGrams": ["type": "number", "minimum": 0],
                 "confidence": enumSchema(EstimateConfidence.allCases.map(\.rawValue)),
                 "uncertaintySummary": nullableStringSchema,
                 "clarificationQuestion": nullableStringSchema,
                 "nutrients": [
                     "type": "array",
-                    "minItems": 8,
+                    "minItems": 5,
+                    "maxItems": 5,
                     "items": nutrientSchema,
                 ],
                 "components": [
                     "type": "array",
+                    "minItems": 1,
                     "items": [
                         "type": "object",
                         "additionalProperties": false,
                         "properties": [
                             "name": ["type": "string"],
-                            "estimatedWeightGrams": nullableNumberSchema,
+                            "estimatedWeightGrams": ["type": "number", "minimum": 0],
+                            "nutrientBasis": enumSchema(["per100Grams", "consumedAmount"]),
                             "nutrients": [
                                 "type": "array",
+                                "minItems": 5,
+                                "maxItems": 5,
                                 "items": nutrientSchema,
                             ],
                         ],
-                        "required": ["name", "estimatedWeightGrams", "nutrients"],
+                        "required": ["name", "estimatedWeightGrams", "nutrientBasis", "nutrients"],
                     ],
                 ],
             ],
@@ -271,7 +288,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             "type": "object",
             "additionalProperties": false,
             "properties": [
-                "identifier": enumSchema(NutrientIdentifier.allCases.map(\.rawValue)),
+                "identifier": enumSchema(coreNutrientIdentifiers.map(\.rawValue)),
                 "value": ["type": "number", "minimum": 0],
                 "unit": enumSchema(NutrientUnit.allCases.map(\.rawValue)),
                 "confidence": enumSchema(EstimateConfidence.allCases.map(\.rawValue)),
@@ -281,15 +298,15 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         ]
     }
 
-    private var nullableNumberSchema: [String: Any] {
-        ["type": ["number", "null"], "minimum": 0]
-    }
-
     private var nullableStringSchema: [String: Any] {
         ["type": ["string", "null"]]
     }
 
     private func enumSchema(_ values: [String]) -> [String: Any] {
         ["type": "string", "enum": values]
+    }
+
+    private var coreNutrientIdentifiers: [NutrientIdentifier] {
+        [.energy, .protein, .carbohydrates, .fat, .fiber]
     }
 }

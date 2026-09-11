@@ -12,19 +12,19 @@ struct ImageStorageTests {
         let id = UUID()
 
         let stored = try await storage.storeImageData(
-            makeJPEGData(size: CGSize(width: 2_400, height: 1_200)),
+            makeJPEGData(size: CGSize(width: 5_000, height: 2_500)),
             id: id
         )
 
         #expect(stored.id == id)
-        #expect(stored.pixelWidth == 2_048)
-        #expect(stored.pixelHeight == 1_024)
+        #expect(stored.pixelWidth == 4_096)
+        #expect(stored.pixelHeight == 2_048)
         #expect(stored.imageStorageKey == "\(id.uuidString)/image.jpg")
         #expect(stored.thumbnailStorageKey == "\(id.uuidString)/thumbnail.jpg")
 
         let fullData = try await storage.data(forStorageKey: stored.imageStorageKey)
         let thumbnailData = try await storage.data(forStorageKey: stored.thumbnailStorageKey)
-        #expect(UIImage(data: fullData)?.size == CGSize(width: 2_048, height: 1_024))
+        #expect(UIImage(data: fullData)?.size == CGSize(width: 4_096, height: 2_048))
         #expect(UIImage(data: thumbnailData)?.size == CGSize(width: 320, height: 160))
 
         await storage.deleteImage(stored)

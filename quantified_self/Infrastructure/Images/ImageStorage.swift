@@ -35,7 +35,7 @@ enum ImageStorageError: Error, LocalizedError {
 }
 
 struct FileImageStorage: ImageStorageProviding, Sendable {
-    nonisolated static let maximumImageDimension = 2_048
+    nonisolated static let maximumImageDimension = 4_096
     nonisolated static let maximumThumbnailDimension = 320
 
     private let rootDirectory: URL
@@ -99,7 +99,7 @@ struct FileImageStorage: ImageStorageProviding, Sendable {
         )
 
         guard
-            let fullData = UIImage(cgImage: fullImage).jpegData(compressionQuality: 0.82),
+            let fullData = UIImage(cgImage: fullImage).jpegData(compressionQuality: 0.90),
             let thumbnailData = UIImage(cgImage: thumbnail).jpegData(compressionQuality: 0.72)
         else {
             throw ImageStorageError.encodingFailed

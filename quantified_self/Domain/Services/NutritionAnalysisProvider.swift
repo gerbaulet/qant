@@ -1,10 +1,10 @@
 import Foundation
 
-struct NutritionAnalysisImage: Sendable, Equatable {
+nonisolated struct NutritionAnalysisImage: Sendable, Equatable {
     let data: Data
     let mediaType: String
 
-    init(data: Data, mediaType: String = "image/jpeg") {
+    nonisolated init(data: Data, mediaType: String = "image/jpeg") {
         self.data = data
         self.mediaType = mediaType
     }
@@ -24,6 +24,8 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
     let userCorrection: String?
     let requestsBestEstimate: Bool
     let allowsClarification: Bool
+    let recognizedLabelText: [String]
+    let validationFeedback: String?
 
     init(
         images: [NutritionAnalysisImage],
@@ -33,7 +35,9 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
         clarificationAnswer: String? = nil,
         userCorrection: String? = nil,
         requestsBestEstimate: Bool = false,
-        allowsClarification: Bool = true
+        allowsClarification: Bool = true,
+        recognizedLabelText: [String] = [],
+        validationFeedback: String? = nil
     ) {
         self.images = images
         self.userComment = userComment
@@ -43,6 +47,26 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
         self.userCorrection = userCorrection
         self.requestsBestEstimate = requestsBestEstimate
         self.allowsClarification = allowsClarification
+        self.recognizedLabelText = recognizedLabelText
+        self.validationFeedback = validationFeedback
+    }
+
+    func repairing(
+        previousAnalysis: NutritionAnalysisResult?,
+        feedback: String
+    ) -> NutritionAnalysisRequest {
+        NutritionAnalysisRequest(
+            images: images,
+            userComment: userComment,
+            previousAnalysis: previousAnalysis ?? self.previousAnalysis,
+            clarificationHistory: clarificationHistory,
+            clarificationAnswer: clarificationAnswer,
+            userCorrection: userCorrection,
+            requestsBestEstimate: requestsBestEstimate,
+            allowsClarification: allowsClarification,
+            recognizedLabelText: recognizedLabelText,
+            validationFeedback: feedback
+        )
     }
 }
 
@@ -54,10 +78,28 @@ struct AnalyzedNutrient: Codable, Sendable, Equatable {
     let provenance: NutrientProvenance
 }
 
+enum ComponentNutrientBasis: String, Codable, Sendable {
+    case per100Grams
+    case consumedAmount
+}
+
 struct AnalyzedFoodComponent: Codable, Sendable, Equatable {
     let name: String
     let estimatedWeightGrams: Double?
+    let nutrientBasis: ComponentNutrientBasis
     let nutrients: [AnalyzedNutrient]
+
+    init(
+        name: String,
+        estimatedWeightGrams: Double?,
+        nutrientBasis: ComponentNutrientBasis = .consumedAmount,
+        nutrients: [AnalyzedNutrient]
+    ) {
+        self.name = name
+        self.estimatedWeightGrams = estimatedWeightGrams
+        self.nutrientBasis = nutrientBasis
+        self.nutrients = nutrients
+    }
 }
 
 struct AnalysisRequestMetrics: Codable, Sendable, Equatable {
@@ -120,8 +162,8 @@ enum NutritionAnalysisError: Error, LocalizedError, Equatable {
             "Richte zuerst API-Schlüssel und Modell in den Einstellungen ein."
         case .malformedResponse:
             "Die Ernährungsanalyse konnte nicht gelesen werden."
-        case .invalidResult:
-            "Die Ernährungsanalyse enthielt ungültige Werte."
+        case let .invalidResult(reason):
+            "Die Ernährungsanalyse enthielt widersprüchliche Werte: \(reason)"
         case .invalidState:
             "Diese Aktion ist im aktuellen Analysestatus nicht möglich."
         }
@@ -135,24 +177,23 @@ enum NutritionAnalysisValidator {
         .carbohydrates,
         .fat,
         .fiber,
-        .sugar,
-        .saturatedFat,
-        .sodium,
     ]
+
+    static var coreNutrients: Set<NutrientIdentifier> { requiredNutrients }
 
     static func validate(_ result: NutritionAnalysisResult) throws {
         guard !result.mealName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw NutritionAnalysisError.invalidResult("missing meal name")
+            throw NutritionAnalysisError.invalidResult("Der Name der Mahlzeit fehlt.")
         }
-        try validateOptionalNonnegative(result.estimatedTotalWeightGrams, field: "total weight")
+        try validateOptionalNonnegative(result.estimatedTotalWeightGrams, field: "Das Gesamtgewicht")
         try validateNutrients(result.nutrients, requireCoreNutrients: true)
 
         for component in result.components {
             guard !component.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw NutritionAnalysisError.invalidResult("missing component name")
+                throw NutritionAnalysisError.invalidResult("Der Name eines Bestandteils fehlt.")
             }
-            try validateOptionalNonnegative(component.estimatedWeightGrams, field: "component weight")
-            try validateNutrients(component.nutrients, requireCoreNutrients: false)
+            try validateOptionalNonnegative(component.estimatedWeightGrams, field: "Das Gewicht eines Bestandteils")
+            try validateNutrients(component.nutrients, requireCoreNutrients: true)
         }
     }
 
@@ -162,20 +203,20 @@ enum NutritionAnalysisValidator {
     ) throws {
         let identifiers = nutrients.map(\.identifier)
         guard Set(identifiers).count == identifiers.count else {
-            throw NutritionAnalysisError.invalidResult("duplicate nutrient")
+            throw NutritionAnalysisError.invalidResult("Ein Nährwert wurde mehrfach ausgegeben.")
         }
         if requireCoreNutrients {
             guard requiredNutrients.isSubset(of: Set(identifiers)) else {
-                throw NutritionAnalysisError.invalidResult("missing core nutrient")
+                throw NutritionAnalysisError.invalidResult("Mindestens ein erforderlicher Kernnährwert fehlt.")
             }
         }
 
         for nutrient in nutrients {
             guard nutrient.value.isFinite, nutrient.value >= 0 else {
-                throw NutritionAnalysisError.invalidResult("invalid nutrient value")
+                throw NutritionAnalysisError.invalidResult("Ein Nährwert ist negativ oder keine gültige Zahl.")
             }
             guard expectedUnit(for: nutrient.identifier) == nutrient.unit else {
-                throw NutritionAnalysisError.invalidResult("invalid nutrient unit")
+                throw NutritionAnalysisError.invalidResult("Ein Nährwert hat die falsche Einheit.")
             }
         }
     }
@@ -183,7 +224,7 @@ enum NutritionAnalysisValidator {
     private static func validateOptionalNonnegative(_ value: Double?, field: String) throws {
         guard let value else { return }
         guard value.isFinite, value >= 0 else {
-            throw NutritionAnalysisError.invalidResult("invalid \(field)")
+            throw NutritionAnalysisError.invalidResult("\(field) ist negativ oder keine gültige Zahl.")
         }
     }
 
@@ -234,6 +275,7 @@ enum NutritionAnalysisResultNormalizer {
             return AnalyzedFoodComponent(
                 name: name,
                 estimatedWeightGrams: component.estimatedWeightGrams,
+                nutrientBasis: component.nutrientBasis,
                 nutrients: normalizedNutrients(component.nutrients)
             )
         }

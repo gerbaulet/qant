@@ -31,25 +31,25 @@ erneut implementieren.
 
 ### KI-Analyse und Rückfragen
 
-- Eine initiale Mahlzeitenanalyse führt genau drei unabhängige Anfragen mit dem
-  ausgewählten OpenRouter-Modell aus.
-- Die drei gültigen Ergebnisse werden gemittelt. Der Analyseverlauf zeigt für
-  jeden Lauf Modellkennung, falls vorhanden Provider, und kcal-Ergebnis.
-- Eine Rückfrage wegen abweichender Schätzungen wird ausschließlich durch die
-  Energieangaben ausgelöst. Makros, Gewicht oder Komponenten dürfen diese
-  Rückfrage nicht auslösen.
-- Die Abweichungsfrage wird nur gestellt, wenn **beide** Bedingungen gelten:
-  `max(kcal) - min(kcal) >= 10` und
-  `(max(kcal) - min(kcal)) / mean(kcal) >= 0.35`.
-- Liefern mindestens zwei der drei Läufe eine inhaltliche Rückfrage, wird die
-  erste vorhandene Frage verwendet. Wortgleichheit ist nicht erforderlich.
+- Eine Mahlzeitenanalyse führt standardmäßig genau eine Anfrage mit dem
+  ausgewählten OpenRouter-Modell aus. Nur eine unlesbare, technisch fehlgeschlagene
+  oder lokal als widersprüchlich erkannte Antwort darf genau einen weiteren
+  Korrekturversuch auslösen.
+- Vor der Anfrage liest die App Verpackungstext lokal mit Vision-OCR. Der erkannte
+  Text unterstützt das Modell zusätzlich zu den Bildern und Nutzerangaben.
+- Das strukturierte Ergebnis enthält pro Bestandteil Gewicht sowie Energie,
+  Protein, Kohlenhydrate, Fett und Ballaststoffe. Bei Etikettwerten pro 100 g
+  skaliert die App diese deterministisch auf die gegessene Menge und summiert
+  Bestandteile zu den Gesamtwerten.
+- Der Analyseverlauf zeigt jeden tatsächlichen Aufruf mit Modellkennung, falls
+  vorhanden Provider, kcal-Ergebnis und konkretem Validierungsfehler.
 - Erfolgt eine gültige Schätzung ohne vorherige Rückfrage, wird sie automatisch
   bestätigt. Nur wenn es zuvor eine Rückfrage gab, bleibt das anschließende
   Ergebnis zur manuellen Bestätigung offen.
 - Die bestehende finale Rückfrage und Antwort werden im Analyseverlauf über die
   vorhandenen Felder der Revision dargestellt. Keine neue Persistenz nur für
-  rohe Einzel-Rückfragen der drei Modellläufe einführen.
-- Änderungen an Schwellenwerten, Mittelwertbildung, Statusübergängen oder
+  rohe Rückfragen einzelner Modellaufrufe einführen.
+- Änderungen an Plausibilitätsgrenzen, Berechnung, Statusübergängen oder
   Rückfrageauswahl brauchen gezielte Unit-Tests, insbesondere für Grenzwerte.
 
 ### Aufnahme und Schnellzugriff
@@ -68,8 +68,8 @@ erneut implementieren.
 - Für Tag, Woche und Monat steht die kcal-Summe rechts in der jeweiligen
   Abschnittsüberschrift. Vorläufige Summen mit `~` markieren; ohne Energiewert
   `— kcal` anzeigen.
-- Der Analyseverlauf bewahrt Revisionen nachvollziehbar auf und zeigt die drei
-  initialen Modellläufe aufklappbar an.
+- Der Analyseverlauf bewahrt Revisionen und tatsächliche Modellaufrufe
+  nachvollziehbar und aufklappbar auf.
 
 ### OpenRouter-Einstellungen
 
@@ -80,8 +80,8 @@ erneut implementieren.
   Ausgaben unterstützen. Die Liste wird nach der von OpenRouter gelieferten
   Popularitätsinformation sortiert; diese Herkunft in der UI verständlich
   machen.
-- Den Nutzer darauf hinweisen, dass die initiale Dreifachanalyse ungefähr die
-  dreifachen Modellkosten erzeugt.
+- Den Nutzer darauf hinweisen, dass normalerweise ein Modellaufruf anfällt und
+  bei einer fehlerhaften Antwort einmalig ein Korrekturaufruf folgen kann.
 - Der OpenRouter-Schlüssel gehört ausschließlich in die Keychain. Die gewählte
   Modellkennung darf in UserDefaults gespeichert werden.
 
@@ -101,8 +101,9 @@ erneut implementieren.
   einen expliziten Migrationsschritt durchführen.
 - Keine destruktive Migration und kein Löschen des App-Containers als bequeme
   Fehlerbehebung. Bestehende Nutzerdaten haben Vorrang.
-- `providerMetadata` enthält bereits die codierten Zusammenfassungen der drei
-  initialen Läufe. Das Format nur rückwärtskompatibel weiterentwickeln.
+- `providerMetadata` enthält bereits codierte Zusammenfassungen früherer
+  Dreifachanalysen und aktueller Einzelaufrufe. Das Format nur rückwärtskompatibel
+  weiterentwickeln.
 
 ## Architektur und Implementierung
 

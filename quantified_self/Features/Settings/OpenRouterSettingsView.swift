@@ -143,7 +143,7 @@ struct OpenRouterSettingsView: View {
                 } header: {
                     Text("OpenRouter")
                 } footer: {
-                    Text("Der API-Schlüssel liegt ausschließlich im iOS-Schlüsselbund. Für eine neue Mahlzeit und nach jeder beantworteten Rückfrage werden drei parallele Analysen berechnet; dadurch entstehen jeweils ungefähr dreifache API-Kosten.")
+                    Text("Der API-Schlüssel liegt ausschließlich im iOS-Schlüsselbund. Quant verwendet normalerweise einen KI-Aufruf pro Analyse. Nur bei einer unlesbaren oder widersprüchlichen Antwort wird einmalig eine Korrektur angefordert.")
                 }
 
                 statusSection

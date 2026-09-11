@@ -6,12 +6,15 @@ enum NutritionAnalysisConsistencyValidator {
     private static let minimumEnergyToleranceKilocalories = 75.0
     private static let maximumMacroRelativeDifference = 0.35
     private static let minimumMacroToleranceKilocalories = 120.0
+    private static let maximumEnergyDensityKilocaloriesPerGram = 9.5
+    private static let energyDensityRoundingToleranceKilocalories = 25.0
 
     static func validate(_ result: NutritionAnalysisResult) throws {
         try validateUniqueComponents(result.components)
         try validateComponentWeights(result)
         try validateComponentEnergy(result)
         try validateMacroEnergy(result)
+        try validateEnergyDensity(result)
     }
 
     private static func validateUniqueComponents(_ components: [AnalyzedFoodComponent]) throws {
@@ -21,7 +24,7 @@ enum NutritionAnalysisConsistencyValidator {
                 .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
         }
         guard Set(names).count == names.count else {
-            throw NutritionAnalysisError.invalidResult("duplicate food component")
+            throw NutritionAnalysisError.invalidResult("Ein Bestandteil wurde mehrfach ausgegeben.")
         }
     }
 
@@ -34,7 +37,7 @@ enum NutritionAnalysisConsistencyValidator {
         let componentWeight = result.components.compactMap(\.estimatedWeightGrams).reduce(0, +)
         let tolerance = max(minimumWeightToleranceGrams, totalWeight * maximumRelativeDifference)
         guard abs(componentWeight - totalWeight) <= tolerance else {
-            throw NutritionAnalysisError.invalidResult("component weights disagree with total weight")
+            throw NutritionAnalysisError.invalidResult("Bestandteilmengen und Gesamtgewicht stimmen nicht überein.")
         }
     }
 
@@ -49,7 +52,7 @@ enum NutritionAnalysisConsistencyValidator {
         }.reduce(0, +)
         let tolerance = max(minimumEnergyToleranceKilocalories, totalEnergy * maximumRelativeDifference)
         guard abs(componentEnergy - totalEnergy) <= tolerance else {
-            throw NutritionAnalysisError.invalidResult("component energy disagrees with total energy")
+            throw NutritionAnalysisError.invalidResult("Kalorien der Bestandteile und Gesamtkalorien stimmen nicht überein.")
         }
     }
 
@@ -64,7 +67,37 @@ enum NutritionAnalysisConsistencyValidator {
         let macroEnergy = protein * 4 + carbohydrates * 4 + fat * 9 + fiber * 2
         let tolerance = max(minimumMacroToleranceKilocalories, energy * maximumMacroRelativeDifference)
         guard abs(macroEnergy - energy) <= tolerance else {
-            throw NutritionAnalysisError.invalidResult("macronutrients disagree with total energy")
+            throw NutritionAnalysisError.invalidResult("Kalorien und Makronährstoffe stimmen nicht überein.")
+        }
+    }
+
+    private static func validateEnergyDensity(_ result: NutritionAnalysisResult) throws {
+        try validateEnergyDensity(
+            weight: result.estimatedTotalWeightGrams,
+            energy: nutrient(.energy, in: result.nutrients),
+            field: "Die Gesamtmenge"
+        )
+        for component in result.components {
+            try validateEnergyDensity(
+                weight: component.estimatedWeightGrams,
+                energy: nutrient(.energy, in: component.nutrients),
+                field: "Der Bestandteil „\(component.name)“"
+            )
+        }
+    }
+
+    private static func validateEnergyDensity(
+        weight: Double?,
+        energy: Double?,
+        field: String
+    ) throws {
+        guard let weight, let energy, weight > 0 else { return }
+        let maximumEnergy = weight * maximumEnergyDensityKilocaloriesPerGram +
+            energyDensityRoundingToleranceKilocalories
+        guard energy <= maximumEnergy else {
+            throw NutritionAnalysisError.invalidResult(
+                "\(field) enthält mehr Energie, als bei diesem Gewicht physikalisch plausibel ist."
+            )
         }
     }
 
