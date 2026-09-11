@@ -26,6 +26,7 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
     let allowsClarification: Bool
     let recognizedLabelText: [String]
     let validationFeedback: String?
+    let independentEstimateNumber: Int?
 
     init(
         images: [NutritionAnalysisImage],
@@ -37,7 +38,8 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
         requestsBestEstimate: Bool = false,
         allowsClarification: Bool = true,
         recognizedLabelText: [String] = [],
-        validationFeedback: String? = nil
+        validationFeedback: String? = nil,
+        independentEstimateNumber: Int? = nil
     ) {
         self.images = images
         self.userComment = userComment
@@ -49,6 +51,7 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
         self.allowsClarification = allowsClarification
         self.recognizedLabelText = recognizedLabelText
         self.validationFeedback = validationFeedback
+        self.independentEstimateNumber = independentEstimateNumber
     }
 
     func repairing(
@@ -65,7 +68,24 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
             requestsBestEstimate: requestsBestEstimate,
             allowsClarification: allowsClarification,
             recognizedLabelText: recognizedLabelText,
-            validationFeedback: feedback
+            validationFeedback: feedback,
+            independentEstimateNumber: independentEstimateNumber
+        )
+    }
+
+    func independentEstimate(number: Int) -> NutritionAnalysisRequest {
+        NutritionAnalysisRequest(
+            images: images,
+            userComment: userComment,
+            previousAnalysis: nil,
+            clarificationHistory: [],
+            clarificationAnswer: nil,
+            userCorrection: nil,
+            requestsBestEstimate: true,
+            allowsClarification: false,
+            recognizedLabelText: recognizedLabelText,
+            validationFeedback: nil,
+            independentEstimateNumber: number
         )
     }
 }

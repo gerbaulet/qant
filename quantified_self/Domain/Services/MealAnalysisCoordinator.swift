@@ -191,8 +191,16 @@ final class MealAnalysisCoordinator {
                 allowsClarification: allowsClarification,
                 recognizedLabelText: recognizedLabelText
             )
-            let (result, initialResults) = try await requestValidAnalysis(
+            let (firstResult, initialResults) = try await requestValidAnalysis(
                 request,
+                trigger: trigger,
+                sampleNumber: trigger == .initial ? 1 : nil,
+                callRecorder: callRecorder
+            )
+            let (result, sampledResults) = await adaptiveResult(
+                firstResult,
+                initialResults: initialResults,
+                request: request,
                 trigger: trigger,
                 callRecorder: callRecorder
             )
@@ -202,7 +210,7 @@ final class MealAnalysisCoordinator {
                 trigger: trigger,
                 clarificationAnswer: clarificationAnswer,
                 userCorrection: userCorrection,
-                initialResults: initialResults,
+                initialResults: sampledResults,
                 calls: callRecorder.calls,
                 portionMultiplier: preservedPortionMultiplier,
                 for: meal
@@ -250,6 +258,7 @@ final class MealAnalysisCoordinator {
     private func requestValidAnalysis(
         _ request: NutritionAnalysisRequest,
         trigger: AnalysisTrigger,
+        sampleNumber: Int?,
         callRecorder: AnalysisCallRecorder
     ) async throws -> (NutritionAnalysisResult, [NutritionAnalysisResult]) {
         var nextRequest = request
@@ -268,13 +277,13 @@ final class MealAnalysisCoordinator {
                         revised: result
                     )
                 }
-                callRecorder.recordSuccess(result, sampleNumber: nil, attemptNumber: attempt)
+                callRecorder.recordSuccess(result, sampleNumber: sampleNumber, attemptNumber: attempt)
                 return (result, [])
             } catch {
                 callRecorder.recordFailure(
                     error,
                     result: candidate,
-                    sampleNumber: nil,
+                    sampleNumber: sampleNumber,
                     attemptNumber: attempt
                 )
                 guard Self.isRetryable(error),
@@ -292,6 +301,67 @@ final class MealAnalysisCoordinator {
             }
         }
         throw NutritionAnalysisError.invalidResult("Das automatische Korrekturlimit wurde erreicht.")
+    }
+
+    private func adaptiveResult(
+        _ firstResult: NutritionAnalysisResult,
+        initialResults: [NutritionAnalysisResult],
+        request: NutritionAnalysisRequest,
+        trigger: AnalysisTrigger,
+        callRecorder: AnalysisCallRecorder
+    ) async -> (NutritionAnalysisResult, [NutritionAnalysisResult]) {
+        guard
+            trigger == .initial,
+            NutritionAnalysisSamplingPolicy.requiresAdditionalEstimates(
+                request: request,
+                result: firstResult
+            )
+        else { return (firstResult, initialResults) }
+
+        async let second = validatedOutcome(for: request.independentEstimate(number: 2))
+        async let third = validatedOutcome(for: request.independentEstimate(number: 3))
+        let outcomes = await [second, third]
+        var validResults = [firstResult]
+        for (offset, outcome) in outcomes.enumerated() {
+            let sampleNumber = offset + 2
+            switch outcome {
+            case let .success(result):
+                validResults.append(result)
+                callRecorder.recordSuccess(result, sampleNumber: sampleNumber, attemptNumber: 1)
+            case let .failure(error, candidate):
+                callRecorder.recordFailure(
+                    error,
+                    result: candidate,
+                    sampleNumber: sampleNumber,
+                    attemptNumber: 1
+                )
+            }
+        }
+        guard
+            validResults.count == NutritionAnalysisSamplingPolicy.targetEstimateCount,
+            let median = try? NutritionAnalysisSamplingPolicy.medianResult(from: validResults)
+        else {
+            AppLogger.nutritionAnalysis.info("Keeping first estimate because adaptive sampling was incomplete")
+            return (firstResult, validResults)
+        }
+        return (median, validResults)
+    }
+
+    private func validatedOutcome(
+        for request: NutritionAnalysisRequest
+    ) async -> ValidatedAnalysisOutcome {
+        var candidate: NutritionAnalysisResult?
+        do {
+            let rawResult = try await provider.analyze(request)
+            candidate = rawResult
+            try NutritionAnalysisValidator.validate(rawResult)
+            let result = NutritionAnalysisCalculator.calculateTotals(from: rawResult)
+            try NutritionAnalysisValidator.validate(result)
+            try NutritionAnalysisConsistencyValidator.validate(result)
+            return .success(result)
+        } catch {
+            return .failure(error, candidate)
+        }
     }
 
     private static func isTransportFailure(_ error: Error) -> Bool {
@@ -482,6 +552,12 @@ final class MealAnalysisCoordinator {
             provenance: nutrient.provenance
         )
     }
+}
+
+@MainActor
+private enum ValidatedAnalysisOutcome {
+    case success(NutritionAnalysisResult)
+    case failure(Error, NutritionAnalysisResult?)
 }
 
 @MainActor

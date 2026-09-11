@@ -35,6 +35,11 @@ erneut implementieren.
   ausgewählten OpenRouter-Modell aus. Nur eine unlesbare, technisch fehlgeschlagene
   oder lokal als widersprüchlich erkannte Antwort darf genau einen weiteren
   Korrekturversuch auslösen.
+- Nur bei einem reinen Tellerfoto mit niedriger Modellkonfidenz, ohne konkrete
+  Mengenangabe, erkanntes Nährwertetikett oder Rückfrage werden zwei weitere
+  unabhängige Schätzungen parallel angefordert. Aus drei gültigen Schätzungen
+  wird das vollständige Ergebnis mit dem mittleren kcal-Wert übernommen; bei
+  einer ungültigen Zusatzschätzung bleibt das erste gültige Ergebnis maßgeblich.
 - Vor der Anfrage liest die App Verpackungstext lokal mit Vision-OCR. Der erkannte
   Text unterstützt das Modell zusätzlich zu den Bildern und Nutzerangaben.
 - Das strukturierte Ergebnis enthält pro Bestandteil Gewicht sowie Energie,
@@ -80,8 +85,9 @@ erneut implementieren.
   Ausgaben unterstützen. Die Liste wird nach der von OpenRouter gelieferten
   Popularitätsinformation sortiert; diese Herkunft in der UI verständlich
   machen.
-- Den Nutzer darauf hinweisen, dass normalerweise ein Modellaufruf anfällt und
-  bei einer fehlerhaften Antwort einmalig ein Korrekturaufruf folgen kann.
+- Den Nutzer darauf hinweisen, dass normalerweise ein Modellaufruf anfällt, bei
+  unsicheren reinen Tellerfotos drei Aufrufe erfolgen und bei einer fehlerhaften
+  Antwort einmalig ein Korrekturaufruf folgen kann.
 - Der OpenRouter-Schlüssel gehört ausschließlich in die Keychain. Die gewählte
   Modellkennung darf in UserDefaults gespeichert werden.
 

@@ -231,6 +231,9 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             lines.append("The previous response failed local validation: \(feedback)")
             lines.append("Return one corrected complete analysis. Fix the stated inconsistency and preserve all reliable image, label, and user evidence.")
         }
+        if let number = request.independentEstimateNumber {
+            lines.append("Independent visual estimate \(number) of 3: estimate the meal afresh from the original evidence. Do not anchor on another model result.")
+        }
         return lines.joined(separator: "\n")
     }
 

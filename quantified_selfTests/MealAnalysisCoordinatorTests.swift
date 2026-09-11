@@ -123,6 +123,111 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.analysisState == .confirmed)
     }
 
+    @Test("An uncertain plate uses three estimates and persists the median result")
+    func usesMedianForUncertainPlate() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let image = MealImage(
+            sortIndex: 0,
+            imageStorageKey: "plate/image.jpg",
+            thumbnailStorageKey: "plate/thumbnail.jpg",
+            pixelWidth: 1_000,
+            pixelHeight: 800
+        )
+        let meal = Meal(userComment: "Pasta mit Sauce", images: [image])
+        context.insert(meal)
+        try context.save()
+        let provider = SequencedAnalysisProviderStub(results: [
+            lowConfidenceVisualResult(energy: 500),
+            lowConfidenceVisualResult(energy: 800),
+            lowConfidenceVisualResult(energy: 640),
+        ])
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: ["plate/image.jpg": Data([1, 2, 3])]),
+            textRecognizer: NutritionLabelTextRecognizerStub(text: [""])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(provider.requestCount == 3)
+        #expect(meal.analysisState == .confirmed)
+        #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
+        let calls = InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata)
+        #expect(calls.map(\.sampleNumber) == [1, 2, 3])
+        #expect(provider.receivedRequests.dropFirst().allSatisfy { !$0.allowsClarification })
+        #expect(provider.receivedRequests.first?.independentEstimateNumber == nil)
+        #expect(Set(provider.receivedRequests.dropFirst().compactMap(\.independentEstimateNumber)) == [2, 3])
+    }
+
+    @Test("A low-confidence labeled meal still uses one estimate")
+    func avoidsSamplingLabeledMeal() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let image = MealImage(
+            sortIndex: 0,
+            imageStorageKey: "label/image.jpg",
+            thumbnailStorageKey: "label/thumbnail.jpg",
+            pixelWidth: 1_000,
+            pixelHeight: 800
+        )
+        let meal = Meal(userComment: "Ein Toast", images: [image])
+        context.insert(meal)
+        try context.save()
+        let provider = SequencedAnalysisProviderStub(results: [lowConfidenceVisualResult(energy: 640)])
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: ["label/image.jpg": Data([1, 2, 3])]),
+            textRecognizer: NutritionLabelTextRecognizerStub(
+                text: ["Nährwerte pro 100 g Energie 248 kcal Protein 9 g"]
+            )
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(provider.requestCount == 1)
+        #expect(meal.analysisState == .confirmed)
+    }
+
+    @Test("An invalid optional estimate keeps the first valid result")
+    func keepsFirstResultWhenAdaptiveSamplingIsIncomplete() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let image = MealImage(
+            sortIndex: 0,
+            imageStorageKey: "plate/image.jpg",
+            thumbnailStorageKey: "plate/thumbnail.jpg",
+            pixelWidth: 1_000,
+            pixelHeight: 800
+        )
+        let meal = Meal(userComment: "Pasta mit Sauce", images: [image])
+        context.insert(meal)
+        try context.save()
+        let first = lowConfidenceVisualResult(energy: 640)
+        let provider = SequencedAnalysisProviderStub(outcomes: [
+            .success(first),
+            .failure(OpenRouterClientError.serverError),
+            .success(lowConfidenceVisualResult(energy: 800)),
+        ])
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: ["plate/image.jpg": Data([1, 2, 3])]),
+            textRecognizer: NutritionLabelTextRecognizerStub(text: [""])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(provider.requestCount == 3)
+        #expect(meal.analysisState == .confirmed)
+        #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
+        let calls = InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata)
+        #expect(calls.count == 3)
+        #expect(calls.filter { $0.status == .failed }.count == 1)
+    }
+
     @Test("A material clarification question changes the persisted state")
     func persistsClarificationState() async throws {
         let container = try makeContainer()
@@ -202,7 +307,7 @@ struct MealAnalysisCoordinatorTests {
         #expect(calls.count == 2)
         #expect(calls.filter { $0.status == .succeeded }.count == 1)
         #expect(calls.filter { $0.status == .failed }.count == 1)
-        #expect(calls.allSatisfy { $0.sampleNumber == nil })
+        #expect(calls.allSatisfy { $0.sampleNumber == 1 })
         #expect(calls.map(\.attemptNumber) == [1, 2])
     }
 
@@ -916,6 +1021,29 @@ struct MealAnalysisCoordinatorTests {
             components: valid.components,
             modelIdentifier: valid.modelIdentifier,
             providerIdentifier: valid.providerIdentifier
+        )
+    }
+
+    private func lowConfidenceVisualResult(energy: Double) -> NutritionAnalysisResult {
+        let nutrients = NutritionAnalysisValidatorTests.coreNutrients.map { nutrient in
+            AnalyzedNutrient(
+                identifier: nutrient.identifier,
+                value: nutrient.identifier == .energy ? energy : nutrient.value,
+                unit: nutrient.unit,
+                confidence: .low,
+                provenance: .visualEstimate
+            )
+        }
+        return NutritionAnalysisResult(
+            mealName: "Pasta mit Sauce",
+            estimatedTotalWeightGrams: 480,
+            confidence: .low,
+            uncertaintySummary: "Die Portionsgröße ist schwer erkennbar.",
+            clarificationQuestion: nil,
+            nutrients: nutrients,
+            components: [],
+            modelIdentifier: "example/vision-model",
+            providerIdentifier: "Example"
         )
     }
 }

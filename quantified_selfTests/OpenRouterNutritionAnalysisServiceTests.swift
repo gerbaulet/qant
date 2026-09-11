@@ -169,6 +169,29 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(prompt.contains("one corrected complete analysis"))
     }
 
+    @Test("Independent visual estimates are explicitly de-anchored")
+    func includesIndependentEstimateInstruction() async throws {
+        let client = ChatClientStub(responseData: try Self.chatResponseData())
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "secret"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/model"),
+            client: client
+        )
+
+        _ = try await service.analyze(
+            NutritionAnalysisRequest(images: [], userComment: "Pasta")
+                .independentEstimate(number: 2)
+        )
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        let content = try #require(messages.last?["content"] as? [[String: Any]])
+        let prompt = try #require(content.first?["text"] as? String)
+        #expect(prompt.contains("Independent visual estimate 2 of 3"))
+        #expect(prompt.contains("Do not anchor"))
+    }
+
     @Test("Best-estimate requests include prior context and reject another question")
     func bestEstimateContextAndQuestionLimit() async throws {
         let response = try Self.chatResponseData(
