@@ -9,11 +9,9 @@ enum NutritionAnalysisSamplingPolicy {
     ) -> Bool {
         guard
             !request.images.isEmpty,
-            result.confidence == .low,
             result.clarificationQuestion?.isEmpty != false,
             !containsNutritionLabel(in: request.recognizedLabelText),
-            !containsConcreteQuantity(in: request.userComment),
-            lacksAuthoritativeEvidence(result)
+            !containsMeasuredQuantity(in: request.userComment)
         else { return false }
         return true
     }
@@ -54,21 +52,9 @@ enum NutritionAnalysisSamplingPolicy {
         return evidenceGroups.filter { group in group.contains { text.contains($0) } }.count >= 2
     }
 
-    private static func containsConcreteQuantity(in comment: String?) -> Bool {
+    private static func containsMeasuredQuantity(in comment: String?) -> Bool {
         guard let comment else { return false }
-        let pattern = #"(?i)(?:\d+(?:[.,]\d+)?|ein(?:e|en|er|em|es)?|zwei|drei|vier|fünf)\s*(?:mg|g|gramm|kg|kilogramm|ml|milliliter|cl|dl|l|liter|scheibe(?:n)?|stück(?:e)?|toast(?:s)?|ei(?:er)?|el|tl|esslöffel|teelöffel)\b"#
+        let pattern = #"(?i)(?:\d+(?:[.,]\d+)?|ein(?:e|en|er|em|es)?|zwei|drei|vier|fünf)\s*(?:mg|g|gramm|kg|kilogramm|ml|milliliter|cl|dl|l|liter|el|tl|esslöffel|teelöffel)\b"#
         return comment.range(of: pattern, options: .regularExpression) != nil
-    }
-
-    private static func lacksAuthoritativeEvidence(_ result: NutritionAnalysisResult) -> Bool {
-        let nutrients = result.components.isEmpty
-            ? result.nutrients
-            : result.components.flatMap(\.nutrients)
-        guard !nutrients.isEmpty else { return false }
-        return nutrients.allSatisfy {
-            $0.provenance == .visualEstimate ||
-                $0.provenance == .mixedEstimate ||
-                $0.provenance == .unknown
-        }
     }
 }

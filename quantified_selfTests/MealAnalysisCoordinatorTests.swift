@@ -123,8 +123,8 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.analysisState == .confirmed)
     }
 
-    @Test("An uncertain plate uses three estimates and persists the median result")
-    func usesMedianForUncertainPlate() async throws {
+    @Test("A plate without measured quantities uses three estimates and persists the median result")
+    func usesMedianForPlateWithoutMeasuredQuantities() async throws {
         let container = try makeContainer()
         let context = container.mainContext
         let image = MealImage(
@@ -138,9 +138,9 @@ struct MealAnalysisCoordinatorTests {
         context.insert(meal)
         try context.save()
         let provider = SequencedAnalysisProviderStub(results: [
-            lowConfidenceVisualResult(energy: 500),
-            lowConfidenceVisualResult(energy: 800),
-            lowConfidenceVisualResult(energy: 640),
+            visualPlateResult(energy: 500, confidence: .high),
+            visualPlateResult(energy: 800),
+            visualPlateResult(energy: 640),
         ])
         let coordinator = MealAnalysisCoordinator(
             context: context,
@@ -175,7 +175,7 @@ struct MealAnalysisCoordinatorTests {
         let meal = Meal(userComment: "Ein Toast", images: [image])
         context.insert(meal)
         try context.save()
-        let provider = SequencedAnalysisProviderStub(results: [lowConfidenceVisualResult(energy: 640)])
+        let provider = SequencedAnalysisProviderStub(results: [visualPlateResult(energy: 640)])
         let coordinator = MealAnalysisCoordinator(
             context: context,
             provider: provider,
@@ -205,11 +205,11 @@ struct MealAnalysisCoordinatorTests {
         let meal = Meal(userComment: "Pasta mit Sauce", images: [image])
         context.insert(meal)
         try context.save()
-        let first = lowConfidenceVisualResult(energy: 640)
+        let first = visualPlateResult(energy: 640)
         let provider = SequencedAnalysisProviderStub(outcomes: [
             .success(first),
             .failure(OpenRouterClientError.serverError),
-            .success(lowConfidenceVisualResult(energy: 800)),
+            .success(visualPlateResult(energy: 800)),
         ])
         let coordinator = MealAnalysisCoordinator(
             context: context,
@@ -1024,20 +1024,23 @@ struct MealAnalysisCoordinatorTests {
         )
     }
 
-    private func lowConfidenceVisualResult(energy: Double) -> NutritionAnalysisResult {
+    private func visualPlateResult(
+        energy: Double,
+        confidence: EstimateConfidence = .low
+    ) -> NutritionAnalysisResult {
         let nutrients = NutritionAnalysisValidatorTests.coreNutrients.map { nutrient in
             AnalyzedNutrient(
                 identifier: nutrient.identifier,
                 value: nutrient.identifier == .energy ? energy : nutrient.value,
                 unit: nutrient.unit,
-                confidence: .low,
+                confidence: confidence,
                 provenance: .visualEstimate
             )
         }
         return NutritionAnalysisResult(
             mealName: "Pasta mit Sauce",
             estimatedTotalWeightGrams: 480,
-            confidence: .low,
+            confidence: confidence,
             uncertaintySummary: "Die Portionsgröße ist schwer erkennbar.",
             clarificationQuestion: nil,
             nutrients: nutrients,

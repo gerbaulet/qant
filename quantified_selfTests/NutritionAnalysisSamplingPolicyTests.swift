@@ -3,8 +3,8 @@ import Testing
 @testable import Quant
 
 struct NutritionAnalysisSamplingPolicyTests {
-    @Test("A low-confidence visual plate requests two additional estimates")
-    func samplesUncertainPlate() {
+    @Test("A plate without measured quantities requests two additional estimates")
+    func samplesPlateWithoutMeasuredQuantity() {
         let request = NutritionAnalysisRequest(
             images: [NutritionAnalysisImage(data: Data([1]))],
             userComment: "Pasta mit Sauce"
@@ -12,7 +12,7 @@ struct NutritionAnalysisSamplingPolicyTests {
 
         #expect(NutritionAnalysisSamplingPolicy.requiresAdditionalEstimates(
             request: request,
-            result: visualResult(confidence: .low)
+            result: visualResult(confidence: .high)
         ))
     }
 
@@ -30,16 +30,16 @@ struct NutritionAnalysisSamplingPolicyTests {
         ))
     }
 
-    @Test("Label-derived result provenance suppresses sampling when OCR misses the label")
-    func skipsLabelDerivedResult() {
+    @Test("Model confidence and provenance do not suppress plate sampling")
+    func ignoresModelClassificationForPlateSampling() {
         let request = NutritionAnalysisRequest(
             images: [NutritionAnalysisImage(data: Data([1]))],
             userComment: nil
         )
 
-        #expect(!NutritionAnalysisSamplingPolicy.requiresAdditionalEstimates(
+        #expect(NutritionAnalysisSamplingPolicy.requiresAdditionalEstimates(
             request: request,
-            result: visualResult(confidence: .low, provenance: .calculatedFromLabel)
+            result: visualResult(confidence: .high, provenance: .calculatedFromLabel)
         ))
     }
 
@@ -54,19 +54,24 @@ struct NutritionAnalysisSamplingPolicyTests {
             request: request,
             result: visualResult(confidence: .low)
         ))
+
+        let impreciseCountRequest = NutritionAnalysisRequest(
+            images: [NutritionAnalysisImage(data: Data([1]))],
+            userComment: "Eine Scheibe Brot und ein Stück Käse"
+        )
+        #expect(NutritionAnalysisSamplingPolicy.requiresAdditionalEstimates(
+            request: impreciseCountRequest,
+            result: visualResult(confidence: .high)
+        ))
     }
 
-    @Test("High confidence and clarification questions suppress sampling")
-    func skipsWhenSamplingCannotHelp() {
+    @Test("Clarification questions suppress sampling")
+    func skipsOpenClarification() {
         let request = NutritionAnalysisRequest(
             images: [NutritionAnalysisImage(data: Data([1]))],
             userComment: nil
         )
 
-        #expect(!NutritionAnalysisSamplingPolicy.requiresAdditionalEstimates(
-            request: request,
-            result: visualResult(confidence: .high)
-        ))
         #expect(!NutritionAnalysisSamplingPolicy.requiresAdditionalEstimates(
             request: request,
             result: visualResult(confidence: .low, clarificationQuestion: "Wie groß war der Teller?")
