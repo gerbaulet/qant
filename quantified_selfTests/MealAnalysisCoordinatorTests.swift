@@ -191,8 +191,8 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.analysisState == .confirmed)
     }
 
-    @Test("An invalid optional estimate keeps the first valid result")
-    func keepsFirstResultWhenAdaptiveSamplingIsIncomplete() async throws {
+    @Test("An invalid additional estimate is corrected before all three estimates are used")
+    func retriesInvalidAdditionalEstimate() async throws {
         let container = try makeContainer()
         let context = container.mainContext
         let image = MealImage(
@@ -205,12 +205,12 @@ struct MealAnalysisCoordinatorTests {
         let meal = Meal(userComment: "Pasta mit Sauce", images: [image])
         context.insert(meal)
         try context.save()
-        let first = visualPlateResult(energy: 640)
-        let provider = SequencedAnalysisProviderStub(outcomes: [
-            .success(first),
-            .failure(OpenRouterClientError.serverError),
-            .success(visualPlateResult(energy: 800)),
-        ])
+        let provider = SampleRetryAnalysisProviderStub(
+            first: visualPlateResult(energy: 500),
+            invalidSecond: resultWithEnergy(1_400),
+            correctedSecond: visualPlateResult(energy: 640),
+            third: visualPlateResult(energy: 800)
+        )
         let coordinator = MealAnalysisCoordinator(
             context: context,
             provider: provider,
@@ -220,12 +220,54 @@ struct MealAnalysisCoordinatorTests {
 
         await coordinator.analyze(meal)
 
-        #expect(provider.requestCount == 3)
+        #expect(provider.requestCount == 4)
         #expect(meal.analysisState == .confirmed)
         #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
         let calls = InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata)
-        #expect(calls.count == 3)
+        #expect(calls.count == 4)
         #expect(calls.filter { $0.status == .failed }.count == 1)
+        #expect(calls.filter { $0.status == .succeeded }.count == 3)
+        #expect(calls.filter { $0.sampleNumber == 2 }.map(\.attemptNumber).sorted() == [1, 2])
+        #expect(provider.repairFeedback?.contains("Kalorien und Makronährstoffe") == true)
+    }
+
+    @Test("Exhausted retries for an additional estimate leave the meal retryable")
+    func failsWhenAdditionalEstimateRemainsInvalid() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let image = MealImage(
+            sortIndex: 0,
+            imageStorageKey: "plate/image.jpg",
+            thumbnailStorageKey: "plate/thumbnail.jpg",
+            pixelWidth: 1_000,
+            pixelHeight: 800
+        )
+        let meal = Meal(userComment: "Pasta mit Sauce", images: [image])
+        context.insert(meal)
+        try context.save()
+        let provider = SampleRetryAnalysisProviderStub(
+            first: visualPlateResult(energy: 500),
+            invalidSecond: resultWithEnergy(1_400),
+            correctedSecond: resultWithEnergy(1_400),
+            third: visualPlateResult(energy: 800)
+        )
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: ["plate/image.jpg": Data([1, 2, 3])]),
+            textRecognizer: NutritionLabelTextRecognizerStub(text: [""])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(provider.requestCount == 4)
+        #expect(meal.analysisState == .failed)
+        #expect(meal.activeRevision == nil)
+        let failure = try #require(meal.analysisRevisions.first)
+        let calls = InitialAnalysisRunMetadata.decodeCalls(failure.providerMetadata)
+        #expect(calls.count == 4)
+        #expect(calls.filter { $0.sampleNumber == 2 }.map(\.status).allSatisfy { $0 == .failed })
+        #expect(calls.filter { $0.status == .succeeded }.count == 2)
     }
 
     @Test("A material clarification question changes the persisted state")
@@ -1104,6 +1146,42 @@ private final class SequencedAnalysisProviderStub: NutritionAnalysisProviding {
             return result
         case let .failure(error):
             throw error
+        }
+    }
+}
+
+@MainActor
+private final class SampleRetryAnalysisProviderStub: NutritionAnalysisProviding {
+    private let first: NutritionAnalysisResult
+    private let invalidSecond: NutritionAnalysisResult
+    private let correctedSecond: NutritionAnalysisResult
+    private let third: NutritionAnalysisResult
+    private(set) var requestCount = 0
+    private(set) var repairFeedback: String?
+
+    init(
+        first: NutritionAnalysisResult,
+        invalidSecond: NutritionAnalysisResult,
+        correctedSecond: NutritionAnalysisResult,
+        third: NutritionAnalysisResult
+    ) {
+        self.first = first
+        self.invalidSecond = invalidSecond
+        self.correctedSecond = correctedSecond
+        self.third = third
+    }
+
+    func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult {
+        requestCount += 1
+        switch request.independentEstimateNumber {
+        case 2:
+            guard let feedback = request.validationFeedback else { return invalidSecond }
+            repairFeedback = feedback
+            return correctedSecond
+        case 3:
+            return third
+        default:
+            return first
         }
     }
 }

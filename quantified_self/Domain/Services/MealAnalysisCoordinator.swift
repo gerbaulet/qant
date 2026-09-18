@@ -197,7 +197,7 @@ final class MealAnalysisCoordinator {
                 sampleNumber: trigger == .initial ? 1 : nil,
                 callRecorder: callRecorder
             )
-            let (result, sampledResults) = await adaptiveResult(
+            let (result, sampledResults) = try await adaptiveResult(
                 firstResult,
                 initialResults: initialResults,
                 request: request,
@@ -309,7 +309,7 @@ final class MealAnalysisCoordinator {
         request: NutritionAnalysisRequest,
         trigger: AnalysisTrigger,
         callRecorder: AnalysisCallRecorder
-    ) async -> (NutritionAnalysisResult, [NutritionAnalysisResult]) {
+    ) async throws -> (NutritionAnalysisResult, [NutritionAnalysisResult]) {
         guard
             trigger == .initial,
             NutritionAnalysisSamplingPolicy.requiresAdditionalEstimates(
@@ -318,49 +318,54 @@ final class MealAnalysisCoordinator {
             )
         else { return (firstResult, initialResults) }
 
-        async let second = validatedOutcome(for: request.independentEstimate(number: 2))
-        async let third = validatedOutcome(for: request.independentEstimate(number: 3))
+        async let second = validatedOutcome(
+            for: request.independentEstimate(number: 2),
+            sampleNumber: 2,
+            callRecorder: callRecorder
+        )
+        async let third = validatedOutcome(
+            for: request.independentEstimate(number: 3),
+            sampleNumber: 3,
+            callRecorder: callRecorder
+        )
         let outcomes = await [second, third]
         var validResults = [firstResult]
-        for (offset, outcome) in outcomes.enumerated() {
-            let sampleNumber = offset + 2
+        var firstFailure: Error?
+        for outcome in outcomes {
             switch outcome {
             case let .success(result):
                 validResults.append(result)
-                callRecorder.recordSuccess(result, sampleNumber: sampleNumber, attemptNumber: 1)
-            case let .failure(error, candidate):
-                callRecorder.recordFailure(
-                    error,
-                    result: candidate,
-                    sampleNumber: sampleNumber,
-                    attemptNumber: 1
-                )
+            case let .failure(error):
+                firstFailure = firstFailure ?? error
             }
         }
         guard
             validResults.count == NutritionAnalysisSamplingPolicy.targetEstimateCount,
             let median = try? NutritionAnalysisSamplingPolicy.medianResult(from: validResults)
         else {
-            AppLogger.nutritionAnalysis.info("Keeping first estimate because adaptive sampling was incomplete")
-            return (firstResult, validResults)
+            AppLogger.nutritionAnalysis.error("Adaptive sampling did not produce three valid estimates")
+            throw firstFailure ?? NutritionAnalysisError.invalidResult(
+                "Es konnten nicht drei gültige Schätzungen erstellt werden."
+            )
         }
         return (median, validResults)
     }
 
     private func validatedOutcome(
-        for request: NutritionAnalysisRequest
+        for request: NutritionAnalysisRequest,
+        sampleNumber: Int,
+        callRecorder: AnalysisCallRecorder
     ) async -> ValidatedAnalysisOutcome {
-        var candidate: NutritionAnalysisResult?
         do {
-            let rawResult = try await provider.analyze(request)
-            candidate = rawResult
-            try NutritionAnalysisValidator.validate(rawResult)
-            let result = NutritionAnalysisCalculator.calculateTotals(from: rawResult)
-            try NutritionAnalysisValidator.validate(result)
-            try NutritionAnalysisConsistencyValidator.validate(result)
+            let (result, _) = try await requestValidAnalysis(
+                request,
+                trigger: .initial,
+                sampleNumber: sampleNumber,
+                callRecorder: callRecorder
+            )
             return .success(result)
         } catch {
-            return .failure(error, candidate)
+            return .failure(error)
         }
     }
 
@@ -557,7 +562,7 @@ final class MealAnalysisCoordinator {
 @MainActor
 private enum ValidatedAnalysisOutcome {
     case success(NutritionAnalysisResult)
-    case failure(Error, NutritionAnalysisResult?)
+    case failure(Error)
 }
 
 @MainActor
