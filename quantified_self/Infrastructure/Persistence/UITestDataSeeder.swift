@@ -31,8 +31,18 @@ enum UITestDataSeeder {
                 ? "OpenRouter-Fehler 400: Kein Anbieter unterstützt strukturierte Ausgaben."
                 : nil,
             components: [
-                FoodComponent(sortIndex: 0, name: "Chicken Curry", estimatedWeightGrams: 280),
-                FoodComponent(sortIndex: 1, name: "Reis", estimatedWeightGrams: 160),
+                component(
+                    sortIndex: 0,
+                    name: "Chicken Curry",
+                    weight: 280,
+                    values: [500, 40, 20, 25, 3, 0]
+                ),
+                component(
+                    sortIndex: 1,
+                    name: "Reis",
+                    weight: 160,
+                    values: [285, 6, 72, 0, 5, 0]
+                ),
             ],
             nutrients: [
                 nutrient(.energy, 785, .kilocalorie),
@@ -56,6 +66,34 @@ enum UITestDataSeeder {
         )
         context.insert(meal)
         try context.save()
+    }
+
+    private static func component(
+        sortIndex: Int,
+        name: String,
+        weight: Double,
+        values: [Double]
+    ) -> FoodComponent {
+        let identifiers: [NutrientIdentifier] = [
+            .energy,
+            .protein,
+            .carbohydrates,
+            .fat,
+            .fiber,
+            .alcohol,
+        ]
+        return FoodComponent(
+            sortIndex: sortIndex,
+            name: name,
+            estimatedWeightGrams: weight,
+            nutrients: zip(identifiers, values).map { identifier, value in
+                nutrient(
+                    identifier,
+                    value,
+                    NutritionAnalysisValidator.expectedUnit(for: identifier)
+                )
+            }
+        )
     }
 
     private static func nutrient(

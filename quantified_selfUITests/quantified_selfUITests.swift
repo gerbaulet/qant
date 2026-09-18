@@ -239,6 +239,34 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testShowsNutritionValuesForEachMealComponent() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-confirmation",
+        ])
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+
+        let rice = app.buttons["meal.component.1"]
+        for _ in 0..<4 where !rice.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(rice.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["~160 g"].exists)
+        rice.tap()
+
+        XCTAssertTrue(app.staticTexts["~285 kcal"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["~6,0 g"].exists)
+        XCTAssertTrue(app.staticTexts["~72 g"].exists)
+        XCTAssertTrue(app.staticTexts["~0,0 g"].exists)
+        XCTAssertTrue(app.staticTexts["~5,0 g"].exists)
+    }
+
+    @MainActor
     func testPersistsAdjustedPortionAfterSliderInteraction() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [

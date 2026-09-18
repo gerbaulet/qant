@@ -912,14 +912,10 @@ private struct PortionComponentsSection: View {
                 Text("Bestandteile")
                     .font(.headline)
                 ForEach(components) { component in
-                    HStack {
-                        Text(component.name)
-                        Spacer()
-                        if let weight = component.estimatedWeightGrams {
-                            Text("~\(wholeNumber(weight * multiplier)) g")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    PortionComponentRow(
+                        component: component,
+                        multiplier: multiplier
+                    )
                     if component.id != components.last?.id {
                         Divider()
                     }
@@ -929,9 +925,64 @@ private struct PortionComponentsSection: View {
             .background(.background, in: .rect(cornerRadius: 18))
         }
     }
+}
+
+private struct PortionComponentRow: View {
+    let component: FoodComponent
+    let multiplier: Double
+
+    private let displayedNutrients: [NutrientIdentifier] = [
+        .energy,
+        .protein,
+        .carbohydrates,
+        .fat,
+        .fiber,
+        .alcohol,
+    ]
+
+    var body: some View {
+        DisclosureGroup {
+            VStack(spacing: 9) {
+                ForEach(displayedNutrients, id: \.rawValue) { identifier in
+                    LabeledContent(
+                        identifier.reviewTitle,
+                        value: nutrientText(identifier)
+                    )
+                }
+            }
+            .font(.subheadline)
+            .padding(.top, 10)
+        } label: {
+            HStack {
+                Text(component.name)
+                    .font(.body.weight(.medium))
+                Spacer()
+                Text(weightText)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .accessibilityIdentifier("meal.component.\(component.sortIndex)")
+    }
+
+    private var weightText: String {
+        guard let weight = component.estimatedWeightGrams else { return "— g" }
+        return "~\(wholeNumber(weight * multiplier)) g"
+    }
+
+    private func nutrientText(_ identifier: NutrientIdentifier) -> String {
+        guard let nutrient = component.nutrients.first(where: {
+            $0.identifierRawValue == identifier.rawValue
+        }) else { return "—" }
+        return "~\(formattedValue(nutrient.value * multiplier)) \(nutrient.unitRawValue)"
+    }
 
     private func wholeNumber(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0)))
+    }
+
+    private func formattedValue(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(value < 10 ? 1 : 0)))
     }
 }
 
