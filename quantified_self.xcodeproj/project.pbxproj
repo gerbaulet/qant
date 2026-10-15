@@ -7,17 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA000001303B47AF00CFCA36 /* QuantWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = AA000003303B47AF00CFCA36 /* QuantWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA000001303B47AF00CFCA36 /* QuantWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA000003303B47AF00CFCA36 /* QuantWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		AA000002303B47AF00CFCA36 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 776BD509303B47AC00CFCA36 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = AA00000A303B47AF00CFCA36;
-			remoteInfo = QuantWidget;
-		};
 		776BD521303B47AF00CFCA36 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 776BD509303B47AC00CFCA36 /* Project object */;
@@ -32,40 +25,37 @@
 			remoteGlobalIDString = 776BD510303B47AC00CFCA36;
 			remoteInfo = Quant;
 		};
+		AA000002303B47AF00CFCA36 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 776BD509303B47AC00CFCA36 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA00000A303B47AF00CFCA36;
+			remoteInfo = QuantWidget;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		AA000009303B47AF00CFCA36 /* Embed App Extensions */ = {
+		AA000009303B47AF00CFCA36 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				AA000001303B47AF00CFCA36 /* QuantWidget.appex in Embed App Extensions */,
+				AA000001303B47AF00CFCA36 /* QuantWidget.appex in Embed Foundation Extensions */,
 			);
-			name = "Embed App Extensions";
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		AA000003303B47AF00CFCA36 /* QuantWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = QuantWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		776BD511303B47AC00CFCA36 /* Quant.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Quant.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		776BD520303B47AF00CFCA36 /* QuantTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QuantTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		776BD52A303B47AF00CFCA36 /* QuantUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QuantUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA000003303B47AF00CFCA36 /* QuantWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = QuantWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		AA000004303B47AF00CFCA36 /* Shared */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Shared;
-			sourceTree = "<group>";
-		};
-		AA000005303B47AF00CFCA36 /* QuantWidget */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = QuantWidget;
-			sourceTree = "<group>";
-		};
 		776BD513303B47AC00CFCA36 /* quantified_self */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = quantified_self;
@@ -81,16 +71,19 @@
 			path = quantified_selfUITests;
 			sourceTree = "<group>";
 		};
+		AA000004303B47AF00CFCA36 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		AA000005303B47AF00CFCA36 /* QuantWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = QuantWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		AA000006303B47AF00CFCA36 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		776BD50E303B47AC00CFCA36 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -106,6 +99,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		776BD527303B47AF00CFCA36 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA000006303B47AF00CFCA36 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -141,29 +141,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		AA00000A303B47AF00CFCA36 /* QuantWidget */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = AA00000E303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "QuantWidget" */;
-			buildPhases = (
-				AA000008303B47AF00CFCA36 /* Sources */,
-				AA000006303B47AF00CFCA36 /* Frameworks */,
-				AA000007303B47AF00CFCA36 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				AA000005303B47AF00CFCA36 /* QuantWidget */,
-				AA000004303B47AF00CFCA36 /* Shared */,
-			);
-			name = QuantWidget;
-			packageProductDependencies = (
-			);
-			productName = QuantWidget;
-			productReference = AA000003303B47AF00CFCA36 /* QuantWidget.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 		776BD510303B47AC00CFCA36 /* Quant */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 776BD534303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "Quant" */;
@@ -171,7 +148,7 @@
 				776BD50D303B47AC00CFCA36 /* Sources */,
 				776BD50E303B47AC00CFCA36 /* Frameworks */,
 				776BD50F303B47AC00CFCA36 /* Resources */,
-				AA000009303B47AF00CFCA36 /* Embed App Extensions */,
+				AA000009303B47AF00CFCA36 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
@@ -235,6 +212,29 @@
 			productReference = 776BD52A303B47AF00CFCA36 /* QuantUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		AA00000A303B47AF00CFCA36 /* QuantWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA00000E303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "QuantWidget" */;
+			buildPhases = (
+				AA000008303B47AF00CFCA36 /* Sources */,
+				AA000006303B47AF00CFCA36 /* Frameworks */,
+				AA000007303B47AF00CFCA36 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AA000004303B47AF00CFCA36 /* Shared */,
+				AA000005303B47AF00CFCA36 /* QuantWidget */,
+			);
+			name = QuantWidget;
+			packageProductDependencies = (
+			);
+			productName = QuantWidget;
+			productReference = AA000003303B47AF00CFCA36 /* QuantWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -243,11 +243,8 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2630;
-				LastUpgradeCheck = 2630;
+				LastUpgradeCheck = 2700;
 				TargetAttributes = {
-					AA00000A303B47AF00CFCA36 = {
-						CreatedOnToolsVersion = 26.3;
-					};
 					776BD510303B47AC00CFCA36 = {
 						CreatedOnToolsVersion = 26.3;
 					};
@@ -258,6 +255,9 @@
 					776BD529303B47AF00CFCA36 = {
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = 776BD510303B47AC00CFCA36;
+					};
+					AA00000A303B47AF00CFCA36 = {
+						CreatedOnToolsVersion = 26.3;
 					};
 				};
 			};
@@ -284,13 +284,6 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		AA000007303B47AF00CFCA36 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		776BD50F303B47AC00CFCA36 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -312,16 +305,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXResourcesBuildPhase section */
-
-/* Begin PBXSourcesBuildPhase section */
-		AA000008303B47AF00CFCA36 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
+		AA000007303B47AF00CFCA36 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
 		776BD50D303B47AC00CFCA36 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -343,14 +336,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA000008303B47AF00CFCA36 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		AA00000B303B47AF00CFCA36 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = AA00000A303B47AF00CFCA36 /* QuantWidget */;
-			targetProxy = AA000002303B47AF00CFCA36 /* PBXContainerItemProxy */;
-		};
 		776BD522303B47AF00CFCA36 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 776BD510303B47AC00CFCA36 /* Quant */;
@@ -361,67 +356,14 @@
 			target = 776BD510303B47AC00CFCA36 /* Quant */;
 			targetProxy = 776BD52B303B47AF00CFCA36 /* PBXContainerItemProxy */;
 		};
+		AA00000B303B47AF00CFCA36 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA00000A303B47AF00CFCA36 /* QuantWidget */;
+			targetProxy = AA000002303B47AF00CFCA36 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		AA00000C303B47AF00CFCA36 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = ProjectConfiguration/QuantWidget.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6948ZYZ67T;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = ProjectConfiguration/QuantWidget-Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "de.clemensgerbaulet.quantified-self.widget";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Debug;
-		};
-		AA00000D303B47AF00CFCA36 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = ProjectConfiguration/QuantWidget.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6948ZYZ67T;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = ProjectConfiguration/QuantWidget-Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "de.clemensgerbaulet.quantified-self.widget";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Release;
-		};
 		776BD532303B47AF00CFCA36 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -481,6 +423,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -538,6 +481,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -554,7 +498,7 @@
 				DEVELOPMENT_TEAM = 6948ZYZ67T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = ProjectConfiguration/Quant-Info.plist;
+				INFOPLIST_FILE = "ProjectConfiguration/Quant-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Quant;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Nimm Fotos deiner Mahlzeiten für die Nährwertanalyse auf.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -590,7 +534,7 @@
 				DEVELOPMENT_TEAM = 6948ZYZ67T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = ProjectConfiguration/Quant-Info.plist;
+				INFOPLIST_FILE = "ProjectConfiguration/Quant-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Quant;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Nimm Fotos deiner Mahlzeiten für die Nährwertanalyse auf.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -699,18 +643,67 @@
 			};
 			name = Release;
 		};
+		AA00000C303B47AF00CFCA36 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ProjectConfiguration/QuantWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6948ZYZ67T;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "ProjectConfiguration/QuantWidget-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.clemensgerbaulet.quantified-self.widget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		AA00000D303B47AF00CFCA36 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ProjectConfiguration/QuantWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6948ZYZ67T;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "ProjectConfiguration/QuantWidget-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.clemensgerbaulet.quantified-self.widget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		AA00000E303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "QuantWidget" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				AA00000C303B47AF00CFCA36 /* Debug */,
-				AA00000D303B47AF00CFCA36 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		776BD50C303B47AC00CFCA36 /* Build configuration list for PBXProject "quantified_self" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -743,6 +736,15 @@
 			buildConfigurations = (
 				776BD53B303B47AF00CFCA36 /* Debug */,
 				776BD53C303B47AF00CFCA36 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA00000E303B47AF00CFCA36 /* Build configuration list for PBXNativeTarget "QuantWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA00000C303B47AF00CFCA36 /* Debug */,
+				AA00000D303B47AF00CFCA36 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
