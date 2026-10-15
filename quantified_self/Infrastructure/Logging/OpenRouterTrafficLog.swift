@@ -44,7 +44,7 @@ nonisolated struct OpenRouterTrafficLogTextPreview: Equatable, Sendable {
     }
 }
 
-protocol OpenRouterTrafficLogging: Sendable {
+nonisolated protocol OpenRouterTrafficLogging: Sendable {
     func recordRequest(id: UUID, method: String, url: URL, headers: [String: String], body: Data?) async
     func recordResponse(id: UUID, statusCode: Int, headers: [String: String], body: Data) async
     func recordFailure(id: UUID, description: String) async

@@ -193,6 +193,29 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testShowsLiveAnalysisRequestsAndPartialResults() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--ui-testing", "--ui-testing-review-progress"]
+        app.launch()
+        let meal = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(meal.waitForExistence(timeout: 3))
+        app.swipeUp()
+        let openMeal = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "meal.open.")).firstMatch
+        XCTAssertTrue(openMeal.waitForExistence(timeout: 3))
+        openMeal.tap()
+        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForExistence(timeout: 3))
+        let counts = app.staticTexts["meal.analysisProgress.counts"]
+        XCTAssertTrue(counts.waitForExistence(timeout: 3))
+        XCTAssertEqual(counts.label, "3 Anfragen gestartet · 1 laufen · 1 erfolgreich · 1 fehlgeschlagen")
+        XCTAssertTrue(app.staticTexts["Anfrage 1 · Erfolgreich"].exists)
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["Anfrage 2 · Fehlgeschlagen"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Fehler: Die Ernährungsanalyse konnte nicht gelesen werden."].exists)
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Anfrage 3 · Antwort steht aus")).firstMatch.waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     func testReviewsAndConfirmsNutritionEstimate() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [

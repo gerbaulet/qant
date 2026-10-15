@@ -103,10 +103,12 @@ struct MealAnalysisCoordinatorTests {
         let provider = SuspendingFirstAnalysisProviderStub(
             result: NutritionAnalysisValidatorTests.validResult()
         )
+        let progressStore = MealAnalysisProgressStore()
         let coordinator = MealAnalysisCoordinator(
             context: context,
             provider: provider,
-            imageStorage: AnalysisImageStorage(dataByKey: [:])
+            imageStorage: AnalysisImageStorage(dataByKey: [:]),
+            progressStore: progressStore
         )
 
         let analysisTask = Task { await coordinator.analyze(meal) }
@@ -115,12 +117,17 @@ struct MealAnalysisCoordinatorTests {
         }
         let requestCountWhileSuspended = provider.requestCount
 
+        #expect(progressStore.analyses[meal.id]?.runningCount == 1)
+        #expect(progressStore.analyses[meal.id]?.calls.first?.id == 1)
+        #expect(progressStore.analyses[meal.id]?.succeededCount == 0)
+
         provider.resumeFirstRequest()
         await analysisTask.value
 
         #expect(requestCountWhileSuspended == 1)
         #expect(provider.requestCount == 1)
         #expect(meal.analysisState == .confirmed)
+        #expect(progressStore.analyses[meal.id] == nil)
     }
 
     @Test("A plate without measured quantities uses three estimates and persists the median result")

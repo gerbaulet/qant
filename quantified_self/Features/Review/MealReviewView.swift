@@ -50,6 +50,7 @@ struct MealReviewView: View {
                 photoStrip
                 titleSection
                 failureSection
+                liveAnalysisSection
 
                 if let revision = meal.activeRevision {
                     PortionNutritionSummary(
@@ -360,6 +361,57 @@ struct MealReviewView: View {
             }
         }
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var liveAnalysisSection: some View {
+        if meal.analysisState == .analyzing {
+            let progress = MealAnalysisProgressStore.shared.analyses[meal.id] ?? MealAnalysisProgress()
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Laufende Analyse", systemImage: "sparkles")
+                    .font(.headline)
+                Text(progress.phase)
+                    .font(.subheadline)
+                Text("\(progress.calls.count) Anfragen gestartet · \(progress.runningCount) laufen · \(progress.succeededCount) erfolgreich · \(progress.failedCount) fehlgeschlagen")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("meal.analysisProgress.counts")
+                ForEach(progress.calls) { call in
+                    if let result = call.result {
+                        analysisRunRow(
+                            title: "Anfrage \(call.id) · \(result.status == .succeeded ? "Erfolgreich" : "Fehlgeschlagen")",
+                            subtitle: call.sampleNumber.map { "Schätzung \($0) · Versuch \(call.attemptNumber)" } ?? "Versuch \(call.attemptNumber)",
+                            status: result.status,
+                            modelIdentifier: result.modelIdentifier,
+                            providerIdentifier: result.providerIdentifier,
+                            requestedAt: result.requestedAt ?? call.requestedAt,
+                            clarificationQuestion: result.clarificationQuestion,
+                            clarificationAnswer: result.clarificationAnswer,
+                            energyKilocalories: result.energyKilocalories,
+                            inputTokens: result.inputTokens,
+                            outputTokens: result.outputTokens,
+                            costUSD: result.costUSD,
+                            errorMessage: result.errorMessage
+                        )
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                ProgressView()
+                                Text("Anfrage \(call.id) · Antwort steht aus")
+                                    .font(.subheadline.bold())
+                            }
+                            Text(call.sampleNumber.map { "Schätzung \($0) · Versuch \(call.attemptNumber)" } ?? "Versuch \(call.attemptNumber)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+        }
     }
 
     private func analysisRunRow(

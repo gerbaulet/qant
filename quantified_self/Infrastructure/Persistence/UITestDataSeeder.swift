@@ -11,9 +11,10 @@ enum UITestDataSeeder {
         let wantsConfirmation = arguments.contains("--ui-testing-review-confirmation")
         let wantsClarification = arguments.contains("--ui-testing-review-clarification")
         let wantsFailure = arguments.contains("--ui-testing-review-failure")
-        guard wantsConfirmation || wantsClarification || wantsFailure else { return }
+        let wantsProgress = arguments.contains("--ui-testing-review-progress")
+        guard wantsConfirmation || wantsClarification || wantsFailure || wantsProgress else { return }
 
-        let status: AnalysisState = wantsFailure
+        let status: AnalysisState = wantsProgress ? .analyzing : wantsFailure
             ? .failed
             : wantsClarification ? .needsClarification : .awaitingConfirmation
         let revision = MealAnalysisRevision(
@@ -66,6 +67,23 @@ enum UITestDataSeeder {
         )
         context.insert(meal)
         try context.save()
+        if wantsProgress {
+            let store = MealAnalysisProgressStore.shared
+            store.begin(meal.id)
+            for number in 1...3 {
+                _ = store.startCall(for: meal.id, sampleNumber: number, attemptNumber: 1, at: .now)
+            }
+            store.finishCall(AnalysisCallSummary(
+                callNumber: 1, sampleNumber: 1, attemptNumber: 1, status: .succeeded,
+                modelIdentifier: "example/vision-model", providerIdentifier: "Example Provider",
+                energyKilocalories: 785, errorMessage: nil
+            ), for: meal.id)
+            store.finishCall(AnalysisCallSummary(
+                callNumber: 2, sampleNumber: 2, attemptNumber: 1, status: .failed,
+                modelIdentifier: nil, providerIdentifier: nil, energyKilocalories: nil,
+                errorMessage: "Die Ernährungsanalyse konnte nicht gelesen werden."
+            ), for: meal.id)
+        }
     }
 
     private static func component(
