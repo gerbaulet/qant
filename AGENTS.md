@@ -156,6 +156,9 @@ erneut implementieren.
 
 ## Git- und Commit-Regeln
 
+- In diesem Repository ausschließlich normales Git über die `git`-CLI verwenden.
+  GitButler, die `but`-CLI und den GitButler-Skill hier nicht verwenden, auch
+  nicht für Commits, Branches oder die Prüfung von Diffs und Status.
 - Vor Änderungen `git status` prüfen. Bereits vorhandene Änderungen gehören dem
   Nutzer; nicht überschreiben, zurücksetzen oder ungefragt in eigene Commits
   aufnehmen.
