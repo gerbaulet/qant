@@ -214,7 +214,7 @@ enum NutritionTrendsBuilder {
                 continue
             }
             valuesByHour[localHour(for: meal.timestamp, calendar: calendar), default: 0] +=
-                portionMultipliers.scaled(value.value, for: revision) / divisor
+                portionMultipliers.scaled(value, for: revision) / divisor
         }
 
         var cumulativeValue = 0.0
@@ -341,7 +341,7 @@ enum NutritionTrendsBuilder {
                     guard let identifier = nutrient.knownIdentifier,
                           comparedNutrients.contains(identifier) else { continue }
                     values[identifier, default: 0] += portionMultipliers.scaled(
-                        nutrient.value,
+                        nutrient,
                         for: revision
                     )
                 }

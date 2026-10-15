@@ -38,7 +38,8 @@ struct MealReviewView: View {
         self.onDelete = onDelete
         _editedTimestamp = State(initialValue: meal.timestamp)
         _portionAdjustment = State(initialValue: PortionAdjustmentDraft(
-            multiplier: meal.activeRevision?.normalizedPortionMultiplier ?? 1
+            multiplier: meal.activeRevision?.normalizedPortionMultiplier ?? 1,
+            componentMultipliers: InitialAnalysisRunMetadata.componentMultipliers(from: meal.activeRevision?.providerMetadata)
         ))
     }
 
@@ -60,7 +61,8 @@ struct MealReviewView: View {
                     clarificationSection(revision)
                     PortionComponentsSection(
                         revision: revision,
-                        adjustment: portionAdjustment
+                        adjustment: portionAdjustment,
+                        onCommit: { persistPortionMultiplier(for: revision) }
                     )
                     PortionAdditionalNutrientsSection(
                         revision: revision,
@@ -133,6 +135,7 @@ struct MealReviewView: View {
         }
         .onChange(of: meal.activeRevisionID) {
             portionAdjustment.multiplier = meal.activeRevision?.normalizedPortionMultiplier ?? 1
+            portionAdjustment.componentMultipliers = InitialAnalysisRunMetadata.componentMultipliers(from: meal.activeRevision?.providerMetadata)
         }
         .onDisappear {
             guard let revision = meal.activeRevision else { return }
@@ -435,7 +438,7 @@ struct MealReviewView: View {
     ) -> Double? {
         revision.nutrients.first {
             $0.knownIdentifier == .energy && $0.knownUnit == .kilocalorie
-        }.map { portionMultipliers.scaled($0.value, for: revision) }
+        }.map { portionMultipliers.scaled($0, for: revision) }
     }
 
     private var sortedRevisions: [MealAnalysisRevision] {
@@ -757,9 +760,11 @@ struct MealReviewView: View {
 
     private func persistPortionMultiplier(for revision: MealAnalysisRevision) {
         let normalized = portionAdjustment.multiplier
-        guard revision.normalizedPortionMultiplier != normalized else { return }
+        guard revision.normalizedPortionMultiplier != normalized ||
+            InitialAnalysisRunMetadata.componentMultipliers(from: revision.providerMetadata) != portionAdjustment.componentMultipliers else { return }
 
         revision.portionMultiplier = normalized
+        revision.providerMetadata = InitialAnalysisRunMetadata.settingComponentMultipliers(portionAdjustment.componentMultipliers, in: revision.providerMetadata)
         meal.modifiedAt = .now
         do {
             try modelContext.save()
@@ -773,12 +778,23 @@ struct MealReviewView: View {
 final class PortionAdjustmentDraft {
     var multiplier: Double
 
-    init(multiplier: Double) {
+    var componentMultipliers: [String: Double]
+
+    init(multiplier: Double, componentMultipliers: [String: Double] = [:]) {
+        self.componentMultipliers = componentMultipliers
         self.multiplier = Self.normalized(multiplier)
     }
 
     func update(_ value: Double) {
         multiplier = Self.normalized(value)
+    }
+
+    func componentMultiplier(for component: FoodComponent) -> Double {
+        componentMultipliers[component.id.uuidString] ?? 1
+    }
+
+    func updateComponent(_ component: FoodComponent, value: Double) {
+        componentMultipliers[component.id.uuidString] = Self.normalized(value)
     }
 
     private static func normalized(_ value: Double) -> Double {
@@ -804,7 +820,7 @@ private struct PortionNutritionSummary: View {
                         .font(.system(.largeTitle, design: .rounded, weight: .bold))
                 }
                 Spacer()
-                if let weight = revision.estimatedTotalWeightGrams {
+                if let weight = ComponentPortionScaling.weight(in: revision, multipliers: adjustment.componentMultipliers) {
                     VStack(alignment: .trailing, spacing: 4) {
                         Text("Portion")
                             .font(.subheadline)
@@ -884,7 +900,7 @@ private struct PortionNutritionSummary: View {
         guard let nutrient = revision.nutrients.first(where: {
             $0.identifierRawValue == identifier.rawValue
         }) else { return "–" }
-        return "~\(formattedValue(nutrient.value * multiplier)) \(nutrient.unitRawValue)"
+        return "~\(formattedValue(ComponentPortionScaling.nutrient(nutrient, in: revision, multipliers: adjustment.componentMultipliers) * multiplier)) \(nutrient.unitRawValue)"
     }
 
     private func wholeNumber(_ value: Double) -> String {
@@ -903,10 +919,10 @@ private struct PortionNutritionSummary: View {
 private struct PortionComponentsSection: View {
     let revision: MealAnalysisRevision
     let adjustment: PortionAdjustmentDraft
+    let onCommit: () -> Void
 
     var body: some View {
         let components = revision.components.sorted { $0.sortIndex < $1.sortIndex }
-        let multiplier = adjustment.multiplier
         if !components.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Bestandteile")
@@ -914,7 +930,8 @@ private struct PortionComponentsSection: View {
                 ForEach(components) { component in
                     PortionComponentRow(
                         component: component,
-                        multiplier: multiplier
+                        adjustment: adjustment,
+                        onCommit: onCommit
                     )
                     if component.id != components.last?.id {
                         Divider()
@@ -929,7 +946,10 @@ private struct PortionComponentsSection: View {
 
 private struct PortionComponentRow: View {
     let component: FoodComponent
-    let multiplier: Double
+    let adjustment: PortionAdjustmentDraft
+    let onCommit: () -> Void
+
+    private var multiplier: Double { adjustment.multiplier * adjustment.componentMultiplier(for: component) }
 
     private let displayedNutrients: [NutrientIdentifier] = [
         .energy,
@@ -943,6 +963,18 @@ private struct PortionComponentRow: View {
     var body: some View {
         DisclosureGroup {
             VStack(spacing: 9) {
+                LabeledContent("Menge anpassen", value: "\(adjustment.componentMultiplier(for: component).formatted(.number.precision(.fractionLength(1))))×")
+                Slider(
+                    value: Binding(
+                        get: { adjustment.componentMultiplier(for: component) },
+                        set: { adjustment.updateComponent(component, value: $0) }
+                    ),
+                    in: 0...4,
+                    step: 0.1,
+                    onEditingChanged: { if !$0 { onCommit() } }
+                ) { Text("Menge für \(component.name)") }
+                .accessibilityIdentifier("meal.componentMultiplier.\(component.sortIndex)")
+                .accessibilityValue("\(adjustment.componentMultiplier(for: component).formatted(.number.precision(.fractionLength(1))))-fach")
                 ForEach(displayedNutrients, id: \.rawValue) { identifier in
                     LabeledContent(
                         identifier.reviewTitle,
@@ -961,8 +993,8 @@ private struct PortionComponentRow: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
+            .accessibilityIdentifier("meal.component.\(component.sortIndex)")
         }
-        .accessibilityIdentifier("meal.component.\(component.sortIndex)")
     }
 
     private var weightText: String {
@@ -998,7 +1030,7 @@ private struct PortionAdditionalNutrientsSection: View {
                 ForEach(additionalNutrients) { nutrient in
                     LabeledContent(
                         nutrient.knownIdentifier?.reviewTitle ?? nutrient.identifierRawValue,
-                        value: "~\(formattedValue(nutrient.value * multiplier)) \(nutrient.unitRawValue)"
+                        value: "~\(formattedValue(ComponentPortionScaling.nutrient(nutrient, in: revision, multipliers: adjustment.componentMultipliers) * multiplier)) \(nutrient.unitRawValue)"
                     )
                 }
             }

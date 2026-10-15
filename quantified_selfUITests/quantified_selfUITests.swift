@@ -251,19 +251,51 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(mealName.waitForExistence(timeout: 3))
         mealName.tap()
 
-        let rice = app.buttons["meal.component.1"]
-        for _ in 0..<4 where !rice.isHittable {
+        let rice = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reis,")).firstMatch
+        for _ in 0..<4 where !rice.isHittable || rice.frame.maxY > app.frame.height * 0.65 {
             app.swipeUp()
         }
         XCTAssertTrue(rice.waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["~160 g"].exists)
+        XCTAssertFalse(app.sliders["meal.componentMultiplier.1"].exists)
         rice.tap()
+        XCTAssertTrue(app.sliders["meal.componentMultiplier.1"].waitForExistence(timeout: 2))
 
-        XCTAssertTrue(app.staticTexts["~285 kcal"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["~6,0 g"].exists)
-        XCTAssertTrue(app.staticTexts["~72 g"].exists)
-        XCTAssertTrue(app.staticTexts["~0,0 g"].exists)
-        XCTAssertTrue(app.staticTexts["~5,0 g"].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "~285 kcal")).firstMatch.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "~6,0 g")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "~72 g")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "~0,0 g")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "~5,0 g")).firstMatch.exists)
+    }
+
+    @MainActor
+    func testPersistsIndividualComponentPortion() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--ui-testing", "--ui-testing-review-confirmation"]
+        app.launch()
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+        let rice = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reis,")).firstMatch
+        for _ in 0..<4 where !rice.isHittable || rice.frame.maxY > app.frame.height * 0.65 { app.swipeUp() }
+        rice.tap()
+        let slider = app.sliders["meal.componentMultiplier.1"]
+        for _ in 0..<3 where !slider.isHittable || slider.frame.maxY > app.frame.height * 0.65 { app.swipeUp() }
+        XCTAssertTrue(slider.waitForExistence(timeout: 2))
+        slider.adjust(toNormalizedSliderPosition: 0.5)
+        let adjustedValue = try XCTUnwrap(slider.value as? String)
+        let multiplier = try XCTUnwrap(Double(adjustedValue.replacingOccurrences(of: "-fach", with: "").replacingOccurrences(of: ",", with: ".")))
+        XCTAssertGreaterThan(multiplier, 1)
+        let energy = "~\(Int((285 * multiplier).rounded())) kcal"
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", energy)).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["~280 g"].exists)
+        app.buttons["Fertig"].tap()
+        mealName.tap()
+        for _ in 0..<4 where !rice.isHittable || rice.frame.maxY > app.frame.height * 0.65 { app.swipeUp() }
+        rice.tap()
+        XCTAssertTrue(slider.waitForExistence(timeout: 2))
+        XCTAssertEqual(slider.value as? String, adjustedValue)
+        XCTAssertTrue(app.staticTexts["~\(Int((160 * multiplier).rounded())) g"].exists)
     }
 
     @MainActor

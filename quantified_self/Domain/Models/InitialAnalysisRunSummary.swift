@@ -70,12 +70,14 @@ enum InitialAnalysisRunMetadata {
         let version: Int
         let runs: [InitialAnalysisRunSummary]
         let portionMultiplier: Double?
+        var componentMultipliers: [String: Double]? = nil
     }
 
     private struct PayloadV2: Codable {
         let version: Int
         let calls: [AnalysisCallSummary]
         let portionMultiplier: Double?
+        var componentMultipliers: [String: Double]? = nil
     }
 
     static func encode(_ results: [NutritionAnalysisResult]) -> String? {
@@ -154,17 +156,33 @@ enum InitialAnalysisRunMetadata {
             data = try? JSONEncoder().encode(PayloadV2(
                 version: 2,
                 calls: existing.calls,
-                portionMultiplier: normalized
+                portionMultiplier: normalized,
+                componentMultipliers: componentMultipliers(from: metadata)
             ))
         } else {
             data = try? JSONEncoder().encode(PayloadV1(
                 version: 1,
                 runs: payloadV1(from: metadata)?.runs ?? [],
-                portionMultiplier: normalized
+                portionMultiplier: normalized,
+                componentMultipliers: componentMultipliers(from: metadata)
             ))
         }
         guard let data else { return metadata }
         return String(data: data, encoding: .utf8)
+    }
+
+    static func componentMultipliers(from metadata: String?) -> [String: Double] {
+        payloadV2(from: metadata)?.componentMultipliers
+            ?? payloadV1(from: metadata)?.componentMultipliers ?? [:]
+    }
+
+    static func settingComponentMultipliers(_ values: [String: Double], in metadata: String?) -> String? {
+        let base = settingPortionMultiplier(portionMultiplier(from: metadata), in: metadata)
+        guard let data = base?.data(using: .utf8),
+              var object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return metadata }
+        object["componentMultipliers"] = values.mapValues { $0.isFinite ? min(max($0, 0), 4) : 1 }
+        guard let encoded = try? JSONSerialization.data(withJSONObject: object) else { return metadata }
+        return String(data: encoded, encoding: .utf8)
     }
 
     private static func payloadV1(from metadata: String?) -> PayloadV1? {

@@ -97,7 +97,7 @@ enum MealHistoryBuilder {
                     $0.unitRawValue == NutrientUnit.kilocalorie.rawValue
             }).map { nutrient in
                 guard let revision else { return nutrient.value }
-                return portionMultipliers.scaled(nutrient.value, for: revision)
+                return portionMultipliers.scaled(nutrient, for: revision)
             }
             : nil
         return MealHistoryEntry(

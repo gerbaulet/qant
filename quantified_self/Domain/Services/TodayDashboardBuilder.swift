@@ -173,7 +173,7 @@ enum TodayDashboardBuilder {
                     $0.identifierRawValue == identifier.rawValue &&
                         $0.unitRawValue == unit.rawValue
                 }
-                .reduce(0) { $0 + portionMultipliers.scaled($1.value, for: revision) }
+                .reduce(0) { $0 + portionMultipliers.scaled($1, for: revision) }
         }
     }
 
