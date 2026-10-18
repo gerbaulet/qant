@@ -24,6 +24,8 @@ struct OpenRouterSettingsView: View {
             Form {
                 NutritionGoalSettingsSection(goals: goals)
 
+                DinnerPreferenceSettingsSection()
+
                 Section {
                     Toggle("Sonntags erinnern", isOn: Binding(
                         get: { weeklyReminderEnabled },
@@ -152,8 +154,9 @@ struct OpenRouterSettingsView: View {
 
                 Section("Datenschutz") {
                     Label("Keine Werbung, Analytik-SDKs oder unnötige Tracker", systemImage: "hand.raised.fill")
-                    Text("Mahlzeiten, Ziele und Fotos werden lokal in der App gespeichert. Fotos bleiben erhalten, solange der zugehörige Eintrag gespeichert ist.")
+                    Text("Mahlzeiten, Ziele, Essenspräferenzen, Abendessenvorschläge und Fotos werden lokal in der App gespeichert. Fotos bleiben erhalten, solange der zugehörige Eintrag gespeichert ist.")
                     Text("Nur bei einer Analyse werden die zugehörigen Fotos und dein Kommentar an OpenRouter sowie den ausgewählten Modellanbieter gesendet. Für die erste Schätzung und nach beantworteten Rückfragen geschieht dies dreimal parallel.")
+                    Text("Beim Erstellen von Abendessenvorschlägen werden dein Restbudget, deine Essenspräferenzen und die angegebenen vorhandenen Zutaten einmal an OpenRouter sowie den ausgewählten Modellanbieter gesendet.")
                     Text("OpenRouter und einzelne Anbieter können unterschiedliche Datenschutz- und Aufbewahrungsrichtlinien haben. Die App sendet keine anderen Mahlzeiten. API-Schlüssel werden niemals protokolliert; das detaillierte lokale OpenRouter-Log ist standardmäßig ausgeschaltet.")
                 }
 

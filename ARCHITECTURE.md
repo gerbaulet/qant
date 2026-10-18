@@ -23,6 +23,7 @@ quantified_self/
     Services/          deterministic domain calculations
   Features/
     Today/
+    DinnerSuggestions/
     Capture/
     Meals/
     Trends/
@@ -123,6 +124,43 @@ fixed home-zone reporting becomes desirable.
 their features. API keys are never entities: only the Keychain stores secrets.
 Simple preferences such as the selected model may use app storage; settings that
 need history or CloudKit synchronisation will use SwiftData.
+
+### Dinner suggestions
+
+The version 2 schema adds `DinnerSuggestionBatch`, `DinnerSuggestion`,
+`DinnerSuggestionIngredient`, and `DinnerSuggestionNutrient`. A batch preserves
+the date, model/provider, portion count, preference snapshot, and nutrient
+budget used for one generation. It owns exactly the three returned dinner
+suggestions. Suggestions own their ingredients and per-serving nutrient values
+and may be favourited or deleted independently. The V1-to-V2 change is additive
+and uses an explicit lightweight migration so existing meals, goals, revisions,
+and image references remain untouched.
+
+Simple reusable dinner preferences live locally in UserDefaults: dietary style,
+allergies/intolerances, excluded ingredients, preferred cuisines, maximum
+preparation time, kitchen equipment, and available ingredients. Available
+ingredients stay prefilled after generation and are never automatically
+decremented. These values are sent externally only when the user explicitly
+requests dinner suggestions.
+
+`DinnerSuggestionProviding` is a separate AI boundary from meal-photo analysis.
+One user action makes one structured OpenRouter request and returns exactly
+three generic, brand-free alternatives. Each alternative contains a name,
+ingredients scaled to the requested total portion count, a short fit rationale,
+and energy, protein, carbohydrates, fat, and fibre per serving. There is no
+three-run consensus for suggestions.
+
+A deterministic domain builder derives the remaining daily budget from the same
+confirmed and provisional revisions used by Today. It prioritises energy within
+10 percent, then protein and fibre deficits, followed by carbohydrates and fat.
+An energy overshoot may rank ahead when it improves the weighted open macro gap
+by at least 20 percent. If the energy budget is already exhausted, the request
+explicitly asks for light alternatives and the UI explains that no calorie room
+remains. Missing goals are never replaced with invented defaults.
+
+Generating a suggestion never changes meal totals. Saved suggestions retain the
+budget snapshot on which they were generated; only a separately captured and
+analysed meal contributes to Today and trends.
 
 ## Image storage
 
