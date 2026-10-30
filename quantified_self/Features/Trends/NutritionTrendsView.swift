@@ -126,9 +126,6 @@ struct NutritionTrendsView: View {
                         .symbol {
                             forecastSymbol
                         }
-                        .annotation(position: .top, alignment: .trailing) {
-                            forecastLabel(forecastPoint.value)
-                        }
                     }
                 }
                 .foregroundStyle(.blue)
