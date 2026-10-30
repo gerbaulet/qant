@@ -34,7 +34,27 @@ protocol MealRepository {
     func addDescription(_ description: String, to meal: Meal, now: Date) throws
 
     @discardableResult
+    func duplicateMeal(_ meal: Meal, images: [StoredMealImage], now: Date) throws -> Meal
+
+    @discardableResult
     func deleteMeal(_ meal: Meal) throws -> [StoredMealImage]
+}
+
+enum MealDuplicationError: Error, LocalizedError {
+    case invalidSource
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidSource:
+            "Nur bestätigte Mahlzeiten mit einem gültigen Ergebnis können dupliziert werden."
+        }
+    }
+}
+
+extension Meal {
+    var canBeDuplicated: Bool {
+        analysisState == .confirmed && activeRevision?.status == .confirmed
+    }
 }
 
 @MainActor
@@ -122,6 +142,96 @@ final class SwiftDataMealRepository: MealRepository {
     }
 
     @discardableResult
+    func duplicateMeal(
+        _ meal: Meal,
+        images: [StoredMealImage],
+        now: Date = .now
+    ) throws -> Meal {
+        guard meal.canBeDuplicated, let sourceRevision = meal.activeRevision else {
+            throw MealDuplicationError.invalidSource
+        }
+
+        let sourceComponents = sourceRevision.components.sorted { $0.sortIndex < $1.sortIndex }
+        let copiedComponents = sourceComponents.map(copyComponent)
+        let copiedComponentBySourceID = Dictionary(
+            uniqueKeysWithValues: zip(
+                sourceComponents,
+                copiedComponents
+            ).map { ($0.id, $1) }
+        )
+        let sourceComponentMultipliers = InitialAnalysisRunMetadata.componentMultipliers(
+            from: sourceRevision.providerMetadata
+        )
+        let copiedComponentMultipliers = sourceComponentMultipliers.reduce(
+            into: [String: Double]()
+        ) { result, entry in
+            guard
+                let sourceID = UUID(uuidString: entry.key),
+                let copiedComponent = copiedComponentBySourceID[sourceID]
+            else { return }
+            result[copiedComponent.id.uuidString] = entry.value
+        }
+        var copiedMetadata = InitialAnalysisRunMetadata.settingPortionMultiplier(
+            sourceRevision.normalizedPortionMultiplier,
+            in: nil
+        )
+        copiedMetadata = InitialAnalysisRunMetadata.settingComponentMultipliers(
+            copiedComponentMultipliers,
+            in: copiedMetadata
+        )
+
+        let copiedRevision = MealAnalysisRevision(
+            createdAt: now,
+            requestDate: now,
+            modelIdentifier: sourceRevision.modelIdentifier,
+            providerIdentifier: sourceRevision.providerIdentifier,
+            providerMetadata: copiedMetadata,
+            promptVersion: sourceRevision.promptVersion,
+            trigger: .initial,
+            status: .confirmed,
+            mealName: sourceRevision.mealName,
+            estimatedTotalWeightGrams: sourceRevision.estimatedTotalWeightGrams,
+            confidence: sourceRevision.confidence,
+            uncertaintySummary: sourceRevision.uncertaintySummary,
+            components: copiedComponents,
+            nutrients: sourceRevision.nutrients.map(copyNutrient)
+        )
+        let duplicate = Meal(
+            createdAt: now,
+            modifiedAt: now,
+            timestamp: now,
+            userComment: meal.userComment,
+            category: meal.category,
+            mealState: .captured,
+            analysisState: .confirmed,
+            activeRevisionID: copiedRevision.id,
+            images: images.enumerated().map { index, image in
+                MealImage(
+                    id: image.id,
+                    createdAt: now,
+                    sortIndex: index,
+                    imageStorageKey: image.imageStorageKey,
+                    thumbnailStorageKey: image.thumbnailStorageKey,
+                    pixelWidth: image.pixelWidth,
+                    pixelHeight: image.pixelHeight
+                )
+            },
+            analysisRevisions: [copiedRevision]
+        )
+
+        context.insert(duplicate)
+        do {
+            try context.save()
+            AppLogger.persistence.info("Meal duplicated locally")
+            return duplicate
+        } catch {
+            context.delete(duplicate)
+            AppLogger.persistence.error("Local meal duplication failed")
+            throw error
+        }
+    }
+
+    @discardableResult
     func deleteMeal(_ meal: Meal) throws -> [StoredMealImage] {
         let storedImages = meal.images.map {
             StoredMealImage(
@@ -142,5 +252,24 @@ final class SwiftDataMealRepository: MealRepository {
             AppLogger.persistence.error("Local meal deletion failed")
             throw error
         }
+    }
+
+    private func copyComponent(_ source: FoodComponent) -> FoodComponent {
+        FoodComponent(
+            sortIndex: source.sortIndex,
+            name: source.name,
+            estimatedWeightGrams: source.estimatedWeightGrams,
+            nutrients: source.nutrients.map(copyNutrient)
+        )
+    }
+
+    private func copyNutrient(_ source: NutrientValue) -> NutrientValue {
+        NutrientValue(
+            rawIdentifier: source.identifierRawValue,
+            value: source.value,
+            rawUnit: source.unitRawValue,
+            confidence: source.confidence,
+            provenance: source.provenance
+        )
     }
 }

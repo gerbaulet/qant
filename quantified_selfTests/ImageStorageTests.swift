@@ -45,6 +45,26 @@ struct ImageStorageTests {
         #expect(!FileManager.default.fileExists(atPath: root.path))
     }
 
+    @Test("Duplicating an image creates independently deletable files")
+    func duplicatesImageIndependently() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storage = FileImageStorage(rootDirectory: root)
+        let original = try await storage.storeImageData(
+            makeJPEGData(size: CGSize(width: 800, height: 600)),
+            id: UUID()
+        )
+
+        let duplicate = try await storage.duplicateImage(original)
+
+        #expect(duplicate.id != original.id)
+        #expect(duplicate.imageStorageKey != original.imageStorageKey)
+        #expect(try await storage.data(forStorageKey: duplicate.imageStorageKey).isEmpty == false)
+
+        await storage.deleteImage(original)
+        #expect(try await storage.data(forStorageKey: duplicate.imageStorageKey).isEmpty == false)
+    }
+
     @Test("Storage keys cannot escape the image directory")
     func rejectsUnsafeStorageKey() async {
         let storage = FileImageStorage(rootDirectory: temporaryRoot())

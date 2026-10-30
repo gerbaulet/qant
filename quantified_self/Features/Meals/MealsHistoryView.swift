@@ -8,6 +8,8 @@ struct MealsHistoryContainer: View {
     @State private var grouping = MealHistoryGrouping.day
     @State private var selectedMeal: Meal?
     @State private var mealPendingDeletion: Meal?
+    @State private var duplicateConfirmationMealID: UUID?
+    @State private var alertMessage: String?
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
 
     var body: some View {
@@ -20,13 +22,17 @@ struct MealsHistoryContainer: View {
             grouping: $grouping,
             onOpenMeal: openMeal,
             onRetryMeal: retryAnalysis,
+            onDuplicateMeal: duplicateMealFromHistory,
             onDeleteMeal: requestDeletion
         )
         .sheet(item: $selectedMeal) { meal in
             NavigationStack {
-                MealReviewView(meal: meal) {
-                    deleteMeal(meal)
-                }
+                MealReviewView(
+                    meal: meal,
+                    showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
+                    onDelete: deleteMeal,
+                    onDuplicate: duplicateMeal
+                )
             }
         }
         .confirmationDialog(
@@ -42,6 +48,11 @@ struct MealsHistoryContainer: View {
             }
         } message: { _ in
             Text("Die Mahlzeit, ihre Analyse und ihre Fotos werden dauerhaft gelöscht.")
+        }
+        .alert("Aktion nicht möglich", isPresented: alertBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(alertMessage ?? "Unbekannter Fehler")
         }
         .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
             selectedMeal = nil
@@ -62,10 +73,41 @@ struct MealsHistoryContainer: View {
         mealPendingDeletion = meals.first { $0.id == id }
     }
 
+    private func duplicateMealFromHistory(_ id: UUID) {
+        guard let meal = meals.first(where: { $0.id == id }) else { return }
+        Task {
+            do {
+                try await duplicateMeal(meal)
+            } catch {
+                alertMessage = "Die Mahlzeit konnte nicht dupliziert werden."
+            }
+        }
+    }
+
+    @MainActor
+    private func duplicateMeal(_ meal: Meal) async throws {
+        let duplicate = try await MealDuplicationCoordinator(context: modelContext).duplicate(meal)
+        duplicateConfirmationMealID = duplicate.id
+        selectedMeal = duplicate
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            if duplicateConfirmationMealID == duplicate.id {
+                duplicateConfirmationMealID = nil
+            }
+        }
+    }
+
     private var deletionConfirmationBinding: Binding<Bool> {
         Binding(
             get: { mealPendingDeletion != nil },
             set: { if !$0 { mealPendingDeletion = nil } }
+        )
+    }
+
+    private var alertBinding: Binding<Bool> {
+        Binding(
+            get: { alertMessage != nil },
+            set: { if !$0 { alertMessage = nil } }
         )
     }
 
@@ -90,6 +132,7 @@ struct MealsHistoryView: View {
     @Binding var grouping: MealHistoryGrouping
     let onOpenMeal: (UUID) -> Void
     let onRetryMeal: (UUID) -> Void
+    let onDuplicateMeal: (UUID) -> Void
     let onDeleteMeal: (UUID) -> Void
 
     var body: some View {
@@ -127,6 +170,15 @@ struct MealsHistoryView: View {
                                                     Label("Löschen", systemImage: "trash")
                                                 }
                                                 .accessibilityIdentifier("meal.delete.\(entry.id)")
+                                                if entry.analysisState == .confirmed {
+                                                    Button {
+                                                        onDuplicateMeal(entry.id)
+                                                    } label: {
+                                                        Label("Duplizieren", systemImage: "plus.square.on.square")
+                                                    }
+                                                    .tint(.blue)
+                                                    .accessibilityIdentifier("meal.duplicate.\(entry.id)")
+                                                }
                                             }
                                     }
                                 } header: {

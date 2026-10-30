@@ -17,6 +17,13 @@ protocol ImageStorageProviding {
     func deleteImage(_ image: StoredMealImage) async
 }
 
+extension ImageStorageProviding {
+    func duplicateImage(_ image: StoredMealImage) async throws -> StoredMealImage {
+        let data = try await data(forStorageKey: image.imageStorageKey)
+        return try await storeImageData(data, id: UUID())
+    }
+}
+
 enum ImageStorageError: Error, LocalizedError {
     case invalidImage
     case invalidStorageKey

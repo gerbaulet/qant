@@ -9,7 +9,8 @@ struct MealReviewView: View {
 
     private let analysisProvider: any NutritionAnalysisProviding
     private let imageStorage: any ImageStorageProviding
-    private let onDelete: (() -> Void)?
+    private let onDelete: ((Meal) -> Void)?
+    private let onDuplicate: (@MainActor (Meal) async throws -> Void)?
 
     @State private var clarificationAnswer = ""
     @State private var correctionText = ""
@@ -20,6 +21,7 @@ struct MealReviewView: View {
     @State private var showsCorrectionEntry = false
     @State private var showsDeleteConfirmation = false
     @State private var showsTimestampEditor = false
+    @State private var successMessage: String?
     @State private var editedTimestamp: Date
     @State private var portionAdjustment: PortionAdjustmentDraft
 #if DEBUG
@@ -30,13 +32,17 @@ struct MealReviewView: View {
         meal: Meal,
         analysisProvider: any NutritionAnalysisProviding = OpenRouterNutritionAnalysisService(),
         imageStorage: any ImageStorageProviding = FileImageStorage(),
-        onDelete: (() -> Void)? = nil
+        showsDuplicateConfirmation: Bool = false,
+        onDelete: ((Meal) -> Void)? = nil,
+        onDuplicate: (@MainActor (Meal) async throws -> Void)? = nil
     ) {
         self.meal = meal
         self.analysisProvider = analysisProvider
         self.imageStorage = imageStorage
         self.onDelete = onDelete
+        self.onDuplicate = onDuplicate
         _editedTimestamp = State(initialValue: meal.timestamp)
+        _successMessage = State(initialValue: showsDuplicateConfirmation ? "Mahlzeit dupliziert" : nil)
         _portionAdjustment = State(initialValue: PortionAdjustmentDraft(
             multiplier: meal.activeRevision?.normalizedPortionMultiplier ?? 1,
             componentMultipliers: InitialAnalysisRunMetadata.componentMultipliers(from: meal.activeRevision?.providerMetadata)
@@ -83,7 +89,16 @@ struct MealReviewView: View {
         .navigationTitle("Analyse prüfen")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let onDelete {
+            if meal.canBeDuplicated, onDuplicate != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Duplizieren", systemImage: "plus.square.on.square") {
+                        duplicateMeal()
+                    }
+                    .disabled(isWorking)
+                    .accessibilityIdentifier("meal.duplicate")
+                }
+            }
+            if onDelete != nil {
                 ToolbarItem(placement: .destructiveAction) {
                     Button("Löschen", systemImage: "trash", role: .destructive) {
                         showsDeleteConfirmation = true
@@ -99,6 +114,20 @@ struct MealReviewView: View {
         .safeAreaInset(edge: .bottom) {
             bottomAction
         }
+        .overlay(alignment: .top) {
+            if let successMessage {
+                Label(successMessage, systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.green, in: .capsule)
+                    .shadow(radius: 6, y: 3)
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("meal.duplicateSuccess")
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
         .sheet(isPresented: $showsCorrectionEntry) {
             correctionEntry
         }
@@ -111,7 +140,7 @@ struct MealReviewView: View {
             titleVisibility: .visible
         ) {
             Button("Mahlzeit löschen", role: .destructive) {
-                onDelete?()
+                onDelete?(meal)
             }
             Button("Abbrechen", role: .cancel) {}
         } message: {
@@ -141,6 +170,13 @@ struct MealReviewView: View {
         .onDisappear {
             guard let revision = meal.activeRevision else { return }
             persistPortionMultiplier(for: revision)
+        }
+        .task(id: successMessage) {
+            guard successMessage != nil else { return }
+            try? await Task.sleep(for: .seconds(2))
+            withAnimation {
+                successMessage = nil
+            }
         }
     }
 
@@ -810,18 +846,35 @@ struct MealReviewView: View {
         )
     }
 
-    private func persistPortionMultiplier(for revision: MealAnalysisRevision) {
+    private func duplicateMeal() {
+        guard let onDuplicate, let revision = meal.activeRevision else { return }
+        guard persistPortionMultiplier(for: revision) else { return }
+        isWorking = true
+        Task {
+            do {
+                try await onDuplicate(meal)
+            } catch {
+                alertMessage = "Die Mahlzeit konnte nicht dupliziert werden."
+            }
+            isWorking = false
+        }
+    }
+
+    @discardableResult
+    private func persistPortionMultiplier(for revision: MealAnalysisRevision) -> Bool {
         let normalized = portionAdjustment.multiplier
         guard revision.normalizedPortionMultiplier != normalized ||
-            InitialAnalysisRunMetadata.componentMultipliers(from: revision.providerMetadata) != portionAdjustment.componentMultipliers else { return }
+            InitialAnalysisRunMetadata.componentMultipliers(from: revision.providerMetadata) != portionAdjustment.componentMultipliers else { return true }
 
         revision.portionMultiplier = normalized
         revision.providerMetadata = InitialAnalysisRunMetadata.settingComponentMultipliers(portionAdjustment.componentMultipliers, in: revision.providerMetadata)
         meal.modifiedAt = .now
         do {
             try modelContext.save()
+            return true
         } catch {
             alertMessage = "Die angepasste Menge konnte nicht gespeichert werden."
+            return false
         }
     }
 }

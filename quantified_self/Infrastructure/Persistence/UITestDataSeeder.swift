@@ -9,12 +9,13 @@ enum UITestDataSeeder {
         in context: ModelContext
     ) throws {
         let wantsConfirmation = arguments.contains("--ui-testing-review-confirmation")
+        let wantsConfirmed = arguments.contains("--ui-testing-review-confirmed")
         let wantsClarification = arguments.contains("--ui-testing-review-clarification")
         let wantsFailure = arguments.contains("--ui-testing-review-failure")
         let wantsProgress = arguments.contains("--ui-testing-review-progress")
-        guard wantsConfirmation || wantsClarification || wantsFailure || wantsProgress else { return }
+        guard wantsConfirmation || wantsConfirmed || wantsClarification || wantsFailure || wantsProgress else { return }
 
-        let status: AnalysisState = wantsProgress ? .analyzing : wantsFailure
+        let status: AnalysisState = wantsConfirmed ? .confirmed : wantsProgress ? .analyzing : wantsFailure
             ? .failed
             : wantsClarification ? .needsClarification : .awaitingConfirmation
         let revision = MealAnalysisRevision(

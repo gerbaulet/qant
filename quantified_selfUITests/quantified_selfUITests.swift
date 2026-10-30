@@ -371,6 +371,34 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testDuplicatesConfirmedMealFromReview() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-confirmed",
+        ])
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+
+        let duplicateButton = app.buttons["meal.duplicate"]
+        XCTAssertTrue(duplicateButton.waitForExistence(timeout: 2))
+        duplicateButton.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["meal.duplicateSuccess"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["Analyse prüfen"].exists)
+
+        app.buttons["Fertig"].tap()
+        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForNonExistence(timeout: 2))
+        XCTAssertEqual(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", "Chicken Curry mit Reis")).count,
+            2
+        )
+    }
+
+    @MainActor
     func testQuickCaptureDismissesMealReviewAndOpensCamera() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [

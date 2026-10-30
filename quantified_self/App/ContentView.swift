@@ -89,6 +89,7 @@ private struct TodayDashboardContainer: View {
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var selectedMeal: Meal?
+    @State private var duplicateConfirmationMealID: UUID?
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
     private let widgetSynchronizer = WidgetCalorieSnapshotSynchronizer()
 
@@ -125,9 +126,12 @@ private struct TodayDashboardContainer: View {
         }
         .sheet(item: $selectedMeal) { meal in
             NavigationStack {
-                MealReviewView(meal: meal) {
-                    deleteMeal(meal)
-                }
+                MealReviewView(
+                    meal: meal,
+                    showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
+                    onDelete: deleteMeal,
+                    onDuplicate: duplicateMeal
+                )
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
@@ -156,6 +160,19 @@ private struct TodayDashboardContainer: View {
             }
         } catch {
             AppLogger.persistence.error("Meal deletion failed")
+        }
+    }
+
+    @MainActor
+    private func duplicateMeal(_ meal: Meal) async throws {
+        let duplicate = try await MealDuplicationCoordinator(context: modelContext).duplicate(meal)
+        duplicateConfirmationMealID = duplicate.id
+        selectedMeal = duplicate
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            if duplicateConfirmationMealID == duplicate.id {
+                duplicateConfirmationMealID = nil
+            }
         }
     }
 }
