@@ -142,10 +142,10 @@ erneut implementieren.
   Präsentation und kritische Nutzerabläufe mit UI-Tests abdecken.
 - Mindestens die fokussierten Tests der Änderung ausführen. Vor einem Commit mit
   breiter Wirkung zusätzlich die vollständige Unit-Test-Suite ausführen.
-- Für Build-, Test-, Simulator- und Geräteabläufe die `qant-*`-Ziele im
-  `Makefile` verwenden. `make qant-help` listet die verfügbaren Befehle auf;
-  fokussierte Tests laufen über `make qant-test TEST_TARGET=...`.
-- Verfügbare Simulatoren bei Bedarf mit `make qant-simulators` prüfen und keine
+- Für Build-, Test-, Simulator- und Geräteabläufe die Ziele im `Makefile`
+  verwenden. `make help` listet die verfügbaren Befehle auf; fokussierte Tests
+  laufen über `make test TEST_TARGET=...`.
+- Verfügbare Simulatoren bei Bedarf mit `make simulators` prüfen und keine
   Simulator-UUID dauerhaft voraussetzen. Einen abweichenden Simulator über
   `SIMULATOR_NAME` beziehungsweise `SIMULATOR_OS` auswählen.
 - Einen erfolgreichen Build oder Test nur melden, wenn `xcodebuild` tatsächlich
@@ -183,11 +183,11 @@ erneut implementieren.
   automatisch einen Git-Push.
 - Nur installieren, wenn der Nutzer dies für die aktuelle Änderung verlangt.
   Zuvor committen, falls ebenfalls verlangt, und anschließend
-  `make qant-deploy-device` verwenden. Für einzelne Schritte stehen
-  `qant-build-device`, `qant-install-device` und `qant-launch-device` bereit.
+  `make deploy-device` verwenden. Für einzelne Schritte stehen `build-device`,
+  `install-device` und `launch-device` bereit.
 - Das Makefile adressiert standardmäßig `Clemens-iPhone2` über den Gerätenamen
   statt über eine dauerhaft gespeicherte UUID. Bei Bedarf zuerst
-  `make qant-devices` ausführen und ein anderes Gerät über `DEVICE=...` wählen.
+  `make devices` ausführen und ein anderes Gerät über `DEVICE=...` wählen.
 - Geräte-Builds verwenden ausschließlich vorhandene lokale Signierungsdaten.
   Niemals `-allowProvisioningUpdates` für den normalen Build oder die
   Installation verwenden. Ist das Personal-Team-Profil abgelaufen oder fehlt
