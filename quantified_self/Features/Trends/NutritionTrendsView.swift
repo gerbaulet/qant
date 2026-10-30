@@ -80,7 +80,12 @@ struct NutritionTrendsView: View {
     }
 
     private var periodChartCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let actualPoints = snapshot.points.filter { !$0.isForecast }
+        let forecastPoint = snapshot.points.first { $0.isForecast }
+        let forecastSegment = forecastPoint.map { point in
+            actualPoints.last.map { [$0, point] } ?? [point]
+        } ?? []
+        return VStack(alignment: .leading, spacing: 14) {
             Text(nutrient.trendTitle)
                 .font(.headline)
             if snapshot.points.isEmpty {
@@ -91,16 +96,40 @@ struct NutritionTrendsView: View {
                 )
                 .frame(minHeight: 220)
             } else {
-                Chart(snapshot.points) { point in
-                    LineMark(
-                        x: .value("Tag", point.date),
-                        y: .value(nutrient.trendTitle, point.value)
-                    )
-                    .interpolationMethod(.catmullRom)
-                    PointMark(
-                        x: .value("Tag", point.date),
-                        y: .value(nutrient.trendTitle, point.value)
-                    )
+                Chart {
+                    ForEach(actualPoints) { point in
+                        LineMark(
+                            x: .value("Tag", point.date),
+                            y: .value(nutrient.trendTitle, point.value),
+                            series: .value("Verlauf", "Ist")
+                        )
+                        .interpolationMethod(.catmullRom)
+                        PointMark(
+                            x: .value("Tag", point.date),
+                            y: .value(nutrient.trendTitle, point.value)
+                        )
+                    }
+                    ForEach(forecastSegment) { point in
+                        LineMark(
+                            x: .value("Tag", point.date),
+                            y: .value(nutrient.trendTitle, point.value),
+                            series: .value("Verlauf", "Prognose")
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [7, 5]))
+                    }
+                    if let forecastPoint {
+                        PointMark(
+                            x: .value("Tag", forecastPoint.date),
+                            y: .value(nutrient.trendTitle, forecastPoint.value)
+                        )
+                        .symbol {
+                            forecastSymbol
+                        }
+                        .annotation(position: .top, alignment: .trailing) {
+                            forecastLabel(forecastPoint.value)
+                        }
+                    }
                 }
                 .foregroundStyle(.blue)
                 .frame(height: 240)
@@ -120,14 +149,17 @@ struct NutritionTrendsView: View {
 
             if !trend.hasActualData && trend.averageDayCount == 0 {
                 ContentUnavailableView(
-                    "Keine bestätigten Daten",
+                    "Noch nicht genug Vergleichstage",
                     systemImage: "chart.xyaxis.line",
-                    description: Text("Bestätigte Mahlzeiten erscheinen hier im Tagesverlauf.")
+                    description: Text("Für eine Prognose braucht Quant mindestens drei frühere Tage mit bestätigten Mahlzeiten.")
                 )
                 .frame(minHeight: 220)
             } else {
                 HStack(spacing: 18) {
                     chartLegend(title: "Heute", dashed: false, color: .blue)
+                    if !trend.forecastPoints.isEmpty {
+                        chartLegend(title: "Prognose", dashed: true, color: .blue)
+                    }
                     if trend.averageDayCount > 0 {
                         chartLegend(
                             title: "Ø \(trend.averageDayCount) Tage",
@@ -160,6 +192,29 @@ struct NutritionTrendsView: View {
                         .foregroundStyle(.orange)
                         .lineStyle(StrokeStyle(lineWidth: 2, dash: [7, 5]))
                     }
+                    ForEach(trend.forecastPoints) { point in
+                        LineMark(
+                            x: .value("Uhrzeit", point.hour),
+                            y: .value(nutrient.trendTitle, point.value),
+                            series: .value("Verlauf", "Prognose")
+                        )
+                        .interpolationMethod(.stepEnd)
+                        .foregroundStyle(.blue)
+                        .lineStyle(StrokeStyle(lineWidth: 3, dash: [7, 5]))
+                    }
+                    if let forecast = trend.forecastPoints.last {
+                        PointMark(
+                            x: .value("Uhrzeit", forecast.hour),
+                            y: .value(nutrient.trendTitle, forecast.value)
+                        )
+                        .foregroundStyle(.blue)
+                        .symbol {
+                            forecastSymbol
+                        }
+                        .annotation(position: .top, alignment: .trailing) {
+                            forecastLabel(forecast.value)
+                        }
+                    }
                 }
                 .chartXScale(domain: 0...24)
                 .chartXAxis {
@@ -176,6 +231,12 @@ struct NutritionTrendsView: View {
                 .frame(height: 240)
                 .accessibilityLabel("Kumulativer Tagesverlauf für \(nutrient.trendTitle)")
                 .accessibilityValue(dailyChartAccessibilityValue)
+
+                if trend.forecastPoints.isEmpty {
+                    Text("Noch nicht genug Vergleichstage für eine Prognose.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(18)
@@ -192,6 +253,20 @@ struct NutritionTrendsView: View {
                 .frame(width: 26, height: 2)
             Text(title)
         }
+    }
+
+    private var forecastSymbol: some View {
+        ZStack {
+            Circle().fill(.background)
+            Circle().stroke(.blue, lineWidth: 2)
+        }
+        .frame(width: 10, height: 10)
+    }
+
+    private func forecastLabel(_ value: Double) -> some View {
+        Text("~\(formatted(value))")
+            .font(.caption.bold().monospacedDigit())
+            .foregroundStyle(.blue)
     }
 
     private var periodComparisonCard: some View {
@@ -272,7 +347,8 @@ struct NutritionTrendsView: View {
             let date = point.date.formatted(
                 .dateTime.day().month().locale(Locale(identifier: "de_DE"))
             )
-            return "\(date): \(formatted(point.value)) \(nutrient.trendUnit.rawValue)"
+            let prefix = point.isForecast ? "Prognose " : ""
+            return "\(date): \(prefix)\(formatted(point.value)) \(nutrient.trendUnit.rawValue)"
         }.joined(separator: ", ")
     }
 
@@ -281,6 +357,9 @@ struct NutritionTrendsView: View {
         let actual = trend.actualPoints.last?.value ?? 0
         let average = trend.averagePoints.last?.value
         var description = "Heute: \(formatted(actual)) \(nutrient.trendUnit.rawValue)"
+        if let forecast = trend.forecastPoints.last?.value {
+            description += ", Prognose: \(formatted(forecast)) \(nutrient.trendUnit.rawValue)"
+        }
         if let average {
             description += ", Durchschnitt aus \(trend.averageDayCount) Tagen: \(formatted(average)) \(nutrient.trendUnit.rawValue)"
         }

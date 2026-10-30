@@ -21,6 +21,13 @@ enum NutritionTrendRange: String, CaseIterable, Identifiable, Sendable {
 struct NutritionTrendPoint: Identifiable, Sendable {
     let date: Date
     let value: Double
+    let isForecast: Bool
+
+    init(date: Date, value: Double, isForecast: Bool = false) {
+        self.date = date
+        self.value = value
+        self.isForecast = isForecast
+    }
 
     var id: Date { date }
 }
@@ -34,8 +41,10 @@ struct CumulativeNutritionTrendPoint: Identifiable, Sendable {
 struct DailyCumulativeNutritionTrend: Sendable {
     let actualPoints: [CumulativeNutritionTrendPoint]
     let averagePoints: [CumulativeNutritionTrendPoint]
+    let forecastPoints: [CumulativeNutritionTrendPoint]
     let hasActualData: Bool
     let averageDayCount: Int
+    let forecastDayCount: Int
 }
 
 struct NutritionPeriodSummary: Sendable {
@@ -90,30 +99,41 @@ enum NutritionTrendsBuilder {
         let portionMultipliers = PortionMultiplierSnapshot()
         let interval = dateInterval(for: date, range: range, calendar: calendar)
             ?? DateInterval(start: date, duration: 1)
+        let dailyCumulativeTrend = makeDailyCumulativeTrend(
+            for: date,
+            nutrient: nutrient,
+            meals: meals,
+            calendar: calendar,
+            portionMultipliers: portionMultipliers
+        )
         let totals = dailyTotals(
             meals: meals,
             within: interval,
             calendar: calendar,
             portionMultipliers: portionMultipliers
         )
-        let points = totals.compactMap { total -> NutritionTrendPoint? in
+        var points = totals.compactMap { total -> NutritionTrendPoint? in
             guard let value = total.values[nutrient] else { return nil }
             return NutritionTrendPoint(date: total.date, value: value)
         }
         .sorted { $0.date < $1.date }
+        if let forecastValue = dailyCumulativeTrend.forecastPoints.last?.value {
+            let today = calendar.startOfDay(for: date)
+            points.removeAll { calendar.isDate($0.date, inSameDayAs: today) }
+            points.append(NutritionTrendPoint(
+                date: today,
+                value: forecastValue,
+                isForecast: true
+            ))
+            points.sort { $0.date < $1.date }
+        }
 
         return NutritionTrendsSnapshot(
             range: range,
             nutrient: nutrient,
             interval: interval,
             points: points,
-            dailyCumulativeTrend: makeDailyCumulativeTrend(
-                for: date,
-                nutrient: nutrient,
-                meals: meals,
-                calendar: calendar,
-                portionMultipliers: portionMultipliers
-            ),
+            dailyCumulativeTrend: dailyCumulativeTrend,
             periodComparison: makePeriodComparison(
                 for: date,
                 dayCount: range.dayCount,
@@ -151,8 +171,10 @@ enum NutritionTrendsBuilder {
             return DailyCumulativeNutritionTrend(
                 actualPoints: [],
                 averagePoints: [],
+                forecastPoints: [],
                 hasActualData: false,
-                averageDayCount: 0
+                averageDayCount: 0,
+                forecastDayCount: 0
             )
         }
 
@@ -164,11 +186,12 @@ enum NutritionTrendsBuilder {
         let selectedDayMeals = confirmedMeals.filter { meal in
             meal.timestamp >= selectedDay.start
         }
-        let recordedDays = Set(confirmedMeals.map { calendar.startOfDay(for: $0.timestamp) })
+        let historicalMeals = confirmedMeals.filter { $0.timestamp < selectedDay.start }
+        let recordedDays = Set(historicalMeals.map { calendar.startOfDay(for: $0.timestamp) })
             .sorted(by: >)
             .prefix(90)
         let recordedDaySet = Set(recordedDays)
-        let averageMeals = confirmedMeals.filter {
+        let averageMeals = historicalMeals.filter {
             recordedDaySet.contains(calendar.startOfDay(for: $0.timestamp))
         }
         let actualEndHour = max(
@@ -176,15 +199,20 @@ enum NutritionTrendsBuilder {
             selectedDayMeals.map { localHour(for: $0.timestamp, calendar: calendar) }.max() ?? 0
         )
 
+        let actualPoints = cumulativePoints(
+            meals: selectedDayMeals,
+            nutrient: nutrient,
+            divisor: 1,
+            endHour: min(actualEndHour, 24),
+            calendar: calendar,
+            portionMultipliers: portionMultipliers
+        )
+        let actualValue = actualPoints.last?.value ?? 0
         return DailyCumulativeNutritionTrend(
-            actualPoints: cumulativePoints(
-                meals: selectedDayMeals,
-                nutrient: nutrient,
-                divisor: 1,
-                endHour: min(actualEndHour, 24),
-                calendar: calendar,
-                portionMultipliers: portionMultipliers
-            ),
+            actualPoints: actualPoints.isEmpty ? [
+                CumulativeNutritionTrendPoint(hour: 0, value: 0),
+                CumulativeNutritionTrendPoint(hour: min(actualEndHour, 24), value: 0),
+            ] : actualPoints,
             averagePoints: cumulativePoints(
                 meals: averageMeals,
                 nutrient: nutrient,
@@ -193,9 +221,63 @@ enum NutritionTrendsBuilder {
                 calendar: calendar,
                 portionMultipliers: portionMultipliers
             ),
+            forecastPoints: forecastPoints(
+                historicalMeals: averageMeals,
+                recordedDays: recordedDaySet,
+                selectedDay: selectedDay.start,
+                currentHour: min(actualEndHour, 24),
+                actualValue: actualValue,
+                nutrient: nutrient,
+                calendar: calendar,
+                portionMultipliers: portionMultipliers
+            ),
             hasActualData: !selectedDayMeals.isEmpty,
-            averageDayCount: recordedDaySet.count
+            averageDayCount: recordedDaySet.count,
+            forecastDayCount: recordedDaySet.count
         )
+    }
+
+    private static func forecastPoints(
+        historicalMeals: [Meal],
+        recordedDays: Set<Date>,
+        selectedDay: Date,
+        currentHour: Double,
+        actualValue: Double,
+        nutrient: NutrientIdentifier,
+        calendar: Calendar,
+        portionMultipliers: PortionMultiplierSnapshot
+    ) -> [CumulativeNutritionTrendPoint] {
+        guard recordedDays.count >= 3 else { return [] }
+        let selectedWeekday = calendar.component(.weekday, from: selectedDay)
+        let weightsByDay = Dictionary(uniqueKeysWithValues: recordedDays.map { day in
+            let weight = calendar.component(.weekday, from: day) == selectedWeekday ? 2.0 : 1.0
+            return (day, weight)
+        })
+        let totalWeight = weightsByDay.values.reduce(0, +)
+        guard totalWeight > 0 else { return [] }
+
+        var weightedValuesByHour: [Double: Double] = [:]
+        for meal in historicalMeals {
+            let hour = localHour(for: meal.timestamp, calendar: calendar)
+            guard hour > currentHour,
+                  let revision = meal.activeRevision,
+                  let value = revision.nutrients.first(where: { $0.knownIdentifier == nutrient }) else {
+                continue
+            }
+            let day = calendar.startOfDay(for: meal.timestamp)
+            guard let weight = weightsByDay[day] else { continue }
+            weightedValuesByHour[hour, default: 0] +=
+                portionMultipliers.scaled(value, for: revision) * weight / totalWeight
+        }
+
+        var forecastValue = actualValue
+        var points = [CumulativeNutritionTrendPoint(hour: currentHour, value: actualValue)]
+        for hour in weightedValuesByHour.keys.sorted() {
+            forecastValue += weightedValuesByHour[hour, default: 0]
+            points.append(CumulativeNutritionTrendPoint(hour: hour, value: forecastValue))
+        }
+        points.append(CumulativeNutritionTrendPoint(hour: 24, value: forecastValue))
+        return points
     }
 
     private static func cumulativePoints(

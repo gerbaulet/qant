@@ -194,6 +194,96 @@ struct NutritionTrendsBuilderTests {
         #expect(abs((trend.averagePoints.last?.value ?? 0) - 1) < 0.000_001)
     }
 
+    @Test("Forecast adds the weekday-weighted historical remainder to today's actual value")
+    func forecastUsesWeightedHistoricalRemainder() {
+        let today = date(2026, 8, 24, 14)
+        let currentBreakfast = meal(at: date(2026, 8, 24, 8), state: .confirmed, energy: 500, protein: 25)
+        let priorMondayDinner = meal(at: date(2026, 8, 17, 18), state: .confirmed, energy: 600, protein: 30)
+        let sundayDinner = meal(at: date(2026, 8, 23, 18), state: .confirmed, energy: 300, protein: 15)
+        let saturdayDinner = meal(at: date(2026, 8, 22, 18), state: .confirmed, energy: 300, protein: 15)
+
+        let trend = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: today,
+            nutrient: .energy,
+            meals: [currentBreakfast, priorMondayDinner, sundayDinner, saturdayDinner],
+            calendar: calendar
+        )
+
+        #expect(trend.forecastDayCount == 3)
+        #expect(trend.forecastPoints.map(\.hour) == [14, 18, 24])
+        #expect(trend.forecastPoints.map(\.value) == [500, 950, 950])
+    }
+
+    @Test("Forecast is available before the first meal and never falls below actual intake")
+    func forecastBeforeFirstMealAndActualFloor() {
+        let previousMeals = [
+            meal(at: date(2026, 8, 21, 8), state: .confirmed, energy: 400, protein: 20),
+            meal(at: date(2026, 8, 22, 9), state: .confirmed, energy: 500, protein: 25),
+            meal(at: date(2026, 8, 23, 10), state: .confirmed, energy: 600, protein: 30),
+        ]
+
+        let morning = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 24, 7),
+            nutrient: .energy,
+            meals: previousMeals,
+            calendar: calendar
+        )
+        #expect(morning.actualPoints.map(\.value) == [0, 0])
+        #expect(morning.forecastPoints.first?.value == 0)
+        #expect(morning.forecastPoints.last?.value == 500)
+
+        let largeLunch = meal(at: date(2026, 8, 24, 12), state: .confirmed, energy: 2_000, protein: 100)
+        let evening = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 24, 20),
+            nutrient: .energy,
+            meals: previousMeals + [largeLunch],
+            calendar: calendar
+        )
+        #expect(evening.forecastPoints.last?.value == 2_000)
+    }
+
+    @Test("Forecast requires at least three prior recorded days")
+    func forecastRequiresThreeDays() {
+        let meals = [
+            meal(at: date(2026, 8, 22, 18), state: .confirmed, energy: 500, protein: 25),
+            meal(at: date(2026, 8, 23, 18), state: .confirmed, energy: 600, protein: 30),
+        ]
+
+        let trend = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 24, 14),
+            nutrient: .energy,
+            meals: meals,
+            calendar: calendar
+        )
+
+        #expect(trend.forecastDayCount == 2)
+        #expect(trend.forecastPoints.isEmpty)
+    }
+
+    @Test("Period chart replaces today's partial value with the forecast")
+    func periodChartUsesForecastForToday() {
+        let meals = [
+            meal(at: date(2026, 8, 21, 18), state: .confirmed, energy: 400, protein: 20),
+            meal(at: date(2026, 8, 22, 18), state: .confirmed, energy: 500, protein: 25),
+            meal(at: date(2026, 8, 23, 18), state: .confirmed, energy: 600, protein: 30),
+            meal(at: date(2026, 8, 24, 8), state: .confirmed, energy: 700, protein: 35),
+        ]
+
+        let snapshot = NutritionTrendsBuilder.makeSnapshot(
+            for: date(2026, 8, 24, 14),
+            range: .week,
+            nutrient: .energy,
+            meals: meals,
+            goals: [],
+            calendar: calendar
+        )
+
+        let today = snapshot.points.last
+        #expect(today?.date == date(2026, 8, 24))
+        #expect(today?.value == 1_200)
+        #expect(today?.isForecast == true)
+    }
+
     private func meal(
         at timestamp: Date,
         state: AnalysisState,
