@@ -48,33 +48,52 @@ struct NutritionTrendsBuilderTests {
         #expect(year.interval.end == date(2026, 8, 24))
     }
 
-    @Test("Selected range compares its rolling window with the preceding window")
-    func rollingPeriodComparison() {
+    @Test("Period comparison uses completed days and excludes today")
+    func completedDayPeriodComparison() {
         let currentOne = meal(at: date(2026, 8, 18, 12), state: .confirmed, energy: 2_000, protein: 100)
-        let currentTwo = meal(at: date(2026, 8, 23, 12), state: .confirmed, energy: 2_200, protein: 120)
+        let today = meal(at: date(2026, 8, 23, 12), state: .confirmed, energy: 2_200, protein: 120)
         let previousIncluded = meal(at: date(2026, 8, 12, 12), state: .confirmed, energy: 1_800, protein: 90)
-        let beforePrevious = meal(at: date(2026, 8, 9, 12), state: .confirmed, energy: 5_000, protein: 200)
+        let beforePrevious = meal(at: date(2026, 8, 8, 12), state: .confirmed, energy: 5_000, protein: 200)
 
         let comparison = NutritionTrendsBuilder.makeSnapshot(
             for: date(2026, 8, 23, 12),
             range: .week,
             nutrient: .energy,
-            meals: [currentOne, currentTwo, previousIncluded, beforePrevious],
+            meals: [currentOne, today, previousIncluded, beforePrevious],
             goals: [],
             calendar: calendar
         ).periodComparison
 
-        #expect(comparison.current.interval.start == date(2026, 8, 17))
-        #expect(comparison.current.interval.end == date(2026, 8, 24))
-        #expect(comparison.previous.interval.start == date(2026, 8, 10))
-        #expect(comparison.previous.interval.end == date(2026, 8, 17))
+        #expect(comparison.current.interval.start == date(2026, 8, 16))
+        #expect(comparison.current.interval.end == date(2026, 8, 23))
+        #expect(comparison.previous.interval.start == date(2026, 8, 9))
+        #expect(comparison.previous.interval.end == date(2026, 8, 16))
         #expect(comparison.current.calendarDayCount == 7)
         #expect(comparison.previous.calendarDayCount == 7)
-        #expect(comparison.current.trackedDayCount == 2)
+        #expect(comparison.current.trackedDayCount == 1)
         #expect(comparison.previous.trackedDayCount == 1)
-        #expect(comparison.current.average(for: .energy) == 2_100)
+        #expect(comparison.current.average(for: .energy) == 2_000)
         #expect(comparison.previous.average(for: .energy) == 1_800)
-        #expect(abs((comparison.percentChange(for: .energy) ?? 0) - 16.6667) < 0.001)
+        #expect(abs((comparison.percentChange(for: .energy) ?? 0) - 11.1111) < 0.001)
+    }
+
+    @Test("Day comparison compares yesterday with the day before")
+    func completedDayComparison() {
+        let yesterday = meal(at: date(2026, 8, 22, 12), state: .confirmed, energy: 2_000, protein: 100)
+        let today = meal(at: date(2026, 8, 23, 12), state: .confirmed, energy: 4_000, protein: 200)
+
+        let comparison = NutritionTrendsBuilder.makeSnapshot(
+            for: date(2026, 8, 23, 12),
+            range: .day,
+            nutrient: .energy,
+            meals: [yesterday, today],
+            goals: [],
+            calendar: calendar
+        ).periodComparison
+
+        #expect(comparison.current.interval.start == date(2026, 8, 22))
+        #expect(comparison.current.interval.end == date(2026, 8, 23))
+        #expect(comparison.current.average(for: .energy) == 2_000)
     }
 
     @Test("Unlogged days are coverage gaps rather than zero-calorie days")

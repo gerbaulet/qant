@@ -257,9 +257,9 @@ struct NutritionTrendsView: View {
 
     private var comparisonDescription: String {
         if range == .day {
-            return "Heute im Vergleich mit gestern"
+            return "Gestern im Vergleich mit vorgestern"
         }
-        return "Letzte \(range.dayCount) Tage im Vergleich mit den \(range.dayCount) Tagen davor"
+        return "Letzte \(range.dayCount) abgeschlossene Tage im Vergleich mit den \(range.dayCount) Tagen davor"
     }
 
     private func formatted(_ value: Double?) -> String {

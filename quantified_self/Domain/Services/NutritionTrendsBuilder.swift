@@ -115,7 +115,7 @@ enum NutritionTrendsBuilder {
                 portionMultipliers: portionMultipliers
             ),
             periodComparison: makePeriodComparison(
-                currentInterval: interval,
+                for: date,
                 dayCount: range.dayCount,
                 meals: meals,
                 goals: goals,
@@ -238,13 +238,20 @@ enum NutritionTrendsBuilder {
     }
 
     private static func makePeriodComparison(
-        currentInterval: DateInterval,
+        for date: Date,
         dayCount: Int,
         meals: [Meal],
         goals: [NutritionGoalPeriod],
         calendar: Calendar,
         portionMultipliers: PortionMultiplierSnapshot
     ) -> NutritionPeriodComparison {
+        let currentEnd = calendar.startOfDay(for: date)
+        let currentStart = calendar.date(
+            byAdding: .day,
+            value: -dayCount,
+            to: currentEnd
+        ) ?? currentEnd
+        let currentInterval = DateInterval(start: currentStart, end: currentEnd)
         let previousStart = calendar.date(
             byAdding: .day,
             value: -dayCount,
