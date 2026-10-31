@@ -80,17 +80,92 @@ struct MealHistoryBuilderTests {
         #expect(section?.containsProvisionalEnergy == true)
     }
 
+    @Test("Search matches the current meal name, components, and user comment")
+    func searchContent() {
+        let curry = meal(
+            at: date(2026, 8, 22, 12),
+            category: .lunch,
+            energy: 650,
+            name: "Hähnchen-Curry",
+            comment: "Große Portion",
+            componentNames: ["Basmatireis", "Kokossoße"]
+        )
+        let soup = meal(
+            at: date(2026, 8, 21, 19),
+            category: .dinner,
+            energy: 430,
+            name: "Tomatensuppe"
+        )
+
+        #expect(search("hahn", in: [curry, soup]) == [curry.id])
+        #expect(search("REIS", in: [curry, soup]) == [curry.id])
+        #expect(search("große", in: [curry, soup]) == [curry.id])
+        #expect(search("tomaten", in: [curry, soup]) == [soup.id])
+    }
+
+    @Test("Search uses only the active revision and does not match meal categories")
+    func searchScope() {
+        let meal = meal(
+            at: date(2026, 8, 22, 12),
+            category: .breakfast,
+            energy: 650,
+            name: "Aktueller Name"
+        )
+        meal.analysisRevisions.append(MealAnalysisRevision(
+            modelIdentifier: "test/model",
+            status: .confirmed,
+            mealName: "Früherer Name",
+            confidence: .medium
+        ))
+
+        #expect(search("aktuell", in: [meal]) == [meal.id])
+        #expect(search("früher", in: [meal]).isEmpty)
+        #expect(search("frühstück", in: [meal]).isEmpty)
+    }
+
+    @Test("Search keeps grouping and removes empty sections")
+    func searchGrouping() {
+        let august = meal(
+            at: date(2026, 8, 22, 12),
+            category: .lunch,
+            energy: 650,
+            name: "Curry"
+        )
+        let september = meal(
+            at: date(2026, 9, 2, 12),
+            category: .lunch,
+            energy: 500,
+            name: "Suppe"
+        )
+
+        let sections = MealHistoryBuilder.makeSections(
+            meals: [august, september],
+            grouping: .month,
+            calendar: calendar,
+            searchQuery: "Curry"
+        )
+
+        #expect(sections.count == 1)
+        #expect(sections.first?.entries.map(\.id) == [august.id])
+    }
+
     private func meal(
         at timestamp: Date,
         category: MealCategory,
         energy: Double,
-        status: AnalysisState = .confirmed
+        status: AnalysisState = .confirmed,
+        name: String = "Testmahlzeit",
+        comment: String? = nil,
+        componentNames: [String] = []
     ) -> Meal {
         let revision = MealAnalysisRevision(
             modelIdentifier: "test/model",
             status: status,
-            mealName: "Testmahlzeit",
+            mealName: name,
             confidence: .medium,
+            components: componentNames.enumerated().map { index, name in
+                FoodComponent(sortIndex: index, name: name)
+            },
             nutrients: [NutrientValue(
                 identifier: .energy,
                 value: energy,
@@ -101,11 +176,21 @@ struct MealHistoryBuilderTests {
         )
         return Meal(
             timestamp: timestamp,
+            userComment: comment,
             category: category,
             analysisState: status,
             activeRevisionID: revision.id,
             analysisRevisions: [revision]
         )
+    }
+
+    private func search(_ query: String, in meals: [Meal]) -> [UUID] {
+        MealHistoryBuilder.makeSections(
+            meals: meals,
+            grouping: .day,
+            calendar: calendar,
+            searchQuery: query
+        ).flatMap(\.entries).map(\.id)
     }
 
     private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int) -> Date {

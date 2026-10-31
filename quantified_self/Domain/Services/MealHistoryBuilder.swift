@@ -40,10 +40,12 @@ enum MealHistoryBuilder {
     static func makeSections(
         meals: [Meal],
         grouping: MealHistoryGrouping,
-        calendar: Calendar
+        calendar: Calendar,
+        searchQuery: String = ""
     ) -> [MealHistorySection] {
         let visibleMeals = meals
             .filter { $0.mealState != .archived }
+            .filter { matchesSearch($0, query: searchQuery) }
             .sorted { $0.timestamp > $1.timestamp }
         let portionMultipliers = PortionMultiplierSnapshot()
         let grouped = Dictionary(grouping: visibleMeals) { meal in
@@ -63,6 +65,29 @@ enum MealHistoryBuilder {
                 }
             )
         }
+    }
+
+    private static func matchesSearch(_ meal: Meal, query: String) -> Bool {
+        let queryTerms = normalized(query).split(whereSeparator: \.isWhitespace)
+        guard !queryTerms.isEmpty else { return true }
+
+        let revision = meal.activeRevision
+        let searchableText = normalized(([
+            revision?.mealName,
+            meal.userComment,
+        ].compactMap { $0 } + (revision?.components.map(\.name) ?? []))
+            .joined(separator: " "))
+
+        return queryTerms.allSatisfy { searchableText.contains($0) }
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value
+            .folding(
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                locale: Locale(identifier: "de_DE")
+            )
+            .lowercased(with: Locale(identifier: "de_DE"))
     }
 
     private static func interval(

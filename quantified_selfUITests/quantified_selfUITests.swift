@@ -193,6 +193,31 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testSearchesMealsByCurrentAnalysisContent() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-confirmed",
+        ])
+        app.launch()
+
+        let mealsTab = app.tabBars.buttons["Mahlzeiten"]
+        XCTAssertTrue(mealsTab.waitForExistence(timeout: 3))
+        mealsTab.tap()
+
+        let searchField = app.searchFields["Mahlzeiten durchsuchen"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 2))
+        searchField.tap()
+        searchField.typeText("Reis")
+        XCTAssertTrue(app.staticTexts["Chicken Curry mit Reis"].waitForExistence(timeout: 2))
+
+        searchField.buttons["Clear text"].tap()
+        searchField.typeText("Kartoffelsalat")
+        XCTAssertTrue(app.staticTexts["Keine Mahlzeiten gefunden"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Versuche einen anderen Suchbegriff."].exists)
+    }
+
+    @MainActor
     func testShowsLiveAnalysisRequestsAndPartialResults() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--ui-testing", "--ui-testing-review-progress"]

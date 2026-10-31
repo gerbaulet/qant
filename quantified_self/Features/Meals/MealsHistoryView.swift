@@ -6,6 +6,7 @@ struct MealsHistoryContainer: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @State private var grouping = MealHistoryGrouping.day
+    @State private var searchText = ""
     @State private var selectedMeal: Meal?
     @State private var mealPendingDeletion: Meal?
     @State private var duplicateConfirmationMealID: UUID?
@@ -17,9 +18,11 @@ struct MealsHistoryContainer: View {
             sections: MealHistoryBuilder.makeSections(
                 meals: meals,
                 grouping: grouping,
-                calendar: .autoupdatingCurrent
+                calendar: .autoupdatingCurrent,
+                searchQuery: searchText
             ),
             grouping: $grouping,
+            searchText: $searchText,
             onOpenMeal: openMeal,
             onRetryMeal: retryAnalysis,
             onDuplicateMeal: duplicateMealFromHistory,
@@ -130,6 +133,7 @@ struct MealsHistoryContainer: View {
 struct MealsHistoryView: View {
     let sections: [MealHistorySection]
     @Binding var grouping: MealHistoryGrouping
+    @Binding var searchText: String
     let onOpenMeal: (UUID) -> Void
     let onRetryMeal: (UUID) -> Void
     let onDuplicateMeal: (UUID) -> Void
@@ -152,9 +156,13 @@ struct MealsHistoryView: View {
                 Group {
                     if sections.isEmpty {
                         ContentUnavailableView(
-                            "Noch keine Mahlzeiten",
-                            systemImage: "fork.knife",
-                            description: Text("Erfasste Mahlzeiten erscheinen hier in deinem Verlauf.")
+                            isSearching ? "Keine Mahlzeiten gefunden" : "Noch keine Mahlzeiten",
+                            systemImage: isSearching ? "magnifyingglass" : "fork.knife",
+                            description: Text(
+                                isSearching
+                                    ? "Versuche einen anderen Suchbegriff."
+                                    : "Erfasste Mahlzeiten erscheinen hier in deinem Verlauf."
+                            )
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
@@ -191,7 +199,16 @@ struct MealsHistoryView: View {
                 }
             }
             .navigationTitle("Mahlzeiten")
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Mahlzeiten durchsuchen"
+            )
         }
+    }
+
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func mealRow(_ entry: MealHistoryEntry) -> some View {
@@ -247,12 +264,14 @@ struct MealsHistoryView: View {
     private func sectionHeader(_ section: MealHistorySection) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(sectionTitle(section))
-            Spacer(minLength: 12)
-            if let total = section.totalEnergyKilocalories {
-                Text("\(section.containsProvisionalEnergy ? "~" : "")\(wholeNumber(total)) kcal")
-                    .monospacedDigit()
-            } else {
-                Text("— kcal")
+            if !isSearching {
+                Spacer(minLength: 12)
+                if let total = section.totalEnergyKilocalories {
+                    Text("\(section.containsProvisionalEnergy ? "~" : "")\(wholeNumber(total)) kcal")
+                        .monospacedDigit()
+                } else {
+                    Text("— kcal")
+                }
             }
         }
         .frame(maxWidth: .infinity)
