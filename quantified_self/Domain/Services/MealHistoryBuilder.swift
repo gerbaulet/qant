@@ -44,9 +44,16 @@ enum MealHistoryBuilder {
         searchQuery: String = ""
     ) -> [MealHistorySection] {
         let queryTerms = normalized(searchQuery).split(whereSeparator: \.isWhitespace)
+        let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
         let visibleMeals = meals
             .filter { $0.mealState != .archived }
-            .filter { queryTerms.isEmpty || matchesSearch($0, queryTerms: queryTerms) }
+            .filter {
+                queryTerms.isEmpty || matchesSearch(
+                    $0,
+                    queryTerms: queryTerms,
+                    activeRevisions: activeRevisions
+                )
+            }
             .sorted { $0.timestamp > $1.timestamp }
         let portionMultipliers = PortionMultiplierSnapshot()
         let grouped = Dictionary(grouping: visibleMeals) { meal in
@@ -62,14 +69,22 @@ enum MealHistoryBuilder {
                 id: start,
                 interval: interval,
                 entries: (grouped[start] ?? []).map {
-                    makeEntry($0, portionMultipliers: portionMultipliers)
+                    makeEntry(
+                        $0,
+                        portionMultipliers: portionMultipliers,
+                        activeRevisions: activeRevisions
+                    )
                 }
             )
         }
     }
 
-    private static func matchesSearch(_ meal: Meal, queryTerms: [Substring]) -> Bool {
-        let revision = meal.activeRevision
+    private static func matchesSearch(
+        _ meal: Meal,
+        queryTerms: [Substring],
+        activeRevisions: ActiveMealRevisionSnapshot
+    ) -> Bool {
+        let revision = activeRevisions.revision(for: meal)
         let searchableText = normalized(([
             revision?.mealName,
             meal.userComment,
@@ -105,9 +120,10 @@ enum MealHistoryBuilder {
 
     private static func makeEntry(
         _ meal: Meal,
-        portionMultipliers: PortionMultiplierSnapshot
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
     ) -> MealHistoryEntry {
-        let revision = meal.activeRevision
+        let revision = activeRevisions.revision(for: meal)
         let includesNutrition = revision.map { revision in
             switch revision.status {
             case .needsClarification, .awaitingConfirmation, .confirmed: true

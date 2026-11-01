@@ -97,6 +97,7 @@ enum NutritionTrendsBuilder {
         calendar: Calendar
     ) -> NutritionTrendsSnapshot {
         let portionMultipliers = PortionMultiplierSnapshot()
+        let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
         let interval = dateInterval(for: date, range: range, calendar: calendar)
             ?? DateInterval(start: date, duration: 1)
         let dailyCumulativeTrend = makeDailyCumulativeTrend(
@@ -104,13 +105,15 @@ enum NutritionTrendsBuilder {
             nutrient: nutrient,
             meals: meals,
             calendar: calendar,
-            portionMultipliers: portionMultipliers
+            portionMultipliers: portionMultipliers,
+            activeRevisions: activeRevisions
         )
         let totals = dailyTotals(
             meals: meals,
             within: interval,
             calendar: calendar,
-            portionMultipliers: portionMultipliers
+            portionMultipliers: portionMultipliers,
+            activeRevisions: activeRevisions
         )
         var points = totals.compactMap { total -> NutritionTrendPoint? in
             guard let value = total.values[nutrient] else { return nil }
@@ -140,7 +143,8 @@ enum NutritionTrendsBuilder {
                 meals: meals,
                 goals: goals,
                 calendar: calendar,
-                portionMultipliers: portionMultipliers
+                portionMultipliers: portionMultipliers,
+                activeRevisions: activeRevisions
             )
         )
     }
@@ -151,12 +155,14 @@ enum NutritionTrendsBuilder {
         meals: [Meal],
         calendar: Calendar
     ) -> DailyCumulativeNutritionTrend {
-        makeDailyCumulativeTrend(
+        let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
+        return makeDailyCumulativeTrend(
             for: date,
             nutrient: nutrient,
             meals: meals,
             calendar: calendar,
-            portionMultipliers: PortionMultiplierSnapshot()
+            portionMultipliers: PortionMultiplierSnapshot(),
+            activeRevisions: activeRevisions
         )
     }
 
@@ -165,7 +171,8 @@ enum NutritionTrendsBuilder {
         nutrient: NutrientIdentifier,
         meals: [Meal],
         calendar: Calendar,
-        portionMultipliers: PortionMultiplierSnapshot
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
     ) -> DailyCumulativeNutritionTrend {
         guard let selectedDay = calendar.dateInterval(of: .day, for: date) else {
             return DailyCumulativeNutritionTrend(
@@ -181,7 +188,7 @@ enum NutritionTrendsBuilder {
         let confirmedMeals = meals.filter { meal in
             meal.mealState != .archived &&
                 meal.timestamp < selectedDay.end &&
-                meal.activeRevision?.status == .confirmed
+                activeRevisions.revision(for: meal)?.status == .confirmed
         }
         let selectedDayMeals = confirmedMeals.filter { meal in
             meal.timestamp >= selectedDay.start
@@ -205,7 +212,8 @@ enum NutritionTrendsBuilder {
             divisor: 1,
             endHour: min(actualEndHour, 24),
             calendar: calendar,
-            portionMultipliers: portionMultipliers
+            portionMultipliers: portionMultipliers,
+            activeRevisions: activeRevisions
         )
         let actualValue = actualPoints.last?.value ?? 0
         return DailyCumulativeNutritionTrend(
@@ -219,7 +227,8 @@ enum NutritionTrendsBuilder {
                 divisor: max(Double(recordedDaySet.count), 1),
                 endHour: 24,
                 calendar: calendar,
-                portionMultipliers: portionMultipliers
+                portionMultipliers: portionMultipliers,
+                activeRevisions: activeRevisions
             ),
             forecastPoints: forecastPoints(
                 historicalMeals: averageMeals,
@@ -229,7 +238,8 @@ enum NutritionTrendsBuilder {
                 actualValue: actualValue,
                 nutrient: nutrient,
                 calendar: calendar,
-                portionMultipliers: portionMultipliers
+                portionMultipliers: portionMultipliers,
+                activeRevisions: activeRevisions
             ),
             hasActualData: !selectedDayMeals.isEmpty,
             averageDayCount: recordedDaySet.count,
@@ -245,7 +255,8 @@ enum NutritionTrendsBuilder {
         actualValue: Double,
         nutrient: NutrientIdentifier,
         calendar: Calendar,
-        portionMultipliers: PortionMultiplierSnapshot
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
     ) -> [CumulativeNutritionTrendPoint] {
         guard recordedDays.count >= 3 else { return [] }
         let selectedWeekday = calendar.component(.weekday, from: selectedDay)
@@ -260,7 +271,7 @@ enum NutritionTrendsBuilder {
         for meal in historicalMeals {
             let hour = localHour(for: meal.timestamp, calendar: calendar)
             guard hour > currentHour,
-                  let revision = meal.activeRevision,
+                  let revision = activeRevisions.revision(for: meal),
                   let value = revision.nutrients.first(where: { $0.knownIdentifier == nutrient }) else {
                 continue
             }
@@ -286,12 +297,13 @@ enum NutritionTrendsBuilder {
         divisor: Double,
         endHour: Double,
         calendar: Calendar,
-        portionMultipliers: PortionMultiplierSnapshot
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
     ) -> [CumulativeNutritionTrendPoint] {
         guard !meals.isEmpty else { return [] }
         var valuesByHour: [Double: Double] = [:]
         for meal in meals {
-            guard let revision = meal.activeRevision,
+            guard let revision = activeRevisions.revision(for: meal),
                   let value = revision.nutrients.first(where: { $0.knownIdentifier == nutrient }) else {
                 continue
             }
@@ -325,7 +337,8 @@ enum NutritionTrendsBuilder {
         meals: [Meal],
         goals: [NutritionGoalPeriod],
         calendar: Calendar,
-        portionMultipliers: PortionMultiplierSnapshot
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
     ) -> NutritionPeriodComparison {
         let currentEnd = calendar.startOfDay(for: date)
         let currentStart = calendar.date(
@@ -348,7 +361,8 @@ enum NutritionTrendsBuilder {
                 meals: meals,
                 goals: goals,
                 calendar: calendar,
-                portionMultipliers: portionMultipliers
+                portionMultipliers: portionMultipliers,
+                activeRevisions: activeRevisions
             ),
             previous: summary(
                 for: previousInterval,
@@ -356,7 +370,8 @@ enum NutritionTrendsBuilder {
                 meals: meals,
                 goals: goals,
                 calendar: calendar,
-                portionMultipliers: portionMultipliers
+                portionMultipliers: portionMultipliers,
+                activeRevisions: activeRevisions
             )
         )
     }
@@ -367,13 +382,15 @@ enum NutritionTrendsBuilder {
         meals: [Meal],
         goals: [NutritionGoalPeriod],
         calendar: Calendar,
-        portionMultipliers: PortionMultiplierSnapshot
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
     ) -> NutritionPeriodSummary {
         let days = dailyTotals(
             meals: meals,
             within: interval,
             calendar: calendar,
-            portionMultipliers: portionMultipliers
+            portionMultipliers: portionMultipliers,
+            activeRevisions: activeRevisions
         )
         var totals: [NutrientIdentifier: Double] = [:]
         for day in days {
@@ -411,13 +428,14 @@ enum NutritionTrendsBuilder {
         meals: [Meal],
         within interval: DateInterval,
         calendar: Calendar,
-        portionMultipliers: PortionMultiplierSnapshot
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
     ) -> [DailyTotal] {
         let confirmedMeals = meals.filter { meal in
             meal.mealState != .archived &&
                 meal.timestamp >= interval.start &&
                 meal.timestamp < interval.end &&
-                meal.activeRevision?.status == .confirmed
+                activeRevisions.revision(for: meal)?.status == .confirmed
         }
         let grouped = Dictionary(grouping: confirmedMeals) {
             calendar.startOfDay(for: $0.timestamp)
@@ -425,7 +443,7 @@ enum NutritionTrendsBuilder {
         return grouped.map { date, meals in
             var values: [NutrientIdentifier: Double] = [:]
             for meal in meals {
-                guard let revision = meal.activeRevision else { continue }
+                guard let revision = activeRevisions.revision(for: meal) else { continue }
                 for nutrient in revision.nutrients {
                     guard let identifier = nutrient.knownIdentifier,
                           comparedNutrients.contains(identifier) else { continue }

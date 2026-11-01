@@ -31,20 +31,23 @@ enum WeeklyNutritionSummaryBuilder {
             return nil
         }
         let portionMultipliers = PortionMultiplierSnapshot()
+        let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
 
         let current = aggregate(
             interval: interval,
             meals: meals,
             goals: goals,
             calendar: calendar,
-            portionMultipliers: portionMultipliers
+            portionMultipliers: portionMultipliers,
+            activeRevisions: activeRevisions
         )
         let previous = aggregate(
             interval: previousInterval,
             meals: meals,
             goals: goals,
             calendar: calendar,
-            portionMultipliers: portionMultipliers
+            portionMultipliers: portionMultipliers,
+            activeRevisions: activeRevisions
         )
         let change: Double?
         if let currentAverage = current.averageEnergy,
@@ -98,7 +101,8 @@ enum WeeklyNutritionSummaryBuilder {
         meals: [Meal],
         goals: [NutritionGoalPeriod],
         calendar: Calendar,
-        portionMultipliers: PortionMultiplierSnapshot
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
     ) -> Aggregate {
         var result = Aggregate()
         result.weeklyTarget = try? GoalHistory.weeklyTarget(
@@ -112,14 +116,16 @@ enum WeeklyNutritionSummaryBuilder {
             meal.mealState != .archived &&
                 meal.timestamp >= interval.start &&
                 meal.timestamp < interval.end &&
-                meal.activeRevision?.status == .confirmed
+                activeRevisions.revision(for: meal)?.status == .confirmed
         }
         let mealsByDay = Dictionary(grouping: relevantMeals) {
             calendar.startOfDay(for: $0.timestamp)
         }
 
         for dayStart in mealsByDay.keys.sorted() {
-            let revisions = mealsByDay[dayStart, default: []].compactMap(\.activeRevision)
+            let revisions = mealsByDay[dayStart, default: []].compactMap {
+                activeRevisions.revision(for: $0)
+            }
             if !revisions.isEmpty {
                 result.trackedDays += 1
                 let totals = nutrientTotals(

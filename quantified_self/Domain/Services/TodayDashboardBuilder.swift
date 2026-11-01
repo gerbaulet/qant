@@ -64,9 +64,10 @@ enum TodayDashboardBuilder {
             }
             .sorted { $0.timestamp > $1.timestamp }
         let portionMultipliers = PortionMultiplierSnapshot()
+        let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
 
         let includedRevisions = todaysMeals.compactMap { meal -> MealAnalysisRevision? in
-            guard let revision = meal.activeRevision,
+            guard let revision = activeRevisions.revision(for: meal),
                   isIncludedInProvisionalTotals(revision.status) else {
                 return nil
             }
@@ -82,7 +83,8 @@ enum TodayDashboardBuilder {
             meals: meals,
             goals: goals,
             calendar: calendar,
-            portionMultipliers: portionMultipliers
+            portionMultipliers: portionMultipliers,
+            activeRevisions: activeRevisions
         )
 
         let energy = progress(
@@ -110,7 +112,7 @@ enum TodayDashboardBuilder {
         )
 
         let summaries = todaysMeals.map { meal in
-            let revision = meal.activeRevision
+            let revision = activeRevisions.revision(for: meal)
             let included = revision.map { isIncludedInProvisionalTotals($0.status) } ?? false
             return TodayMealSummary(
                 id: meal.id,
@@ -200,7 +202,8 @@ enum TodayDashboardBuilder {
         meals: [Meal],
         goals: [NutritionGoalPeriod],
         calendar: Calendar,
-        portionMultipliers: PortionMultiplierSnapshot
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
     ) -> NutrientProgress {
         guard let week = calendar.dateInterval(of: .weekOfYear, for: date) else {
             return NutrientProgress(id: .energy, consumed: 0, target: nil, unit: .kilocalorie)
@@ -209,7 +212,7 @@ enum TodayDashboardBuilder {
             guard meal.mealState != .archived,
                   meal.timestamp >= week.start,
                   meal.timestamp < week.end,
-                  let revision = meal.activeRevision,
+                  let revision = activeRevisions.revision(for: meal),
                   isIncludedInProvisionalTotals(revision.status) else {
                 return nil
             }
