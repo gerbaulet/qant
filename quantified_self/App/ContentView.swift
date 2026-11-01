@@ -38,7 +38,7 @@ struct ContentView: View {
             }
 
             Tab("Trends", systemImage: "chart.xyaxis.line", value: .trends) {
-                NutritionTrendsContainer()
+                NutritionTrendsContainer(isActive: selectedSection == .trends)
             }
 
             Tab("Einstellungen", systemImage: "gearshape", value: .settings) {

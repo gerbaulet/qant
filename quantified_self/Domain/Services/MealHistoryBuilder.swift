@@ -43,9 +43,10 @@ enum MealHistoryBuilder {
         calendar: Calendar,
         searchQuery: String = ""
     ) -> [MealHistorySection] {
+        let queryTerms = normalized(searchQuery).split(whereSeparator: \.isWhitespace)
         let visibleMeals = meals
             .filter { $0.mealState != .archived }
-            .filter { matchesSearch($0, query: searchQuery) }
+            .filter { queryTerms.isEmpty || matchesSearch($0, queryTerms: queryTerms) }
             .sorted { $0.timestamp > $1.timestamp }
         let portionMultipliers = PortionMultiplierSnapshot()
         let grouped = Dictionary(grouping: visibleMeals) { meal in
@@ -67,10 +68,7 @@ enum MealHistoryBuilder {
         }
     }
 
-    private static func matchesSearch(_ meal: Meal, query: String) -> Bool {
-        let queryTerms = normalized(query).split(whereSeparator: \.isWhitespace)
-        guard !queryTerms.isEmpty else { return true }
-
+    private static func matchesSearch(_ meal: Meal, queryTerms: [Substring]) -> Bool {
         let revision = meal.activeRevision
         let searchableText = normalized(([
             revision?.mealName,

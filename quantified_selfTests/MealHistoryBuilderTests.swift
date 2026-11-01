@@ -149,6 +149,27 @@ struct MealHistoryBuilderTests {
         #expect(sections.first?.entries.map(\.id) == [august.id])
     }
 
+    @Test("Whitespace search keeps all meals and multiple terms must all match")
+    func searchTerms() {
+        let curry = meal(
+            at: date(2026, 8, 22, 12),
+            category: .lunch,
+            energy: 650,
+            name: "Hähnchen-Curry",
+            componentNames: ["Basmatireis"]
+        )
+        let soup = meal(
+            at: date(2026, 8, 21, 19),
+            category: .dinner,
+            energy: 430,
+            name: "Tomatensuppe"
+        )
+
+        #expect(search("  \n ", in: [curry, soup]) == [curry.id, soup.id])
+        #expect(search("curry reis", in: [curry, soup]) == [curry.id])
+        #expect(search("curry tomate", in: [curry, soup]).isEmpty)
+    }
+
     private func meal(
         at timestamp: Date,
         category: MealCategory,

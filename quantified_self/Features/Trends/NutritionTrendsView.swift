@@ -7,21 +7,28 @@ struct NutritionTrendsContainer: View {
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var range = NutritionTrendRange.month
     @State private var nutrient = NutrientIdentifier.energy
+    let isActive: Bool
 
+    @ViewBuilder
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
-            NutritionTrendsView(
-                snapshot: NutritionTrendsBuilder.makeSnapshot(
-                    for: context.date,
-                    range: range,
-                    nutrient: nutrient,
-                    meals: meals,
-                    goals: goals,
-                    calendar: .autoupdatingCurrent
-                ),
-                range: $range,
-                nutrient: $nutrient
-            )
+        if isActive {
+            TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
+                NutritionTrendsView(
+                    snapshot: NutritionTrendsBuilder.makeSnapshot(
+                        for: context.date,
+                        range: range,
+                        nutrient: nutrient,
+                        meals: meals,
+                        goals: goals,
+                        calendar: .autoupdatingCurrent
+                    ),
+                    range: $range,
+                    nutrient: $nutrient
+                )
+            }
+        } else {
+            Color.clear
+                .accessibilityHidden(true)
         }
     }
 }
