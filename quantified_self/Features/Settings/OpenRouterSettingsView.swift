@@ -2,8 +2,8 @@ import SwiftData
 import SwiftUI
 
 struct OpenRouterSettingsView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
-    @Query private var mealImages: [MealImage]
     @State private var viewModel: OpenRouterSettingsViewModel
     @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
     @AppStorage(OpenRouterTrafficLogSettings.enabledKey) private var trafficLoggingEnabled = false
@@ -13,9 +13,15 @@ struct OpenRouterSettingsView: View {
     @State private var trafficLogMessage: String?
     @State private var trafficLogMessageIsError = false
     @State private var showsTrafficLog = false
+    @State private var hasFileBackedImages = false
+    private let isActive: Bool
     private let weeklyReminderScheduler = WeeklySummaryNotificationScheduler()
 
-    init(viewModel: OpenRouterSettingsViewModel = OpenRouterSettingsViewModel()) {
+    init(
+        isActive: Bool = true,
+        viewModel: OpenRouterSettingsViewModel = OpenRouterSettingsViewModel()
+    ) {
+        self.isActive = isActive
         _viewModel = State(initialValue: viewModel)
     }
 
@@ -192,7 +198,11 @@ struct OpenRouterSettingsView: View {
                 }
             }
             .navigationTitle("Einstellungen")
-            .task {
+            .task(id: isActive) {
+                guard isActive else { return }
+                hasFileBackedImages = (try? CloudSyncReadinessImageLookup.containsImages(
+                    in: modelContext
+                )) ?? false
                 viewModel.load()
                 if viewModel.hasStoredAPIKey {
                     await viewModel.loadModelOptions()
@@ -264,7 +274,7 @@ struct OpenRouterSettingsView: View {
     private var photosNeedCloudAssetStorage: Bool {
         CloudSyncReadinessAudit.issues(
             mode: .current,
-            containsFileBackedImages: !mealImages.isEmpty
+            containsFileBackedImages: hasFileBackedImages
         ).contains(.fileBackedImagesNeedCloudAssetStorage)
     }
 

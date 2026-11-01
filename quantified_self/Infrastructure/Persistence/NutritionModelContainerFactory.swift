@@ -68,3 +68,12 @@ enum CloudSyncReadinessAudit {
         return issues
     }
 }
+
+@MainActor
+enum CloudSyncReadinessImageLookup {
+    static func containsImages(in context: ModelContext) throws -> Bool {
+        var descriptor = FetchDescriptor<MealImage>()
+        descriptor.fetchLimit = 1
+        return try !context.fetch(descriptor).isEmpty
+    }
+}

@@ -42,7 +42,7 @@ struct ContentView: View {
             }
 
             Tab("Einstellungen", systemImage: "gearshape", value: .settings) {
-                OpenRouterSettingsView()
+                OpenRouterSettingsView(isActive: selectedSection == .settings)
             }
         }
         .sheet(item: $mealCaptureMode) { mode in

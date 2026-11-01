@@ -69,4 +69,22 @@ struct PersistenceModelTests {
             containsFileBackedImages: false
         ).isEmpty)
     }
+
+    @Test("Cloud readiness image lookup only needs to detect existence")
+    func cloudReadinessImageLookup() throws {
+        let container = try NutritionModelContainerFactory.makeContainer(isStoredInMemoryOnly: true)
+        let context = container.mainContext
+
+        #expect(try !CloudSyncReadinessImageLookup.containsImages(in: context))
+        context.insert(MealImage(
+            sortIndex: 0,
+            imageStorageKey: "meal/image.jpg",
+            thumbnailStorageKey: "meal/thumbnail.jpg",
+            pixelWidth: 800,
+            pixelHeight: 600
+        ))
+        try context.save()
+
+        #expect(try CloudSyncReadinessImageLookup.containsImages(in: context))
+    }
 }
