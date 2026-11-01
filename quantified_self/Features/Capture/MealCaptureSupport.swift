@@ -1,9 +1,35 @@
+import Foundation
+import ImageIO
 import SwiftUI
 import UIKit
 
 struct PendingMealImage: Identifiable {
-    let id = UUID()
+    let id: UUID
     let data: Data
+    let preview: UIImage
+
+    static func prepare(data: Data, id: UUID = UUID()) async throws -> PendingMealImage {
+        let preview = try await Task.detached(priority: .userInitiated) {
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+                throw ImageStorageError.invalidImage
+            }
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: FileImageStorage.maximumThumbnailDimension,
+            ]
+            guard let image = CGImageSourceCreateThumbnailAtIndex(
+                source,
+                0,
+                options as CFDictionary
+            ) else {
+                throw ImageStorageError.invalidImage
+            }
+            return image
+        }.value
+        return PendingMealImage(id: id, data: data, preview: UIImage(cgImage: preview))
+    }
 }
 
 nonisolated enum CameraCaptureFlow: Equatable {
@@ -21,14 +47,12 @@ struct PendingMealImageThumbnail: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            if let uiImage = UIImage(data: image.data) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 104, height: 104)
-                    .clipShape(.rect(cornerRadius: 14))
-                    .accessibilityHidden(true)
-            }
+            Image(uiImage: image.preview)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 104, height: 104)
+                .clipShape(.rect(cornerRadius: 14))
+                .accessibilityHidden(true)
 
             Button(action: onRemove) {
                 Image(systemName: "xmark.circle.fill")

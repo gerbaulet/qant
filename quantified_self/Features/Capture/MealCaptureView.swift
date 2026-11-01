@@ -137,7 +137,7 @@ struct MealCaptureView: View {
             .fullScreenCover(isPresented: $showsCamera) {
                 if cameraCaptureFlow == .useImmediately {
                     DirectCameraCaptureView { imageData in
-                        saveQuickCapture(imageData)
+                        Task { await saveQuickCapture(imageData) }
                     } onCancel: {
                         showsCamera = false
                         dismiss()
@@ -149,7 +149,11 @@ struct MealCaptureView: View {
                 } else {
                     CameraPicker { imageData in
                         showsCamera = false
-                        addImageData(imageData)
+                        Task {
+                            isImportingImages = true
+                            defer { isImportingImages = false }
+                            await addImageData(imageData)
+                        }
                     } onCancel: {
                         showsCamera = false
                     }
@@ -305,7 +309,7 @@ struct MealCaptureView: View {
                 guard let data = try await item.loadTransferable(type: Data.self) else {
                     throw ImageStorageError.invalidImage
                 }
-                addImageData(data)
+                await addImageData(data)
             } catch {
                 alert = .imageImportFailed
                 return
@@ -313,12 +317,13 @@ struct MealCaptureView: View {
         }
     }
 
-    private func addImageData(_ data: Data) {
-        guard canAddImages, UIImage(data: data) != nil else {
+    private func addImageData(_ data: Data) async {
+        guard canAddImages else { return }
+        do {
+            attachedImages.append(try await PendingMealImage.prepare(data: data))
+        } catch {
             alert = .imageImportFailed
-            return
         }
-        attachedImages.append(PendingMealImage(data: data))
     }
 
     private func requestCamera() {
@@ -383,13 +388,16 @@ struct MealCaptureView: View {
         }
     }
 
-    private func saveQuickCapture(_ imageData: Data) {
-        guard UIImage(data: imageData) != nil else {
+    private func saveQuickCapture(_ imageData: Data) async {
+        isImportingImages = true
+        defer { isImportingImages = false }
+        do {
+            attachedImages = [try await PendingMealImage.prepare(data: imageData)]
+        } catch {
             showsCamera = false
             alert = .imageImportFailed
             return
         }
-        attachedImages = [PendingMealImage(data: imageData)]
         timestamp = .now
         save(shouldAnalyze: false)
     }
