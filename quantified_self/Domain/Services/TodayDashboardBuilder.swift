@@ -72,6 +72,10 @@ enum TodayDashboardBuilder {
             }
             return revision
         }
+        let dailyTotals = nutrientTotals(
+            in: includedRevisions,
+            portionMultipliers: portionMultipliers
+        )
 
         let weeklyEnergy = makeWeeklyEnergyProgress(
             for: date,
@@ -84,8 +88,7 @@ enum TodayDashboardBuilder {
         let energy = progress(
             for: .energy,
             unit: .kilocalorie,
-            revisions: includedRevisions,
-            portionMultipliers: portionMultipliers,
+            consumed: dailyTotals[.energy, default: 0],
             goals: goals,
             at: dayInterval.start
         )
@@ -93,8 +96,7 @@ enum TodayDashboardBuilder {
             progress(
                 for: $0,
                 unit: .gram,
-                revisions: includedRevisions,
-                portionMultipliers: portionMultipliers,
+                consumed: dailyTotals[$0, default: 0],
                 goals: goals,
                 at: dayInterval.start
             )
@@ -102,8 +104,7 @@ enum TodayDashboardBuilder {
         let fiber = progress(
             for: .fiber,
             unit: .gram,
-            revisions: includedRevisions,
-            portionMultipliers: portionMultipliers,
+            consumed: dailyTotals[.fiber, default: 0],
             goals: goals,
             at: dayInterval.start
         )
@@ -143,22 +144,30 @@ enum TodayDashboardBuilder {
     private static func progress(
         for identifier: NutrientIdentifier,
         unit: NutrientUnit,
-        revisions: [MealAnalysisRevision],
-        portionMultipliers: PortionMultiplierSnapshot,
+        consumed: Double,
         goals: [NutritionGoalPeriod],
         at date: Date
     ) -> NutrientProgress {
         NutrientProgress(
             id: identifier,
-            consumed: nutrientTotal(
-                for: identifier,
-                unit: unit,
-                in: revisions,
-                portionMultipliers: portionMultipliers
-            ),
+            consumed: consumed,
             target: GoalHistory.goal(for: identifier, at: date, in: goals)?.targetValue,
             unit: unit
         )
+    }
+
+    private static func nutrientTotals(
+        in revisions: [MealAnalysisRevision],
+        portionMultipliers: PortionMultiplierSnapshot
+    ) -> [NutrientIdentifier: Double] {
+        var totals: [NutrientIdentifier: Double] = [:]
+        for revision in revisions {
+            for nutrient in revision.nutrients {
+                guard let identifier = nutrient.knownIdentifier else { continue }
+                totals[identifier, default: 0] += portionMultipliers.scaled(nutrient, for: revision)
+            }
+        }
+        return totals
     }
 
     private static func nutrientTotal(

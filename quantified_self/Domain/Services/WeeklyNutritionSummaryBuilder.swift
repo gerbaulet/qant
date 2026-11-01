@@ -108,55 +108,32 @@ enum WeeklyNutritionSummaryBuilder {
             periods: goals
         )
 
-        var cursor = interval.start
-        while cursor < interval.end,
-              let day = calendar.dateInterval(of: .day, for: cursor) {
-            let revisions = meals.compactMap { meal -> MealAnalysisRevision? in
-                guard meal.mealState != .archived,
-                      meal.timestamp >= day.start,
-                      meal.timestamp < day.end,
-                      let revision = meal.activeRevision,
-                      revision.status == .confirmed else {
-                    return nil
-                }
-                return revision
-            }
+        let relevantMeals = meals.filter { meal in
+            meal.mealState != .archived &&
+                meal.timestamp >= interval.start &&
+                meal.timestamp < interval.end &&
+                meal.activeRevision?.status == .confirmed
+        }
+        let mealsByDay = Dictionary(grouping: relevantMeals) {
+            calendar.startOfDay(for: $0.timestamp)
+        }
 
+        for dayStart in mealsByDay.keys.sorted() {
+            let revisions = mealsByDay[dayStart, default: []].compactMap(\.activeRevision)
             if !revisions.isEmpty {
                 result.trackedDays += 1
-                let energy = nutrientTotal(
-                    .energy,
-                    unit: .kilocalorie,
+                let totals = nutrientTotals(
                     revisions: revisions,
                     portionMultipliers: portionMultipliers
                 )
+                let energy = totals[.energy, default: 0]
                 result.energy += energy
-                result.protein += nutrientTotal(
-                    .protein,
-                    unit: .gram,
-                    revisions: revisions,
-                    portionMultipliers: portionMultipliers
-                )
-                result.carbohydrates += nutrientTotal(
-                    .carbohydrates,
-                    unit: .gram,
-                    revisions: revisions,
-                    portionMultipliers: portionMultipliers
-                )
-                result.fat += nutrientTotal(
-                    .fat,
-                    unit: .gram,
-                    revisions: revisions,
-                    portionMultipliers: portionMultipliers
-                )
-                result.fiber += nutrientTotal(
-                    .fiber,
-                    unit: .gram,
-                    revisions: revisions,
-                    portionMultipliers: portionMultipliers
-                )
+                result.protein += totals[.protein, default: 0]
+                result.carbohydrates += totals[.carbohydrates, default: 0]
+                result.fat += totals[.fat, default: 0]
+                result.fiber += totals[.fiber, default: 0]
 
-                if let target = GoalHistory.goal(for: .energy, at: day.start, in: goals)?.targetValue {
+                if let target = GoalHistory.goal(for: .energy, at: dayStart, in: goals)?.targetValue {
                     if energy <= target {
                         result.daysWithinTarget += 1
                     } else {
@@ -164,28 +141,21 @@ enum WeeklyNutritionSummaryBuilder {
                     }
                 }
             }
-
-            guard let next = calendar.date(byAdding: .day, value: 1, to: day.start), next > cursor else {
-                break
-            }
-            cursor = next
         }
         return result
     }
 
-    private static func nutrientTotal(
-        _ identifier: NutrientIdentifier,
-        unit: NutrientUnit,
+    private static func nutrientTotals(
         revisions: [MealAnalysisRevision],
         portionMultipliers: PortionMultiplierSnapshot
-    ) -> Double {
-        revisions.reduce(0) { total, revision in
-            total + revision.nutrients
-                .filter {
-                    $0.identifierRawValue == identifier.rawValue &&
-                        $0.unitRawValue == unit.rawValue
-                }
-                .reduce(0) { $0 + portionMultipliers.scaled($1, for: revision) }
+    ) -> [NutrientIdentifier: Double] {
+        var totals: [NutrientIdentifier: Double] = [:]
+        for revision in revisions {
+            for nutrient in revision.nutrients {
+                guard let identifier = nutrient.knownIdentifier else { continue }
+                totals[identifier, default: 0] += portionMultipliers.scaled(nutrient, for: revision)
+            }
         }
+        return totals
     }
 }

@@ -28,7 +28,7 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedSection) {
             Tab("Heute", systemImage: "sun.max.fill", value: .today) {
-                TodayDashboardContainer {
+                TodayDashboardContainer(isActive: selectedSection == .today) {
                     mealCaptureMode = .standard
                 }
             }
@@ -93,49 +93,56 @@ private struct TodayDashboardContainer: View {
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
     private let widgetSynchronizer = WidgetCalorieSnapshotSynchronizer()
 
+    let isActive: Bool
     let onAddFood: () -> Void
 
+    @ViewBuilder
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            let snapshot = TodayDashboardBuilder.makeSnapshot(
-                for: context.date,
-                meals: meals,
-                goals: goals,
-                calendar: .autoupdatingCurrent
-            )
-            let widgetSnapshot = WidgetCalorieSnapshot(
-                dayStart: Calendar.autoupdatingCurrent.startOfDay(for: context.date),
-                energyKilocalories: snapshot.energy.consumed,
-                hasProvisionalValues: snapshot.hasProvisionalValues
-            )
-            TodayDashboardView(
-                snapshot: snapshot,
-                weeklySummary: WeeklyNutritionSummaryBuilder.makeSummary(
-                    containing: context.date,
+        if isActive {
+            TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
+                let snapshot = TodayDashboardBuilder.makeSnapshot(
+                    for: context.date,
                     meals: meals,
                     goals: goals,
                     calendar: .autoupdatingCurrent
-                ),
-                onAddFood: onAddFood,
-                onRetryMeal: retryAnalysis,
-                onOpenMeal: openMeal
-            )
-            .task(id: widgetSnapshot) {
-                widgetSynchronizer.synchronize(widgetSnapshot)
-            }
-        }
-        .sheet(item: $selectedMeal) { meal in
-            NavigationStack {
-                MealReviewView(
-                    meal: meal,
-                    showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
-                    onDelete: deleteMeal,
-                    onDuplicate: duplicateMeal
                 )
+                let widgetSnapshot = WidgetCalorieSnapshot(
+                    dayStart: Calendar.autoupdatingCurrent.startOfDay(for: context.date),
+                    energyKilocalories: snapshot.energy.consumed,
+                    hasProvisionalValues: snapshot.hasProvisionalValues
+                )
+                TodayDashboardView(
+                    snapshot: snapshot,
+                    weeklySummary: WeeklyNutritionSummaryBuilder.makeSummary(
+                        containing: context.date,
+                        meals: meals,
+                        goals: goals,
+                        calendar: .autoupdatingCurrent
+                    ),
+                    onAddFood: onAddFood,
+                    onRetryMeal: retryAnalysis,
+                    onOpenMeal: openMeal
+                )
+                .task(id: widgetSnapshot) {
+                    widgetSynchronizer.synchronize(widgetSnapshot)
+                }
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
-            selectedMeal = nil
+            .sheet(item: $selectedMeal) { meal in
+                NavigationStack {
+                    MealReviewView(
+                        meal: meal,
+                        showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
+                        onDelete: deleteMeal,
+                        onDuplicate: duplicateMeal
+                    )
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
+                selectedMeal = nil
+            }
+        } else {
+            Color.clear
+                .accessibilityHidden(true)
         }
     }
 
