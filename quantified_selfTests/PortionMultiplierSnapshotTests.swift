@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Quant
 
@@ -17,6 +18,43 @@ struct PortionMultiplierSnapshotTests {
         revision.portionMultiplier = 2
 
         #expect(snapshot.scaled(100, for: revision) == 150)
+    }
+
+    @Test("Snapshot captures component adjustments once for all nutrients")
+    func capturesComponentAdjustments() {
+        let energy = NutrientValue(identifier: .energy, value: 300, unit: .kilocalorie, confidence: .medium, provenance: .visualEstimate)
+        let protein = NutrientValue(identifier: .protein, value: 20, unit: .gram, confidence: .medium, provenance: .visualEstimate)
+        let component = FoodComponent(
+            sortIndex: 0,
+            name: "Reis",
+            nutrients: [
+                NutrientValue(identifier: .energy, value: 200, unit: .kilocalorie, confidence: .medium, provenance: .visualEstimate),
+                NutrientValue(identifier: .protein, value: 10, unit: .gram, confidence: .medium, provenance: .visualEstimate),
+            ]
+        )
+        let revision = MealAnalysisRevision(
+            modelIdentifier: "test/model",
+            status: .confirmed,
+            mealName: "Test",
+            confidence: .medium,
+            components: [component],
+            nutrients: [energy, protein]
+        )
+        revision.providerMetadata = InitialAnalysisRunMetadata.settingComponentMultipliers(
+            [component.id.uuidString: 2],
+            in: revision.providerMetadata
+        )
+        let snapshot = PortionMultiplierSnapshot()
+
+        #expect(snapshot.scaled(energy, for: revision) == 500)
+        #expect(snapshot.scaled(protein, for: revision) == 30)
+
+        revision.providerMetadata = InitialAnalysisRunMetadata.settingComponentMultipliers(
+            [component.id.uuidString: 0],
+            in: revision.providerMetadata
+        )
+        #expect(snapshot.scaled(energy, for: revision) == 500)
+        #expect(snapshot.scaled(protein, for: revision) == 30)
     }
 }
 

@@ -65,6 +65,11 @@ struct AnalysisCallSummary: Codable, Identifiable, Sendable, Equatable {
     var id: Int { callNumber }
 }
 
+struct PortionAdjustmentMetadata: Sendable, Equatable {
+    let multiplier: Double
+    let componentMultipliers: [String: Double]
+}
+
 enum InitialAnalysisRunMetadata {
     private struct PayloadV1: Codable {
         let version: Int
@@ -141,12 +146,24 @@ enum InitialAnalysisRunMetadata {
     }
 
     static func portionMultiplier(from metadata: String?) -> Double {
-        let multiplier = payloadV2(from: metadata)?.portionMultiplier ?? payloadV1(from: metadata)?.portionMultiplier
+        portionAdjustments(from: metadata).multiplier
+    }
+
+    static func portionAdjustments(from metadata: String?) -> PortionAdjustmentMetadata {
+        let v2 = payloadV2(from: metadata)
+        let v1 = v2 == nil ? payloadV1(from: metadata) : nil
+        let multiplier = v2?.portionMultiplier ?? v1?.portionMultiplier
         guard let multiplier,
               multiplier.isFinite else {
-            return 1
+            return PortionAdjustmentMetadata(
+                multiplier: 1,
+                componentMultipliers: v2?.componentMultipliers ?? v1?.componentMultipliers ?? [:]
+            )
         }
-        return min(max(multiplier, 0), 4)
+        return PortionAdjustmentMetadata(
+            multiplier: min(max(multiplier, 0), 4),
+            componentMultipliers: v2?.componentMultipliers ?? v1?.componentMultipliers ?? [:]
+        )
     }
 
     static func settingPortionMultiplier(_ multiplier: Double, in metadata: String?) -> String? {
@@ -172,8 +189,7 @@ enum InitialAnalysisRunMetadata {
     }
 
     static func componentMultipliers(from metadata: String?) -> [String: Double] {
-        payloadV2(from: metadata)?.componentMultipliers
-            ?? payloadV1(from: metadata)?.componentMultipliers ?? [:]
+        portionAdjustments(from: metadata).componentMultipliers
     }
 
     static func settingComponentMultipliers(_ values: [String: Double], in metadata: String?) -> String? {

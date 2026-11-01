@@ -2,29 +2,68 @@ import Foundation
 
 @MainActor
 final class PortionMultiplierSnapshot {
-    private var valuesByRevisionID: [UUID: Double] = [:]
+    private struct NutrientKey: Hashable {
+        let identifier: String
+        let unit: String
+    }
+
+    private var adjustmentsByRevisionID: [UUID: PortionAdjustmentMetadata] = [:]
+    private var componentDeltasByRevisionID: [UUID: [NutrientKey: Double]] = [:]
 
     init() {}
 
     func multiplier(for revision: MealAnalysisRevision) -> Double {
-        if let cached = valuesByRevisionID[revision.id] {
-            return cached
-        }
-        let multiplier = revision.normalizedPortionMultiplier
-        valuesByRevisionID[revision.id] = multiplier
-        return multiplier
+        adjustment(for: revision).multiplier
     }
 
-    private var componentsByRevisionID: [UUID: [String: Double]] = [:]
-
     func scaled(_ nutrient: NutrientValue, for revision: MealAnalysisRevision) -> Double {
-        let values = componentsByRevisionID[revision.id] ?? InitialAnalysisRunMetadata.componentMultipliers(from: revision.providerMetadata)
-        componentsByRevisionID[revision.id] = values
-        return ComponentPortionScaling.nutrient(nutrient, in: revision, multipliers: values) * multiplier(for: revision)
+        let adjustment = adjustment(for: revision)
+        let deltas = componentDeltasByRevisionID[revision.id] ?? componentDeltas(
+            for: revision,
+            multipliers: adjustment.componentMultipliers
+        )
+        componentDeltasByRevisionID[revision.id] = deltas
+        let key = NutrientKey(
+            identifier: nutrient.identifierRawValue,
+            unit: nutrient.unitRawValue
+        )
+        return max(0, nutrient.value + deltas[key, default: 0]) * adjustment.multiplier
     }
 
     func scaled(_ value: Double, for revision: MealAnalysisRevision) -> Double {
         value * multiplier(for: revision)
+    }
+
+    private func adjustment(for revision: MealAnalysisRevision) -> PortionAdjustmentMetadata {
+        if let cached = adjustmentsByRevisionID[revision.id] {
+            return cached
+        }
+        let adjustment = InitialAnalysisRunMetadata.portionAdjustments(
+            from: revision.providerMetadata
+        )
+        adjustmentsByRevisionID[revision.id] = adjustment
+        return adjustment
+    }
+
+    private func componentDeltas(
+        for revision: MealAnalysisRevision,
+        multipliers: [String: Double]
+    ) -> [NutrientKey: Double] {
+        var deltas: [NutrientKey: Double] = [:]
+        for component in revision.components {
+            let factor = multipliers[component.id.uuidString] ?? 1
+            guard factor != 1 else { continue }
+            var seen: Set<NutrientKey> = []
+            for nutrient in component.nutrients {
+                let key = NutrientKey(
+                    identifier: nutrient.identifierRawValue,
+                    unit: nutrient.unitRawValue
+                )
+                guard seen.insert(key).inserted else { continue }
+                deltas[key, default: 0] += nutrient.value * (factor - 1)
+            }
+        }
+        return deltas
     }
 }
 
