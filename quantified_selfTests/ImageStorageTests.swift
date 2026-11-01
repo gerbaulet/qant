@@ -74,6 +74,35 @@ struct ImageStorageTests {
         }
     }
 
+    @MainActor
+    @Test("Thumbnail cache reuses a decoded image after the file is removed")
+    func thumbnailCache() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storage = FileImageStorage(rootDirectory: root)
+        let stored = try await storage.storeImageData(
+            makeJPEGData(size: CGSize(width: 800, height: 600)),
+            id: UUID()
+        )
+        let cache = MealThumbnailCache(imageStorage: storage)
+
+        let first = try #require(await cache.image(
+            for: stored.thumbnailStorageKey,
+            displaySize: 64,
+            displayScale: 2
+        ))
+        await storage.deleteImage(stored)
+        let second = try #require(await cache.image(
+            for: stored.thumbnailStorageKey,
+            displaySize: 64,
+            displayScale: 2
+        ))
+
+        #expect(first === second)
+        #expect(first.size.width <= 128)
+        #expect(first.size.height <= 128)
+    }
+
     private func temporaryRoot() -> URL {
         FileManager.default.temporaryDirectory
             .appending(path: "quantified-self-image-tests-\(UUID().uuidString)")
