@@ -14,6 +14,7 @@ struct StoredMealImage: Sendable, Equatable {
 protocol ImageStorageProviding {
     func storeImageData(_ data: Data, id: UUID) async throws -> StoredMealImage
     func data(forStorageKey storageKey: String) async throws -> Data
+    func duplicateImage(_ image: StoredMealImage) async throws -> StoredMealImage
     func deleteImage(_ image: StoredMealImage) async
 }
 
@@ -62,6 +63,43 @@ struct FileImageStorage: ImageStorageProviding, Sendable {
         let fileURL = try storageURL(for: storageKey)
         return try await Task.detached(priority: .utility) {
             try Data(contentsOf: fileURL, options: .mappedIfSafe)
+        }.value
+    }
+
+    func duplicateImage(_ image: StoredMealImage) async throws -> StoredMealImage {
+        let sourceImageURL = try storageURL(for: image.imageStorageKey)
+        let sourceThumbnailURL = try storageURL(for: image.thumbnailStorageKey)
+        let id = UUID()
+        let destinationDirectory = rootDirectory.appending(
+            path: id.uuidString,
+            directoryHint: .isDirectory
+        )
+        let destinationImageURL = destinationDirectory.appending(path: "image.jpg")
+        let destinationThumbnailURL = destinationDirectory.appending(path: "thumbnail.jpg")
+
+        return try await Task.detached(priority: .userInitiated) {
+            do {
+                try FileManager.default.createDirectory(
+                    at: destinationDirectory,
+                    withIntermediateDirectories: true
+                )
+                try FileManager.default.copyItem(at: sourceImageURL, to: destinationImageURL)
+                try FileManager.default.copyItem(
+                    at: sourceThumbnailURL,
+                    to: destinationThumbnailURL
+                )
+            } catch {
+                try? FileManager.default.removeItem(at: destinationDirectory)
+                throw error
+            }
+
+            return StoredMealImage(
+                id: id,
+                imageStorageKey: "\(id.uuidString)/image.jpg",
+                thumbnailStorageKey: "\(id.uuidString)/thumbnail.jpg",
+                pixelWidth: image.pixelWidth,
+                pixelHeight: image.pixelHeight
+            )
         }.value
     }
 

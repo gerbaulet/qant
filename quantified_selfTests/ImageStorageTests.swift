@@ -59,7 +59,14 @@ struct ImageStorageTests {
 
         #expect(duplicate.id != original.id)
         #expect(duplicate.imageStorageKey != original.imageStorageKey)
-        #expect(try await storage.data(forStorageKey: duplicate.imageStorageKey).isEmpty == false)
+        #expect(duplicate.pixelWidth == original.pixelWidth)
+        #expect(duplicate.pixelHeight == original.pixelHeight)
+        let originalData = try await storage.data(forStorageKey: original.imageStorageKey)
+        let duplicateData = try await storage.data(forStorageKey: duplicate.imageStorageKey)
+        let originalThumbnail = try await storage.data(forStorageKey: original.thumbnailStorageKey)
+        let duplicateThumbnail = try await storage.data(forStorageKey: duplicate.thumbnailStorageKey)
+        #expect(duplicateData == originalData)
+        #expect(duplicateThumbnail == originalThumbnail)
 
         await storage.deleteImage(original)
         #expect(try await storage.data(forStorageKey: duplicate.imageStorageKey).isEmpty == false)
