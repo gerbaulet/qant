@@ -3,7 +3,22 @@ import Foundation
 protocol OpenRouterSettingsStoring: AnyObject {
     var modelIdentifier: String { get set }
     var costTier: OpenRouterCostTier { get set }
+    var providerPreference: OpenRouterProviderPreference { get set }
     var modelCatalogCache: OpenRouterModelCatalogCache? { get set }
+}
+
+enum OpenRouterProviderPreference: String, CaseIterable, Codable, Equatable, Identifiable {
+    case balanced
+    case faster
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .balanced: "Ausgewogen (Standard)"
+        case .faster: "Schneller"
+        }
+    }
 }
 
 enum OpenRouterCostTier: String, CaseIterable, Codable, Equatable, Identifiable {
@@ -41,6 +56,7 @@ final class UserDefaultsOpenRouterSettingsStore: OpenRouterSettingsStoring {
     private enum Key {
         static let modelIdentifier = "openrouter.model-identifier"
         static let costTier = "openrouter.cost-tier"
+        static let providerPreference = "openrouter.provider-preference"
         static let modelCatalogCache = "openrouter.model-catalog-cache"
     }
 
@@ -61,6 +77,14 @@ final class UserDefaultsOpenRouterSettingsStore: OpenRouterSettingsStoring {
             return OpenRouterCostTier(rawValue: rawValue) ?? .low
         }
         set { defaults.set(newValue.rawValue, forKey: Key.costTier) }
+    }
+
+    var providerPreference: OpenRouterProviderPreference {
+        get {
+            guard let rawValue = defaults.string(forKey: Key.providerPreference) else { return .balanced }
+            return OpenRouterProviderPreference(rawValue: rawValue) ?? .balanced
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.providerPreference) }
     }
 
     var modelCatalogCache: OpenRouterModelCatalogCache? {

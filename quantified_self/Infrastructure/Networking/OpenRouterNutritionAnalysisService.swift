@@ -126,6 +126,13 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             ]
         })
 
+        var provider: [String: Any] = [
+            "require_parameters": true,
+        ]
+        if settingsStore.providerPreference == .faster {
+            provider["sort"] = "throughput"
+        }
+
         var body: [String: Any] = [
             "model": modelIdentifier,
             "temperature": 0,
@@ -133,9 +140,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             "stream_options": [
                 "include_usage": true,
             ],
-            "provider": [
-                "require_parameters": true,
-            ],
+            "provider": provider,
             "messages": [
                 [
                     "role": "system",

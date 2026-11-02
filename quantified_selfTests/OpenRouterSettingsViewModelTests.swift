@@ -142,6 +142,29 @@ struct OpenRouterSettingsViewModelTests {
         #expect(settings.costTier == .max)
     }
 
+    @Test("Loading and saving preserve the provider preference")
+    func preservesProviderPreference() {
+        let settings = SettingsStoreStub()
+        settings.modelIdentifier = "cached/model"
+        settings.providerPreference = .faster
+        settings.modelCatalogCache = OpenRouterModelCatalogCache(
+            options: cachedOptions,
+            fetchedAt: currentDate
+        )
+        let viewModel = makeViewModel(
+            settings: settings,
+            catalog: ModelCatalogStub(result: .success(refreshedOptions))
+        )
+
+        viewModel.load()
+        #expect(viewModel.providerPreference == .faster)
+
+        viewModel.providerPreference = .balanced
+        viewModel.save()
+
+        #expect(settings.providerPreference == .balanced)
+    }
+
     private func makeViewModel(
         settings: SettingsStoreStub,
         catalog: ModelCatalogStub
@@ -160,6 +183,7 @@ struct OpenRouterSettingsViewModelTests {
 private final class SettingsStoreStub: OpenRouterSettingsStoring {
     var modelIdentifier = ""
     var costTier: OpenRouterCostTier = .low
+    var providerPreference: OpenRouterProviderPreference = .balanced
     var modelCatalogCache: OpenRouterModelCatalogCache?
 }
 

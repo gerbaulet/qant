@@ -30,6 +30,19 @@ struct OpenRouterSettingsStoreTests {
         #expect(UserDefaultsOpenRouterSettingsStore(defaults: defaults).costTier == .xhigh)
     }
 
+    @Test("Provider preference persists and defaults to balanced")
+    func providerPreferencePersistence() throws {
+        let suiteName = "quantified-self-settings-tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let firstStore = UserDefaultsOpenRouterSettingsStore(defaults: defaults)
+        #expect(firstStore.providerPreference == .balanced)
+        firstStore.providerPreference = .faster
+
+        #expect(UserDefaultsOpenRouterSettingsStore(defaults: defaults).providerPreference == .faster)
+    }
+
     @Test("Model catalog cache persists options and refresh time")
     func modelCatalogCachePersistence() throws {
         let suiteName = "quantified-self-settings-tests.\(UUID().uuidString)"

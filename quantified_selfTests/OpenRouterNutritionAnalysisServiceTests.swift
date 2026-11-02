@@ -387,6 +387,27 @@ struct OpenRouterNutritionAnalysisServiceTests {
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let provider = try #require(json["provider"] as? [String: Any])
         #expect(provider["require_parameters"] as? Bool == true)
+        #expect(provider["sort"] == nil)
+    }
+
+    @Test("Faster provider preference prioritizes throughput")
+    func prioritizesProviderThroughput() async throws {
+        let client = ChatClientStub(responseData: try Self.chatResponseData())
+        let settings = AnalysisSettingsStore(modelIdentifier: "example/vision-model")
+        settings.providerPreference = .faster
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "test-key"),
+            settingsStore: settings,
+            client: client
+        )
+
+        _ = try await service.analyze(NutritionAnalysisRequest(images: [], userComment: nil))
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let provider = try #require(json["provider"] as? [String: Any])
+        #expect(provider["require_parameters"] as? Bool == true)
+        #expect(provider["sort"] as? String == "throughput")
     }
 
     @Test("Auto Router requests include the selected cost tier")
@@ -496,6 +517,7 @@ private struct AnalysisSecretStore: SecretStoring {
 private final class AnalysisSettingsStore: OpenRouterSettingsStoring {
     var modelIdentifier: String
     var costTier: OpenRouterCostTier = .low
+    var providerPreference: OpenRouterProviderPreference = .balanced
     var modelCatalogCache: OpenRouterModelCatalogCache?
 
     init(modelIdentifier: String) {

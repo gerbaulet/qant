@@ -109,6 +109,17 @@ struct OpenRouterSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
 
+                    Picker("Provider-Auswahl", selection: $viewModel.providerPreference) {
+                        ForEach(OpenRouterProviderPreference.allCases) { preference in
+                            Text(preference.title).tag(preference)
+                        }
+                    }
+                    .accessibilityIdentifier("settings.openRouterProviderPreference")
+
+                    Text("„Schneller“ priorisiert Provider mit hohem Durchsatz. Das kann Wartezeiten reduzieren, aber etwas teurer sein.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
                     Button {
                         Task { await viewModel.loadModelOptions(forceRefresh: true) }
                     } label: {
