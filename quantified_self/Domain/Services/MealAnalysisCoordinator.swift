@@ -273,8 +273,8 @@ final class MealAnalysisCoordinator {
             let callNumber = callRecorder.start(sampleNumber: sampleNumber, attemptNumber: attempt)
             var candidate: NutritionAnalysisResult?
             do {
-                let rawResult = try await provider.analyze(nextRequest) { content in
-                    callRecorder.appendStreamContent(content, to: callNumber)
+                let rawResult = try await provider.analyze(nextRequest) { event in
+                    callRecorder.recordStreamEvent(event, to: callNumber)
                 }
                 candidate = rawResult
                 try NutritionAnalysisValidator.validate(rawResult)
@@ -590,8 +590,8 @@ private final class AnalysisCallRecorder {
         return number
     }
 
-    func appendStreamContent(_ content: String, to callNumber: Int) {
-        progressStore.appendStreamContent(content, to: callNumber, for: mealID)
+    func recordStreamEvent(_ event: NutritionAnalysisStreamEvent, to callNumber: Int) {
+        progressStore.recordStreamEvent(event, to: callNumber, for: mealID, at: now())
     }
 
     func waitForNetwork() {

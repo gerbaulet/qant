@@ -166,18 +166,30 @@ struct NutritionAnalysisResult: Codable, Sendable, Equatable {
     }
 }
 
+enum NutritionAnalysisStreamEvent: Sendable, Equatable {
+    case requestStarted
+    case responseStarted
+    case contentDelta(String)
+    case responseCompleted
+
+    var contentDelta: String? {
+        guard case let .contentDelta(content) = self else { return nil }
+        return content
+    }
+}
+
 protocol NutritionAnalysisProviding {
     func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult
     func analyze(
         _ request: NutritionAnalysisRequest,
-        onStreamUpdate: @escaping @MainActor (String) -> Void
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> NutritionAnalysisResult
 }
 
 extension NutritionAnalysisProviding {
     func analyze(
         _ request: NutritionAnalysisRequest,
-        onStreamUpdate: @escaping @MainActor (String) -> Void
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> NutritionAnalysisResult {
         try await analyze(request)
     }

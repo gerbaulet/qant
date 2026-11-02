@@ -29,7 +29,7 @@ protocol OpenRouterChatCompleting {
     func sendChatCompletion(
         apiKey: String,
         body: Data,
-        onContentDelta: @escaping @MainActor (String) -> Void
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data
 }
 
@@ -37,7 +37,7 @@ extension OpenRouterChatCompleting {
     func sendChatCompletion(
         apiKey: String,
         body: Data,
-        onContentDelta: @escaping @MainActor (String) -> Void
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data {
         try await sendChatCompletion(apiKey: apiKey, body: body)
     }
@@ -213,7 +213,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
     func sendChatCompletion(
         apiKey: String,
         body: Data,
-        onContentDelta: @escaping @MainActor (String) -> Void
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else { throw OpenRouterClientError.invalidAPIKey }
@@ -222,7 +222,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
             apiKey: trimmedKey,
             body: body,
             timeout: Self.chatCompletionTimeout,
-            onContentDelta: onContentDelta
+            onStreamEvent: onStreamEvent
         )
     }
 
@@ -348,7 +348,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         apiKey: String,
         body: Data,
         timeout: TimeInterval,
-        onContentDelta: @escaping @MainActor (String) -> Void
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data {
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
@@ -369,10 +369,12 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         )
 
         do {
+            onStreamEvent(.requestStarted)
             let (bytes, response) = try await session.bytes(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw OpenRouterClientError.invalidResponse
             }
+            onStreamEvent(.responseStarted)
             let responseHeaders = httpResponse.allHeaderFields.reduce(into: [String: String]()) { result, item in
                 result[String(describing: item.key)] = String(describing: item.value)
             }
@@ -392,8 +394,9 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
 
             let responseData = try await assembledChatCompletion(
                 from: bytes,
-                onContentDelta: onContentDelta
+                onStreamEvent: onStreamEvent
             )
+            onStreamEvent(.responseCompleted)
             await trafficLog.recordResponse(
                 id: requestID,
                 statusCode: httpResponse.statusCode,
@@ -435,7 +438,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
 
     private func assembledChatCompletion(
         from bytes: URLSession.AsyncBytes,
-        onContentDelta: @escaping @MainActor (String) -> Void
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data {
         var content = ""
         var model: String?
@@ -458,7 +461,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
             let contentDelta = chunk.choices?.compactMap(\.delta.content).joined() ?? ""
             if !contentDelta.isEmpty {
                 content += contentDelta
-                onContentDelta(contentDelta)
+                onStreamEvent(.contentDelta(contentDelta))
             }
             model = chunk.model ?? model
             provider = chunk.provider ?? provider

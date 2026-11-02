@@ -151,15 +151,18 @@ struct OpenRouterAPIClientTests {
             trafficLog: trafficLog
         )
 
-        var receivedContent = ""
+        var receivedEvents: [NutritionAnalysisStreamEvent] = []
         let response = try await client.sendChatCompletion(
             apiKey: "test-secret",
             body: body
-        ) { delta in
-            receivedContent += delta
+        ) { event in
+            receivedEvents.append(event)
         }
 
-        #expect(receivedContent == #"{"mealName":"Test"}"#)
+        #expect(receivedEvents.first == .requestStarted)
+        #expect(receivedEvents.contains(.responseStarted))
+        #expect(receivedEvents.compactMap(\.contentDelta).joined() == #"{"mealName":"Test"}"#)
+        #expect(receivedEvents.last == .responseCompleted)
         let json = try #require(JSONSerialization.jsonObject(with: response) as? [String: Any])
         let choices = try #require(json["choices"] as? [[String: Any]])
         let message = try #require(choices.first?["message"] as? [String: Any])

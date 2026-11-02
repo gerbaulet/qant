@@ -6,6 +6,10 @@ struct LiveAnalysisCall: Identifiable, Equatable {
     let sampleNumber: Int?
     let attemptNumber: Int
     let requestedAt: Date
+    var requestStartedAt: Date?
+    var responseStartedAt: Date?
+    var firstContentAt: Date?
+    var responseCompletedAt: Date?
     var streamedJSON = ""
     var result: AnalysisCallSummary?
 }
@@ -45,11 +49,33 @@ final class MealAnalysisProgressStore {
         analyses[mealID]?.calls[index].result = summary
     }
 
-    func appendStreamContent(_ content: String, to callID: Int, for mealID: UUID) {
+    func recordStreamEvent(
+        _ event: NutritionAnalysisStreamEvent,
+        to callID: Int,
+        for mealID: UUID,
+        at date: Date
+    ) {
         guard
-            !content.isEmpty,
             let index = analyses[mealID]?.calls.firstIndex(where: { $0.id == callID })
         else { return }
+
+        switch event {
+        case .requestStarted:
+            analyses[mealID]?.calls[index].requestStartedAt = date
+        case .responseStarted:
+            analyses[mealID]?.calls[index].responseStartedAt = date
+        case let .contentDelta(content):
+            guard !content.isEmpty else { return }
+            if analyses[mealID]?.calls[index].firstContentAt == nil {
+                analyses[mealID]?.calls[index].firstContentAt = date
+            }
+            appendStreamContent(content, at: index, for: mealID)
+        case .responseCompleted:
+            analyses[mealID]?.calls[index].responseCompletedAt = date
+        }
+    }
+
+    private func appendStreamContent(_ content: String, at index: Int, for mealID: UUID) {
         analyses[mealID]?.calls[index].streamedJSON += content
         if let count = analyses[mealID]?.calls[index].streamedJSON.count,
            count > Self.maximumStreamCharacterCount {

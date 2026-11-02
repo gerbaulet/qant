@@ -64,7 +64,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
 
     func analyze(
         _ request: NutritionAnalysisRequest,
-        onStreamUpdate: @escaping @MainActor (String) -> Void
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> NutritionAnalysisResult {
         let apiKey = try secretStore.secret(for: .openRouterAPIKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -88,7 +88,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         let responseData = try await client.sendChatCompletion(
             apiKey: apiKey,
             body: requestBody,
-            onContentDelta: onStreamUpdate
+            onStreamEvent: onStreamEvent
         )
         let decoder = JSONDecoder()
         guard

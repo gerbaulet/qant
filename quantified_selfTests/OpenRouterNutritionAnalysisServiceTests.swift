@@ -421,13 +421,13 @@ struct OpenRouterNutritionAnalysisServiceTests {
             settingsStore: AnalysisSettingsStore(modelIdentifier: "example/vision-model"),
             client: client
         )
-        var receivedContent = ""
+        var receivedEvents: [NutritionAnalysisStreamEvent] = []
 
         _ = try await service.analyze(NutritionAnalysisRequest(images: [], userComment: nil)) {
-            receivedContent += $0
+            receivedEvents.append($0)
         }
 
-        #expect(receivedContent == #"{"mealName":"Gemüsecurry"}"#)
+        #expect(receivedEvents.compactMap(\.contentDelta).joined() == #"{"mealName":"Gemüsecurry"}"#)
     }
 
     @Test("Auto Router requests include the selected cost tier")
@@ -530,10 +530,10 @@ private final class ChatClientStub: OpenRouterChatCompleting {
     func sendChatCompletion(
         apiKey: String,
         body: Data,
-        onContentDelta: @escaping @MainActor (String) -> Void
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data {
         for delta in contentDeltas {
-            onContentDelta(delta)
+            onStreamEvent(.contentDelta(delta))
         }
         return try await sendChatCompletion(apiKey: apiKey, body: body)
     }

@@ -239,6 +239,10 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Fehler: Die Ernährungsanalyse konnte nicht gelesen werden."].exists)
         app.swipeUp()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Anfrage 3 · Antwort steht aus")).firstMatch.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["meal.analysisProgress.status.3"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["meal.analysisProgress.status.3"].label.contains("JSON wird empfangen"))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Antwort begonnen:")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Erstes JSON:")).firstMatch.exists)
         XCTAssertTrue(app.scrollViews["meal.analysisProgress.stream.3"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "estimatedTotalWeightGrams")).firstMatch.exists)
     }

@@ -439,6 +439,7 @@ struct MealReviewView: View {
                             Text(call.sampleNumber.map { "Schätzung \($0) · Versuch \(call.attemptNumber)" } ?? "Versuch \(call.attemptNumber)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            LiveAnalysisStatusView(call: call)
                             LiveJSONStreamView(text: call.streamedJSON, callID: call.id)
                         }
                     }
@@ -876,6 +877,70 @@ struct MealReviewView: View {
             alertMessage = "Die angepasste Menge konnte nicht gespeichert werden."
             return false
         }
+    }
+}
+
+private struct LiveAnalysisStatusView: View {
+    let call: LiveAnalysisCall
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { timeline in
+            VStack(alignment: .leading, spacing: 3) {
+                Text(statusText)
+                    .font(.caption.bold())
+                    .accessibilityIdentifier("meal.analysisProgress.status.\(call.id)")
+                Text("Bisher: \(durationText(from: call.requestedAt, to: endDate(at: timeline.date)))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                timestamp("Gestartet", date: call.requestedAt)
+                if let date = call.requestStartedAt {
+                    timestamp("Übertragung gestartet", date: date)
+                }
+                if let date = call.responseStartedAt {
+                    timestamp("Antwort begonnen", date: date)
+                }
+                if let date = call.firstContentAt {
+                    timestamp("Erstes JSON", date: date)
+                }
+                if let date = call.responseCompletedAt {
+                    timestamp("Antwort vollständig", date: date)
+                }
+            }
+        }
+    }
+
+    private var statusText: String {
+        if call.responseCompletedAt != nil {
+            return "Antwort vollständig · Ergebnis wird geprüft …"
+        }
+        if call.firstContentAt != nil {
+            return "JSON wird empfangen …"
+        }
+        if call.responseStartedAt != nil {
+            return "Antwort begonnen · warte auf JSON …"
+        }
+        if call.requestStartedAt != nil {
+            return "Anfrage und Bilder werden übertragen oder verarbeitet …"
+        }
+        return "Anfrage wird vorbereitet …"
+    }
+
+    private func timestamp(_ label: String, date: Date) -> some View {
+        Text("\(label): \(date.formatted(.dateTime.hour().minute().second())) (+\(durationText(from: call.requestedAt, to: date)))")
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.secondary)
+    }
+
+    private func endDate(at currentDate: Date) -> Date {
+        call.responseCompletedAt ?? currentDate
+    }
+
+    private func durationText(from startDate: Date, to endDate: Date) -> String {
+        let seconds = max(0, Int(endDate.timeIntervalSince(startDate).rounded()))
+        if seconds < 60 {
+            return "\(seconds) s"
+        }
+        return "\(seconds / 60):\(String(format: "%02d", seconds % 60)) min"
     }
 }
 
