@@ -151,8 +151,15 @@ struct OpenRouterAPIClientTests {
             trafficLog: trafficLog
         )
 
-        let response = try await client.sendChatCompletion(apiKey: "test-secret", body: body)
+        var receivedContent = ""
+        let response = try await client.sendChatCompletion(
+            apiKey: "test-secret",
+            body: body
+        ) { delta in
+            receivedContent += delta
+        }
 
+        #expect(receivedContent == #"{"mealName":"Test"}"#)
         let json = try #require(JSONSerialization.jsonObject(with: response) as? [String: Any])
         let choices = try #require(json["choices"] as? [[String: Any]])
         let message = try #require(choices.first?["message"] as? [String: Any])

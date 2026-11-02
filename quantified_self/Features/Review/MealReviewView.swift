@@ -439,8 +439,8 @@ struct MealReviewView: View {
                             Text(call.sampleNumber.map { "Schätzung \($0) · Versuch \(call.attemptNumber)" } ?? "Versuch \(call.attemptNumber)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            LiveJSONStreamView(text: call.streamedJSON, callID: call.id)
                         }
-                        .accessibilityElement(children: .combine)
                     }
                 }
             }
@@ -875,6 +875,40 @@ struct MealReviewView: View {
         } catch {
             alertMessage = "Die angepasste Menge konnte nicht gespeichert werden."
             return false
+        }
+    }
+}
+
+private struct LiveJSONStreamView: View {
+    private static let visibleLineCount: CGFloat = 10
+    private static let lineHeight: CGFloat = 15
+
+    let text: String
+    let callID: Int
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(text.isEmpty ? "Warte auf erste JSON-Daten …" : text)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(text.isEmpty ? .secondary : .primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                    Color.clear
+                        .frame(height: 1)
+                        .id("stream-end-\(callID)")
+                }
+            }
+            .frame(height: Self.visibleLineCount * Self.lineHeight)
+            .padding(8)
+            .background(Color.black.opacity(0.06), in: .rect(cornerRadius: 8))
+            .accessibilityIdentifier("meal.analysisProgress.stream.\(callID)")
+            .onChange(of: text) {
+                withAnimation(.linear(duration: 0.1)) {
+                    proxy.scrollTo("stream-end-\(callID)", anchor: .bottom)
+                }
+            }
         }
     }
 }

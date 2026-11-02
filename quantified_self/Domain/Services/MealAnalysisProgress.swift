@@ -6,6 +6,7 @@ struct LiveAnalysisCall: Identifiable, Equatable {
     let sampleNumber: Int?
     let attemptNumber: Int
     let requestedAt: Date
+    var streamedJSON = ""
     var result: AnalysisCallSummary?
 }
 
@@ -23,6 +24,7 @@ struct MealAnalysisProgress: Equatable {
 @Observable
 final class MealAnalysisProgressStore {
     static let shared = MealAnalysisProgressStore()
+    private static let maximumStreamCharacterCount = 64_000
     private(set) var analyses: [UUID: MealAnalysisProgress] = [:]
 
     func begin(_ mealID: UUID) { analyses[mealID] = MealAnalysisProgress() }
@@ -41,5 +43,19 @@ final class MealAnalysisProgressStore {
     func finishCall(_ summary: AnalysisCallSummary, for mealID: UUID) {
         guard let index = analyses[mealID]?.calls.firstIndex(where: { $0.id == summary.callNumber }) else { return }
         analyses[mealID]?.calls[index].result = summary
+    }
+
+    func appendStreamContent(_ content: String, to callID: Int, for mealID: UUID) {
+        guard
+            !content.isEmpty,
+            let index = analyses[mealID]?.calls.firstIndex(where: { $0.id == callID })
+        else { return }
+        analyses[mealID]?.calls[index].streamedJSON += content
+        if let count = analyses[mealID]?.calls[index].streamedJSON.count,
+           count > Self.maximumStreamCharacterCount {
+            analyses[mealID]?.calls[index].streamedJSON.removeFirst(
+                count - Self.maximumStreamCharacterCount
+            )
+        }
     }
 }

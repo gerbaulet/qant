@@ -59,6 +59,13 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
     }
 
     func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult {
+        try await analyze(request) { _ in }
+    }
+
+    func analyze(
+        _ request: NutritionAnalysisRequest,
+        onStreamUpdate: @escaping @MainActor (String) -> Void
+    ) async throws -> NutritionAnalysisResult {
         let apiKey = try secretStore.secret(for: .openRouterAPIKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let modelIdentifier = settingsStore.modelIdentifier
@@ -78,7 +85,11 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         }
 
         let requestedAt = now()
-        let responseData = try await client.sendChatCompletion(apiKey: apiKey, body: requestBody)
+        let responseData = try await client.sendChatCompletion(
+            apiKey: apiKey,
+            body: requestBody,
+            onContentDelta: onStreamUpdate
+        )
         let decoder = JSONDecoder()
         guard
             let response = try? decoder.decode(ChatResponse.self, from: responseData),

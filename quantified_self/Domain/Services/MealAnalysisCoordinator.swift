@@ -270,10 +270,12 @@ final class MealAnalysisCoordinator {
     ) async throws -> (NutritionAnalysisResult, [NutritionAnalysisResult]) {
         var nextRequest = request
         for attempt in 1...Self.maximumAutomaticAttemptCount {
-            callRecorder.start(sampleNumber: sampleNumber, attemptNumber: attempt)
+            let callNumber = callRecorder.start(sampleNumber: sampleNumber, attemptNumber: attempt)
             var candidate: NutritionAnalysisResult?
             do {
-                let rawResult = try await provider.analyze(nextRequest)
+                let rawResult = try await provider.analyze(nextRequest) { content in
+                    callRecorder.appendStreamContent(content, to: callNumber)
+                }
                 candidate = rawResult
                 try NutritionAnalysisValidator.validate(rawResult)
                 let result = NutritionAnalysisCalculator.calculateTotals(from: rawResult)
@@ -581,10 +583,15 @@ private final class AnalysisCallRecorder {
     private let progressStore: MealAnalysisProgressStore
     private var startedCalls: [String: (number: Int, date: Date)] = [:]
 
-    func start(sampleNumber: Int?, attemptNumber: Int) {
+    func start(sampleNumber: Int?, attemptNumber: Int) -> Int {
         let date = now()
         let number = progressStore.startCall(for: mealID, sampleNumber: sampleNumber, attemptNumber: attemptNumber, at: date)
         startedCalls["\(sampleNumber ?? 0)-\(attemptNumber)"] = (number, date)
+        return number
+    }
+
+    func appendStreamContent(_ content: String, to callNumber: Int) {
+        progressStore.appendStreamContent(content, to: callNumber, for: mealID)
     }
 
     func waitForNetwork() {

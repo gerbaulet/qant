@@ -168,6 +168,19 @@ struct NutritionAnalysisResult: Codable, Sendable, Equatable {
 
 protocol NutritionAnalysisProviding {
     func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult
+    func analyze(
+        _ request: NutritionAnalysisRequest,
+        onStreamUpdate: @escaping @MainActor (String) -> Void
+    ) async throws -> NutritionAnalysisResult
+}
+
+extension NutritionAnalysisProviding {
+    func analyze(
+        _ request: NutritionAnalysisRequest,
+        onStreamUpdate: @escaping @MainActor (String) -> Void
+    ) async throws -> NutritionAnalysisResult {
+        try await analyze(request)
+    }
 }
 
 enum NutritionAnalysisError: Error, LocalizedError, Equatable {

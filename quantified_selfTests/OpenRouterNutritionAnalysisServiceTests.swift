@@ -410,6 +410,26 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(provider["sort"] as? String == "throughput")
     }
 
+    @Test("Streaming content is forwarded while an analysis runs")
+    func forwardsStreamingContent() async throws {
+        let client = ChatClientStub(
+            responseData: try Self.chatResponseData(),
+            contentDeltas: ["{\"meal", "Name\":\"Gemüsecurry\"}"]
+        )
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "test-key"),
+            settingsStore: AnalysisSettingsStore(modelIdentifier: "example/vision-model"),
+            client: client
+        )
+        var receivedContent = ""
+
+        _ = try await service.analyze(NutritionAnalysisRequest(images: [], userComment: nil)) {
+            receivedContent += $0
+        }
+
+        #expect(receivedContent == #"{"mealName":"Gemüsecurry"}"#)
+    }
+
     @Test("Auto Router requests include the selected cost tier")
     func includesAutoRouterCostTier() async throws {
         for modelIdentifier in ["openrouter/auto", "openrouter/auto-beta"] {
@@ -492,17 +512,30 @@ struct OpenRouterNutritionAnalysisServiceTests {
 @MainActor
 private final class ChatClientStub: OpenRouterChatCompleting {
     let responseData: Data
+    let contentDeltas: [String]
     var receivedAPIKey: String?
     var receivedBody: Data?
 
-    init(responseData: Data) {
+    init(responseData: Data, contentDeltas: [String] = []) {
         self.responseData = responseData
+        self.contentDeltas = contentDeltas
     }
 
     func sendChatCompletion(apiKey: String, body: Data) async throws -> Data {
         receivedAPIKey = apiKey
         receivedBody = body
         return responseData
+    }
+
+    func sendChatCompletion(
+        apiKey: String,
+        body: Data,
+        onContentDelta: @escaping @MainActor (String) -> Void
+    ) async throws -> Data {
+        for delta in contentDeltas {
+            onContentDelta(delta)
+        }
+        return try await sendChatCompletion(apiKey: apiKey, body: body)
     }
 }
 
