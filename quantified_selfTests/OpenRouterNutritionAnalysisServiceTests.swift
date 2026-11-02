@@ -39,6 +39,9 @@ struct OpenRouterNutritionAnalysisServiceTests {
 
         let body = try #require(client.receivedBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["stream"] as? Bool == true)
+        let streamOptions = try #require(json["stream_options"] as? [String: Any])
+        #expect(streamOptions["include_usage"] as? Bool == true)
         #expect(json["model"] as? String == "example/vision-model")
         #expect(json["temperature"] as? Int == 0)
         let responseFormat = try #require(json["response_format"] as? [String: Any])

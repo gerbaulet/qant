@@ -130,7 +130,19 @@ struct OpenRouterAPIClientTests {
             #expect(Self.bodyData(for: request) == body)
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-secret")
             #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
-            return Self.response(for: request, status: 200, json: #"{"choices":[]}"#)
+            #expect(request.value(forHTTPHeaderField: "Accept") == "text/event-stream")
+            return Self.response(
+                for: request,
+                status: 200,
+                json: """
+                data: {"model":"example/model","provider":"Example","choices":[{"delta":{"content":"{\\\"meal"}}]}
+
+                data: {"choices":[{"delta":{"content":"Name\\\":\\\"Test\\\"}"}}],"usage":{"prompt_tokens":12,"completion_tokens":4,"cost":0.001}}
+
+                data: [DONE]
+
+                """
+            )
         }
         let client = OpenRouterAPIClient(
             session: session,
@@ -140,7 +152,15 @@ struct OpenRouterAPIClientTests {
 
         let response = try await client.sendChatCompletion(apiKey: "test-secret", body: body)
 
-        #expect(String(decoding: response, as: UTF8.self) == #"{"choices":[]}"#)
+        let json = try #require(JSONSerialization.jsonObject(with: response) as? [String: Any])
+        let choices = try #require(json["choices"] as? [[String: Any]])
+        let message = try #require(choices.first?["message"] as? [String: Any])
+        #expect(message["content"] as? String == #"{"mealName":"Test"}"#)
+        #expect(json["model"] as? String == "example/model")
+        #expect(json["provider"] as? String == "Example")
+        let usage = try #require(json["usage"] as? [String: Any])
+        #expect(usage["prompt_tokens"] as? Int == 12)
+        #expect(usage["completion_tokens"] as? Int == 4)
         let entries = await trafficLog.snapshot()
         #expect(entries.count == 2)
         #expect(entries[0].contains("REQUEST POST https://example.test/api/v1/chat/completions"))
@@ -148,7 +168,7 @@ struct OpenRouterAPIClientTests {
         #expect(!entries[0].localizedCaseInsensitiveContains("authorization"))
         #expect(!entries[0].contains("test-secret"))
         #expect(entries[1].contains("RESPONSE 200"))
-        #expect(entries[1].contains(#"{"choices":[]}"#))
+        #expect(entries[1].contains(#"{\"mealName\":\"Test\"}"#))
     }
 
     @Test("Model catalog returns image models with structured output")

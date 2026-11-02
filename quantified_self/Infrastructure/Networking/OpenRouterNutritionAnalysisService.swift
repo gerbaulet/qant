@@ -129,6 +129,10 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         var body: [String: Any] = [
             "model": modelIdentifier,
             "temperature": 0,
+            "stream": true,
+            "stream_options": [
+                "include_usage": true,
+            ],
             "provider": [
                 "require_parameters": true,
             ],

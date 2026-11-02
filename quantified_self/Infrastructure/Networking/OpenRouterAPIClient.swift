@@ -76,6 +76,39 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
 }
 
 struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCatalogProviding, OpenRouterChatCompleting {
+    private struct ChatCompletionStreamChunk: Decodable {
+        struct Choice: Decodable {
+            struct Delta: Decodable {
+                let content: String?
+            }
+
+            let delta: Delta
+        }
+
+        struct Usage: Decodable, Encodable {
+            let promptTokens: Int?
+            let completionTokens: Int?
+            let cost: Double?
+
+            private enum CodingKeys: String, CodingKey {
+                case promptTokens = "prompt_tokens"
+                case completionTokens = "completion_tokens"
+                case cost
+            }
+        }
+
+        struct StreamError: Decodable {
+            let message: String
+            let code: Int?
+        }
+
+        let choices: [Choice]?
+        let model: String?
+        let provider: String?
+        let usage: Usage?
+        let error: StreamError?
+    }
+
     private struct ModelResponse: Decodable {
         struct Model: Decodable {
             struct Architecture: Decodable {
@@ -159,10 +192,9 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
     func sendChatCompletion(apiKey: String, body: Data) async throws -> Data {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else { throw OpenRouterClientError.invalidAPIKey }
-        return try await performRequest(
+        return try await performStreamingRequest(
             url: baseURL.appending(path: "chat/completions"),
             apiKey: trimmedKey,
-            method: "POST",
             body: body,
             timeout: 90
         )
@@ -273,9 +305,150 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
             headers: responseHeaders,
             body: data
         )
-        switch httpResponse.statusCode {
-        case 200..<300:
+        do {
+            let validatedData = try validatedResponseData(data, statusCode: httpResponse.statusCode)
             AppLogger.nutritionAnalysis.debug("OpenRouter request succeeded")
+            return validatedData
+        } catch OpenRouterClientError.invalidResponse {
+            AppLogger.nutritionAnalysis.error("OpenRouter returned an unexpected status code")
+            throw OpenRouterClientError.invalidResponse
+        } catch {
+            throw error
+        }
+    }
+
+    private func performStreamingRequest(
+        url: URL,
+        apiKey: String,
+        body: Data,
+        timeout: TimeInterval
+    ) async throws -> Data {
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let requestID = UUID()
+        await trafficLog.recordRequest(
+            id: requestID,
+            method: "POST",
+            url: url,
+            headers: request.allHTTPHeaderFields?.filter { key, _ in
+                key.caseInsensitiveCompare("Authorization") != .orderedSame
+            } ?? [:],
+            body: body
+        )
+
+        do {
+            let (bytes, response) = try await session.bytes(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw OpenRouterClientError.invalidResponse
+            }
+            let responseHeaders = httpResponse.allHeaderFields.reduce(into: [String: String]()) { result, item in
+                result[String(describing: item.key)] = String(describing: item.value)
+            }
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                var responseData = Data()
+                for try await byte in bytes {
+                    responseData.append(byte)
+                }
+                await trafficLog.recordResponse(
+                    id: requestID,
+                    statusCode: httpResponse.statusCode,
+                    headers: responseHeaders,
+                    body: responseData
+                )
+                return try validatedResponseData(responseData, statusCode: httpResponse.statusCode)
+            }
+
+            let responseData = try await assembledChatCompletion(from: bytes)
+            await trafficLog.recordResponse(
+                id: requestID,
+                statusCode: httpResponse.statusCode,
+                headers: responseHeaders,
+                body: responseData
+            )
+            AppLogger.nutritionAnalysis.debug("OpenRouter streaming request succeeded")
+            return responseData
+        } catch is CancellationError {
+            await trafficLog.recordFailure(id: requestID, description: "Anfrage abgebrochen")
+            throw CancellationError()
+        } catch let error as OpenRouterClientError {
+            await trafficLog.recordFailure(id: requestID, description: error.localizedDescription)
+            throw error
+        } catch let error as URLError {
+            if error.code == .cancelled {
+                await trafficLog.recordFailure(id: requestID, description: "Anfrage abgebrochen")
+                throw CancellationError()
+            }
+            if error.code == .timedOut {
+                await trafficLog.recordFailure(id: requestID, description: "Zeitüberschreitung")
+                throw OpenRouterClientError.timedOut
+            }
+            await trafficLog.recordFailure(
+                id: requestID,
+                description: "Transportfehler: \(error.localizedDescription)"
+            )
+            AppLogger.nutritionAnalysis.error("OpenRouter streaming transport request failed")
+            throw OpenRouterClientError.transportFailure
+        } catch {
+            await trafficLog.recordFailure(
+                id: requestID,
+                description: "Transportfehler: \(error.localizedDescription)"
+            )
+            AppLogger.nutritionAnalysis.error("OpenRouter streaming request failed")
+            throw OpenRouterClientError.transportFailure
+        }
+    }
+
+    private func assembledChatCompletion(
+        from bytes: URLSession.AsyncBytes
+    ) async throws -> Data {
+        var content = ""
+        var model: String?
+        var provider: String?
+        var usage: ChatCompletionStreamChunk.Usage?
+        let decoder = JSONDecoder()
+
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst("data:".count)
+                .trimmingCharacters(in: .whitespaces)
+            guard payload != "[DONE]", let data = payload.data(using: .utf8) else { continue }
+            let chunk = try decoder.decode(ChatCompletionStreamChunk.self, from: data)
+            if let streamError = chunk.error {
+                throw OpenRouterClientError.apiError(
+                    statusCode: streamError.code ?? 500,
+                    message: String(streamError.message.prefix(500))
+                )
+            }
+            content += chunk.choices?.compactMap(\.delta.content).joined() ?? ""
+            model = chunk.model ?? model
+            provider = chunk.provider ?? provider
+            usage = chunk.usage ?? usage
+        }
+
+        guard !content.isEmpty else { throw OpenRouterClientError.invalidResponse }
+        var response: [String: Any] = [
+            "choices": [["message": ["content": content]]],
+        ]
+        if let model { response["model"] = model }
+        if let provider { response["provider"] = provider }
+        if let usage {
+            var encodedUsage: [String: Any] = [:]
+            if let promptTokens = usage.promptTokens { encodedUsage["prompt_tokens"] = promptTokens }
+            if let completionTokens = usage.completionTokens { encodedUsage["completion_tokens"] = completionTokens }
+            if let cost = usage.cost { encodedUsage["cost"] = cost }
+            response["usage"] = encodedUsage
+        }
+        return try JSONSerialization.data(withJSONObject: response)
+    }
+
+    private func validatedResponseData(_ data: Data, statusCode: Int) throws -> Data {
+        switch statusCode {
+        case 200..<300:
             return data
         case 401:
             throw OpenRouterClientError.invalidAPIKey
@@ -284,19 +457,18 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         case 404:
             throw OpenRouterClientError.modelNotFound
         case 400, 422:
-            throw apiError(from: data, statusCode: httpResponse.statusCode) ?? .invalidRequest
+            throw apiError(from: data, statusCode: statusCode) ?? .invalidRequest
         case 402:
             throw OpenRouterClientError.insufficientCredits
         case 408, 524:
             throw OpenRouterClientError.timedOut
         case 413:
-            throw apiError(from: data, statusCode: httpResponse.statusCode) ?? .invalidRequest
+            throw apiError(from: data, statusCode: statusCode) ?? .invalidRequest
         case 429:
-            throw apiError(from: data, statusCode: httpResponse.statusCode) ?? .rateLimited
+            throw apiError(from: data, statusCode: statusCode) ?? .rateLimited
         case 500...599:
-            throw apiError(from: data, statusCode: httpResponse.statusCode) ?? .serverError
+            throw apiError(from: data, statusCode: statusCode) ?? .serverError
         default:
-            AppLogger.nutritionAnalysis.error("OpenRouter returned an unexpected status code")
             throw OpenRouterClientError.invalidResponse
         }
     }
