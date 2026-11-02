@@ -76,6 +76,8 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
 }
 
 struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCatalogProviding, OpenRouterChatCompleting {
+    private static let chatCompletionTimeout: TimeInterval = 5 * 60
+
     private struct ChatCompletionStreamChunk: Decodable {
         struct Choice: Decodable {
             struct Delta: Decodable {
@@ -196,7 +198,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
             url: baseURL.appending(path: "chat/completions"),
             apiKey: trimmedKey,
             body: body,
-            timeout: 90
+            timeout: Self.chatCompletionTimeout
         )
     }
 
