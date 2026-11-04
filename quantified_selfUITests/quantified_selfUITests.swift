@@ -244,7 +244,11 @@ final class QuantUITests: XCTestCase {
         searchField.typeText("Reis")
         XCTAssertTrue(app.staticTexts["Chicken Curry mit Reis"].waitForExistence(timeout: 2))
 
-        searchField.buttons["Clear text"].tap()
+        let clearSearch = searchField.buttons
+            .matching(NSPredicate(format: "label IN %@", ["Clear text", "Text löschen"]))
+            .firstMatch
+        XCTAssertTrue(clearSearch.waitForExistence(timeout: 2))
+        clearSearch.tap()
         searchField.typeText("Kartoffelsalat")
         XCTAssertTrue(app.staticTexts["Keine Mahlzeiten gefunden"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Versuche einen anderen Suchbegriff."].exists)

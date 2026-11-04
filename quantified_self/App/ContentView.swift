@@ -37,7 +37,7 @@ struct ContentView: View {
             }
 
             Tab("Mahlzeiten", systemImage: "fork.knife", value: .meals) {
-                MealsHistoryContainer()
+                MealsHistoryContainer(isActive: selectedSection == .meals)
             }
 
             Tab("Trends", systemImage: "chart.xyaxis.line", value: .trends) {

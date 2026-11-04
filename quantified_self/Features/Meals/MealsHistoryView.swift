@@ -3,64 +3,114 @@ import SwiftData
 import SwiftUI
 
 struct MealsHistoryContainer: View {
+    private struct RefreshID: Hashable {
+        let presentationVersion: NutritionPresentationVersion
+        let grouping: MealHistoryGrouping
+        let searchText: String
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @State private var grouping = MealHistoryGrouping.day
     @State private var searchText = ""
+    @State private var sections: [MealHistorySection]?
+    @State private var lastRefreshID: RefreshID?
     @State private var selectedMeal: Meal?
     @State private var mealPendingDeletion: Meal?
     @State private var duplicateConfirmationMealID: UUID?
     @State private var alertMessage: String?
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
+    let isActive: Bool
 
     var body: some View {
-        MealsHistoryView(
-            sections: MealHistoryBuilder.makeSections(
-                meals: meals,
-                grouping: grouping,
-                calendar: .autoupdatingCurrent,
-                searchQuery: searchText
-            ),
-            grouping: $grouping,
-            searchText: $searchText,
-            onOpenMeal: openMeal,
-            onRetryMeal: retryAnalysis,
-            onDuplicateMeal: duplicateMealFromHistory,
-            onDeleteMeal: requestDeletion
-        )
-        .sheet(item: $selectedMeal) { meal in
-            NavigationStack {
-                MealReviewView(
-                    meal: meal,
-                    showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
-                    onDelete: deleteMeal,
-                    onDuplicate: duplicateMeal
-                )
+        historyContent
+            .task(id: refreshID) {
+                await refreshSections()
             }
-        }
-        .confirmationDialog(
-            "Mahlzeit löschen?",
-            isPresented: deletionConfirmationBinding,
-            presenting: mealPendingDeletion
-        ) { meal in
-            Button("Mahlzeit löschen", role: .destructive) {
-                deleteMeal(meal)
+            .sheet(item: $selectedMeal) { meal in
+                NavigationStack {
+                    MealReviewView(
+                        meal: meal,
+                        showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
+                        onDelete: deleteMeal,
+                        onDuplicate: duplicateMeal
+                    )
+                }
             }
-            Button("Abbrechen", role: .cancel) {
+            .confirmationDialog(
+                "Mahlzeit löschen?",
+                isPresented: deletionConfirmationBinding,
+                presenting: mealPendingDeletion
+            ) { meal in
+                Button("Mahlzeit löschen", role: .destructive) {
+                    deleteMeal(meal)
+                }
+                Button("Abbrechen", role: .cancel) {
+                    mealPendingDeletion = nil
+                }
+            } message: { _ in
+                Text("Die Mahlzeit, ihre Analyse und ihre Fotos werden dauerhaft gelöscht.")
+            }
+            .alert("Aktion nicht möglich", isPresented: alertBinding) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(alertMessage ?? "Unbekannter Fehler")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
+                selectedMeal = nil
                 mealPendingDeletion = nil
             }
-        } message: { _ in
-            Text("Die Mahlzeit, ihre Analyse und ihre Fotos werden dauerhaft gelöscht.")
+    }
+
+    @ViewBuilder
+    private var historyContent: some View {
+        if let sections {
+            MealsHistoryView(
+                sections: sections,
+                grouping: $grouping,
+                searchText: $searchText,
+                onOpenMeal: openMeal,
+                onRetryMeal: retryAnalysis,
+                onDuplicateMeal: duplicateMealFromHistory,
+                onDeleteMeal: requestDeletion
+            )
+        } else {
+            NavigationStack {
+                ProgressView("Mahlzeiten werden geladen …")
+                    .navigationTitle("Mahlzeiten")
+            }
         }
-        .alert("Aktion nicht möglich", isPresented: alertBinding) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(alertMessage ?? "Unbekannter Fehler")
+    }
+
+    private var refreshID: RefreshID? {
+        guard isActive else { return nil }
+        return RefreshID(
+            presentationVersion: NutritionPresentationVersion(meals: meals, goals: []),
+            grouping: grouping,
+            searchText: searchText
+        )
+    }
+
+    private func refreshSections() async {
+        guard let refreshID, refreshID != lastRefreshID else { return }
+        if let lastRefreshID, lastRefreshID.searchText != refreshID.searchText {
+            do {
+                try await Task.sleep(for: .milliseconds(200))
+            } catch {
+                return
+            }
+        } else {
+            await Task.yield()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
-            selectedMeal = nil
-            mealPendingDeletion = nil
-        }
+        let nextSections = MealHistoryBuilder.makeSections(
+            meals: meals,
+            grouping: grouping,
+            calendar: .autoupdatingCurrent,
+            searchQuery: searchText
+        )
+        guard !Task.isCancelled else { return }
+        sections = nextSections
+        lastRefreshID = refreshID
     }
 
     private func openMeal(_ id: UUID) {
