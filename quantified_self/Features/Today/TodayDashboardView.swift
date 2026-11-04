@@ -22,24 +22,22 @@ struct TodayDashboardView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
-                    dateHeader
-                    calorieCard
-                    hintsSection
-                    weeklyCalorieCard
-                    macroCard
-                    mealsSection
-                }
-                .padding(.horizontal, QuantLayout.pageInset)
-                .padding(.bottom, 96)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
+                dateHeader
+                calorieCard
+                hintsSection
+                weeklyCalorieCard
+                macroCard
+                mealsSection
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Heute")
-            .safeAreaInset(edge: .bottom) {
-                addFoodButton
-            }
+            .padding(.horizontal, QuantLayout.pageInset)
+            .padding(.bottom, 96)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("Heute")
+        .safeAreaInset(edge: .bottom) {
+            addFoodButton
         }
     }
 
@@ -348,6 +346,8 @@ private extension NutrientIdentifier {
 
 #if DEBUG
 #Preview("Heute – Beispieldaten") {
-    TodayDashboardView(snapshot: .preview, onAddFood: {})
+    NavigationStack {
+        TodayDashboardView(snapshot: .preview, onAddFood: {})
+    }
 }
 #endif

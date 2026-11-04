@@ -3,7 +3,6 @@ import SwiftData
 import SwiftUI
 
 struct MealReviewView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Bindable var meal: Meal
 
@@ -86,29 +85,31 @@ struct MealReviewView: View {
             .padding(.bottom, 96)
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("Analyse prüfen")
+        .navigationTitle("Mahlzeit")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if meal.canBeDuplicated, onDuplicate != nil {
+            if onDelete != nil || (meal.canBeDuplicated && onDuplicate != nil) {
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Duplizieren", systemImage: "plus.square.on.square") {
-                        duplicateMeal()
+                    Menu {
+                        if meal.canBeDuplicated, onDuplicate != nil {
+                            Button("Duplizieren", systemImage: "plus.square.on.square") {
+                                duplicateMeal()
+                            }
+                            .accessibilityIdentifier("meal.duplicate")
+                        }
+                        if onDelete != nil {
+                            Button("Löschen", systemImage: "trash", role: .destructive) {
+                                showsDeleteConfirmation = true
+                            }
+                            .accessibilityIdentifier("meal.delete")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
                     .disabled(isWorking)
-                    .accessibilityIdentifier("meal.duplicate")
+                    .accessibilityLabel("Weitere Aktionen")
+                    .accessibilityIdentifier("meal.actions")
                 }
-            }
-            if onDelete != nil {
-                ToolbarItem(placement: .destructiveAction) {
-                    Button("Löschen", systemImage: "trash", role: .destructive) {
-                        showsDeleteConfirmation = true
-                    }
-                    .disabled(isWorking)
-                    .accessibilityIdentifier("meal.delete")
-                }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Fertig") { dismiss() }
             }
         }
         .safeAreaInset(edge: .bottom) {

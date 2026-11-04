@@ -20,7 +20,7 @@ struct ContentView: View {
     @State private var selectedSection: AppSection = .today
     @State private var mealCaptureMode: MealCaptureMode?
     @State private var activeQuickCaptureRequestID: UUID?
-    @State private var activeAnalysisMeal: Meal?
+    @State private var requestedTodayMealID: UUID?
     @State private var analysisProgressStore = MealAnalysisProgressStore.shared
     @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
     @Environment(\.scenePhase) private var scenePhase
@@ -31,7 +31,10 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedSection) {
             Tab("Heute", systemImage: "sun.max.fill", value: .today) {
-                TodayDashboardContainer(isActive: selectedSection == .today) {
+                TodayDashboardContainer(
+                    isActive: selectedSection == .today,
+                    requestedMealID: $requestedTodayMealID
+                ) {
                     mealCaptureMode = .standard
                 }
             }
@@ -50,15 +53,6 @@ struct ContentView: View {
         }
         .sheet(item: $mealCaptureMode) { mode in
             MealCaptureView(opensCameraOnAppear: mode == .camera)
-        }
-        .sheet(item: $activeAnalysisMeal) { meal in
-            NavigationStack {
-                MealReviewView(
-                    meal: meal,
-                    onDelete: deleteMeal,
-                    onDuplicate: duplicateMeal
-                )
-            }
         }
         .overlay(alignment: .topTrailing) {
             AnalysisActivityButton(
@@ -98,10 +92,11 @@ struct ContentView: View {
         let requestID = UUID()
         activeQuickCaptureRequestID = requestID
         selectedSection = .today
+        requestedTodayMealID = nil
         mealCaptureMode = nil
         Task {
-            // Let any nested review sheet finish dismissing before presenting
-            // the camera sheet. SwiftUI otherwise drops the new presentation.
+            // Let the active detail route and any nested editor finish
+            // dismissing before presenting the camera sheet.
             try? await Task.sleep(for: .milliseconds(800))
             guard activeQuickCaptureRequestID == requestID else { return }
             mealCaptureMode = .camera
@@ -110,7 +105,7 @@ struct ContentView: View {
 
     private func openMostRelevantAnalysis() {
         let meals = (try? modelContext.fetch(FetchDescriptor<Meal>())) ?? []
-        activeAnalysisMeal = meals
+        let meal = meals
             .filter { analysisProgressStore.analyses[$0.id] != nil }
             .sorted { lhs, rhs in
                 let lhsNeedsAnswer = lhs.activeRevision?.status == .needsClarification
@@ -121,25 +116,9 @@ struct ContentView: View {
                 return lhsStartedAt > rhsStartedAt
             }
             .first
-    }
-
-    private func deleteMeal(_ meal: Meal) {
-        MealAnalysisQueue.shared.cancel(for: meal.id, in: modelContext)
-        do {
-            let images = try SwiftDataMealRepository(context: modelContext).deleteMeal(meal)
-            activeAnalysisMeal = nil
-            Task {
-                let storage = FileImageStorage()
-                for image in images { await storage.deleteImage(image) }
-            }
-        } catch {
-            AppLogger.persistence.error("Meal deletion failed")
-        }
-    }
-
-    @MainActor
-    private func duplicateMeal(_ meal: Meal) async throws {
-        activeAnalysisMeal = try await MealDuplicationCoordinator(context: modelContext).duplicate(meal)
+        guard let meal else { return }
+        selectedSection = .today
+        requestedTodayMealID = meal.id
     }
 }
 
@@ -179,7 +158,7 @@ private struct TodayDashboardContainer: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
-    @State private var selectedMeal: Meal?
+    @State private var navigationPath: [UUID] = []
     @State private var duplicateConfirmationMealID: UUID?
     @State private var snapshot: TodayDashboardSnapshot?
     @State private var weeklySummary: WeeklyNutritionSummary?
@@ -188,27 +167,40 @@ private struct TodayDashboardContainer: View {
     private let widgetSynchronizer = WidgetCalorieSnapshotSynchronizer()
 
     let isActive: Bool
+    @Binding var requestedMealID: UUID?
     let onAddFood: () -> Void
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
-            dashboardContent
-                .task(id: refreshID(for: context.date)) {
-                    await refresh(for: context.date)
-                }
-        }
-        .sheet(item: $selectedMeal) { meal in
-            NavigationStack {
-                MealReviewView(
-                    meal: meal,
-                    showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
-                    onDelete: deleteMeal,
-                    onDuplicate: duplicateMeal
-                )
+        NavigationStack(path: $navigationPath) {
+            TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
+                dashboardContent
+                    .task(id: refreshID(for: context.date)) {
+                        await refresh(for: context.date)
+                    }
             }
+            .navigationDestination(for: UUID.self, destination: mealDestination)
+        }
+        .onChange(of: requestedMealID) { _, mealID in
+            guard let mealID, meals.contains(where: { $0.id == mealID }) else { return }
+            navigationPath = [mealID]
+            requestedMealID = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
-            selectedMeal = nil
+            navigationPath.removeAll()
+        }
+    }
+
+    @ViewBuilder
+    private func mealDestination(_ mealID: UUID) -> some View {
+        if let meal = meals.first(where: { $0.id == mealID }) {
+            MealReviewView(
+                meal: meal,
+                showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
+                onDelete: deleteMeal,
+                onDuplicate: duplicateMeal
+            )
+        } else {
+            ContentUnavailableView("Mahlzeit nicht verfügbar", systemImage: "fork.knife")
         }
     }
 
@@ -226,10 +218,8 @@ private struct TodayDashboardContainer: View {
                 widgetSynchronizer.synchronize(widgetSnapshot(for: snapshot))
             }
         } else {
-            NavigationStack {
-                ProgressView("Übersicht wird geladen …")
-                    .navigationTitle("Heute")
-            }
+            ProgressView("Übersicht wird geladen …")
+                .navigationTitle("Heute")
         }
     }
 
@@ -271,14 +261,15 @@ private struct TodayDashboardContainer: View {
     }
 
     private func openMeal(mealID: UUID) {
-        selectedMeal = meals.first(where: { $0.id == mealID })
+        guard meals.contains(where: { $0.id == mealID }) else { return }
+        navigationPath.append(mealID)
     }
 
     private func deleteMeal(_ meal: Meal) {
         MealAnalysisQueue.shared.cancel(for: meal.id, in: modelContext)
         do {
             let images = try SwiftDataMealRepository(context: modelContext).deleteMeal(meal)
-            selectedMeal = nil
+            navigationPath.removeAll()
             Task {
                 for image in images {
                     await imageStorage.deleteImage(image)
@@ -293,7 +284,7 @@ private struct TodayDashboardContainer: View {
     private func duplicateMeal(_ meal: Meal) async throws {
         let duplicate = try await MealDuplicationCoordinator(context: modelContext).duplicate(meal)
         duplicateConfirmationMealID = duplicate.id
-        selectedMeal = duplicate
+        navigationPath = [duplicate.id]
         Task {
             try? await Task.sleep(for: .seconds(3))
             if duplicateConfirmationMealID == duplicate.id {

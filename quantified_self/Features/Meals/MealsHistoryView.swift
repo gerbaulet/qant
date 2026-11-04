@@ -15,7 +15,7 @@ struct MealsHistoryContainer: View {
     @State private var searchText = ""
     @State private var sections: [MealHistorySection]?
     @State private var lastRefreshID: RefreshID?
-    @State private var selectedMeal: Meal?
+    @State private var navigationPath: [UUID] = []
     @State private var mealPendingDeletion: Meal?
     @State private var duplicateConfirmationMealID: UUID?
     @State private var alertMessage: String?
@@ -23,43 +23,47 @@ struct MealsHistoryContainer: View {
     let isActive: Bool
 
     var body: some View {
-        historyContent
-            .task(id: refreshID) {
-                await refreshSections()
-            }
-            .sheet(item: $selectedMeal) { meal in
-                NavigationStack {
-                    MealReviewView(
-                        meal: meal,
-                        showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
-                        onDelete: deleteMeal,
-                        onDuplicate: duplicateMeal
-                    )
+        NavigationStack(path: $navigationPath) {
+            historyContent
+                .task(id: refreshID) {
+                    await refreshSections()
                 }
-            }
-            .confirmationDialog(
-                "Mahlzeit löschen?",
-                isPresented: deletionConfirmationBinding,
-                presenting: mealPendingDeletion
-            ) { meal in
-                Button("Mahlzeit löschen", role: .destructive) {
-                    deleteMeal(meal)
+                .navigationDestination(for: UUID.self) { mealID in
+                    if let meal = meals.first(where: { $0.id == mealID }) {
+                        MealReviewView(
+                            meal: meal,
+                            showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
+                            onDelete: deleteMeal,
+                            onDuplicate: duplicateMeal
+                        )
+                    } else {
+                        ContentUnavailableView("Mahlzeit nicht verfügbar", systemImage: "fork.knife")
+                    }
                 }
-                Button("Abbrechen", role: .cancel) {
-                    mealPendingDeletion = nil
-                }
-            } message: { _ in
-                Text("Die Mahlzeit, ihre Analyse und ihre Fotos werden dauerhaft gelöscht.")
+        }
+        .confirmationDialog(
+            "Mahlzeit löschen?",
+            isPresented: deletionConfirmationBinding,
+            presenting: mealPendingDeletion
+        ) { meal in
+            Button("Mahlzeit löschen", role: .destructive) {
+                deleteMeal(meal)
             }
-            .alert("Aktion nicht möglich", isPresented: alertBinding) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(alertMessage ?? "Unbekannter Fehler")
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
-                selectedMeal = nil
+            Button("Abbrechen", role: .cancel) {
                 mealPendingDeletion = nil
             }
+        } message: { _ in
+            Text("Die Mahlzeit, ihre Analyse und ihre Fotos werden dauerhaft gelöscht.")
+        }
+        .alert("Aktion nicht möglich", isPresented: alertBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(alertMessage ?? "Unbekannter Fehler")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
+            navigationPath.removeAll()
+            mealPendingDeletion = nil
+        }
     }
 
     @ViewBuilder
@@ -75,10 +79,8 @@ struct MealsHistoryContainer: View {
                 onDeleteMeal: requestDeletion
             )
         } else {
-            NavigationStack {
-                ProgressView("Mahlzeiten werden geladen …")
-                    .navigationTitle("Mahlzeiten")
-            }
+            ProgressView("Mahlzeiten werden geladen …")
+                .navigationTitle("Mahlzeiten")
         }
     }
 
@@ -114,7 +116,8 @@ struct MealsHistoryContainer: View {
     }
 
     private func openMeal(_ id: UUID) {
-        selectedMeal = meals.first { $0.id == id }
+        guard meals.contains(where: { $0.id == id }) else { return }
+        navigationPath.append(id)
     }
 
     private func retryAnalysis(_ id: UUID) {
@@ -141,7 +144,7 @@ struct MealsHistoryContainer: View {
     private func duplicateMeal(_ meal: Meal) async throws {
         let duplicate = try await MealDuplicationCoordinator(context: modelContext).duplicate(meal)
         duplicateConfirmationMealID = duplicate.id
-        selectedMeal = duplicate
+        navigationPath = [duplicate.id]
         Task {
             try? await Task.sleep(for: .seconds(3))
             if duplicateConfirmationMealID == duplicate.id {
@@ -168,7 +171,7 @@ struct MealsHistoryContainer: View {
         MealAnalysisQueue.shared.cancel(for: meal.id, in: modelContext)
         do {
             let images = try SwiftDataMealRepository(context: modelContext).deleteMeal(meal)
-            selectedMeal = nil
+            navigationPath.removeAll()
             mealPendingDeletion = nil
             Task {
                 for image in images {
@@ -191,81 +194,79 @@ struct MealsHistoryView: View {
     let onDeleteMeal: (UUID) -> Void
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                Picker("Gruppierung", selection: $grouping) {
-                    Text("Tag").tag(MealHistoryGrouping.day)
-                    Text("Woche").tag(MealHistoryGrouping.week)
-                    Text("Monat").tag(MealHistoryGrouping.month)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, QuantLayout.pageInset)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
-                .accessibilityIdentifier("meals.grouping")
+        VStack(spacing: 0) {
+            Picker("Gruppierung", selection: $grouping) {
+                Text("Tag").tag(MealHistoryGrouping.day)
+                Text("Woche").tag(MealHistoryGrouping.week)
+                Text("Monat").tag(MealHistoryGrouping.month)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, QuantLayout.pageInset)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+            .accessibilityIdentifier("meals.grouping")
 
-                Group {
-                    if sections.isEmpty {
-                        ContentUnavailableView(
-                            isSearching ? "Keine Mahlzeiten gefunden" : "Noch keine Mahlzeiten",
-                            systemImage: isSearching ? "magnifyingglass" : "fork.knife",
-                            description: Text(
-                                isSearching
-                                    ? "Versuche einen anderen Suchbegriff."
-                                    : "Erfasste Mahlzeiten erscheinen hier in deinem Verlauf."
-                            )
+            Group {
+                if sections.isEmpty {
+                    ContentUnavailableView(
+                        isSearching ? "Keine Mahlzeiten gefunden" : "Noch keine Mahlzeiten",
+                        systemImage: isSearching ? "magnifyingglass" : "fork.knife",
+                        description: Text(
+                            isSearching
+                                ? "Versuche einen anderen Suchbegriff."
+                                : "Erfasste Mahlzeiten erscheinen hier in deinem Verlauf."
                         )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        List {
-                            ForEach(sections) { section in
-                                Section {
-                                    ForEach(section.entries) { entry in
-                                        MealSummaryRow(
-                                            id: entry.id,
-                                            name: entry.name,
-                                            timestamp: entry.timestamp,
-                                            energyKilocalories: entry.energyKilocalories,
-                                            analysisState: entry.analysisState,
-                                            isProvisional: entry.isProvisional,
-                                            thumbnailStorageKey: entry.thumbnailStorageKey,
-                                            onOpen: { onOpenMeal(entry.id) },
-                                            onRetry: { onRetryMeal(entry.id) }
-                                        )
-                                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                                Button(role: .destructive) {
-                                                    onDeleteMeal(entry.id)
-                                                } label: {
-                                                    Label("Löschen", systemImage: "trash")
-                                                }
-                                                .accessibilityIdentifier("meal.delete.\(entry.id)")
-                                                if entry.analysisState == .confirmed {
-                                                    Button {
-                                                        onDuplicateMeal(entry.id)
-                                                    } label: {
-                                                        Label("Duplizieren", systemImage: "plus.square.on.square")
-                                                    }
-                                                    .tint(.blue)
-                                                    .accessibilityIdentifier("meal.duplicate.\(entry.id)")
-                                                }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(sections) { section in
+                            Section {
+                                ForEach(section.entries) { entry in
+                                    MealSummaryRow(
+                                        id: entry.id,
+                                        name: entry.name,
+                                        timestamp: entry.timestamp,
+                                        energyKilocalories: entry.energyKilocalories,
+                                        analysisState: entry.analysisState,
+                                        isProvisional: entry.isProvisional,
+                                        thumbnailStorageKey: entry.thumbnailStorageKey,
+                                        onOpen: { onOpenMeal(entry.id) },
+                                        onRetry: { onRetryMeal(entry.id) }
+                                    )
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) {
+                                            onDeleteMeal(entry.id)
+                                        } label: {
+                                            Label("Löschen", systemImage: "trash")
+                                        }
+                                        .accessibilityIdentifier("meal.delete.\(entry.id)")
+                                        if entry.analysisState == .confirmed {
+                                            Button {
+                                                onDuplicateMeal(entry.id)
+                                            } label: {
+                                                Label("Duplizieren", systemImage: "plus.square.on.square")
                                             }
+                                            .tint(.blue)
+                                            .accessibilityIdentifier("meal.duplicate.\(entry.id)")
+                                        }
                                     }
-                                } header: {
-                                    sectionHeader(section)
                                 }
+                            } header: {
+                                sectionHeader(section)
                             }
                         }
-                        .listStyle(.insetGrouped)
                     }
+                    .listStyle(.insetGrouped)
                 }
             }
-            .navigationTitle("Mahlzeiten")
-            .searchable(
-                text: $searchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Mahlzeiten durchsuchen"
-            )
         }
+        .navigationTitle("Mahlzeiten")
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Mahlzeiten durchsuchen"
+        )
     }
 
     private var isSearching: Bool {

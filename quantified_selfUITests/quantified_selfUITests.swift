@@ -263,7 +263,7 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(activity.waitForExistence(timeout: 3))
         XCTAssertEqual(activity.label, "Laufende OpenRouter-Analysen: 1")
         activity.tap()
-        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 3))
         let counts = app.staticTexts["meal.analysisProgress.counts"]
         XCTAssertTrue(counts.waitForExistence(timeout: 3))
         XCTAssertEqual(counts.label, "3 Anfragen gestartet · 1 laufen · 1 erfolgreich · 1 fehlgeschlagen")
@@ -294,7 +294,8 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(mealName.waitForExistence(timeout: 3))
         mealName.tap()
 
-        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.tabBars.buttons["Heute"].exists)
         XCTAssertTrue(app.staticTexts["~785 kcal"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Bestätigt"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.buttons["meal.confirm"].exists)
@@ -376,7 +377,7 @@ final class QuantUITests: XCTestCase {
         let energy = "~\(Int((285 * multiplier).rounded())) kcal"
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", energy)).firstMatch.exists)
         XCTAssertTrue(app.staticTexts["~280 g"].exists)
-        app.buttons["Fertig"].tap()
+        app.navigationBars["Mahlzeit"].buttons["Heute"].tap()
         mealName.tap()
         for _ in 0..<4 where !rice.isHittable || rice.frame.maxY > app.frame.height * 0.65 { app.swipeUp() }
         rice.tap()
@@ -403,8 +404,8 @@ final class QuantUITests: XCTestCase {
         slider.adjust(toNormalizedSliderPosition: 0.5)
         XCTAssertTrue((slider.value as? String)?.contains("2") == true)
 
-        app.buttons["Fertig"].tap()
-        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForNonExistence(timeout: 2))
+        app.navigationBars["Mahlzeit"].buttons["Heute"].tap()
+        XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForNonExistence(timeout: 2))
         mealName.tap()
 
         let reopenedSlider = app.sliders["meal.portionMultiplier"]
@@ -425,12 +426,14 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(mealName.waitForExistence(timeout: 3))
         mealName.tap()
 
+        XCTAssertTrue(app.buttons["meal.actions"].waitForExistence(timeout: 2))
+        app.buttons["meal.actions"].tap()
         XCTAssertTrue(app.buttons["meal.delete"].waitForExistence(timeout: 2))
         app.buttons["meal.delete"].tap()
         XCTAssertTrue(app.buttons["Mahlzeit löschen"].waitForExistence(timeout: 2))
         app.buttons["Mahlzeit löschen"].tap()
 
-        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForNonExistence(timeout: 2))
+        XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForNonExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Chicken Curry mit Reis"].exists)
     }
 
@@ -447,15 +450,17 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(mealName.waitForExistence(timeout: 3))
         mealName.tap()
 
+        XCTAssertTrue(app.buttons["meal.actions"].waitForExistence(timeout: 2))
+        app.buttons["meal.actions"].tap()
         let duplicateButton = app.buttons["meal.duplicate"]
         XCTAssertTrue(duplicateButton.waitForExistence(timeout: 2))
         duplicateButton.tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["meal.duplicateSuccess"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.navigationBars["Analyse prüfen"].exists)
+        XCTAssertTrue(app.navigationBars["Mahlzeit"].exists)
 
-        app.buttons["Fertig"].tap()
-        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForNonExistence(timeout: 2))
+        app.navigationBars["Mahlzeit"].buttons["Heute"].tap()
+        XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForNonExistence(timeout: 2))
         XCTAssertEqual(
             app.staticTexts.matching(NSPredicate(format: "label == %@", "Chicken Curry mit Reis")).count,
             2
@@ -477,12 +482,11 @@ final class QuantUITests: XCTestCase {
             .firstMatch
         XCTAssertTrue(mealButton.waitForExistence(timeout: 5))
         mealButton.tap()
-        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForExistence(timeout: 5))
 
         let captureForm = app.descendants(matching: .any)["meal.captureForm"]
         XCTAssertTrue(captureForm.waitForExistence(timeout: 4))
         XCTAssertEqual(captureForm.value as? String, "Kamera")
-        XCTAssertFalse(app.navigationBars["Analyse prüfen"].exists)
+        XCTAssertFalse(app.navigationBars["Mahlzeit"].exists)
     }
 
     @MainActor
@@ -523,7 +527,7 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(mealButton.waitForExistence(timeout: 3))
         mealButton.tap()
 
-        XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 2))
         let reason = app.descendants(matching: .any)["meal.analysisFailureReason"]
         XCTAssertTrue(reason.waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Grund des Fehlers"].exists)
