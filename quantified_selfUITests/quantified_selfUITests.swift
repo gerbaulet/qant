@@ -299,6 +299,7 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["~785 kcal"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Bestätigt"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.buttons["meal.confirm"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["meal.actionBar"].exists)
 
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "Nutrition analysis review"
@@ -502,9 +503,18 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(mealName.waitForExistence(timeout: 3))
         mealName.tap()
 
-        XCTAssertTrue(app.textFields["meal.clarificationAnswer"].waitForExistence(timeout: 2))
+        let answerField = app.textFields["meal.clarificationAnswer"]
+        let submitButton = app.buttons["meal.submitClarification"]
+        XCTAssertTrue(answerField.waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["meal.bestEstimate"].waitForExistence(timeout: 2))
-        XCTAssertFalse(app.buttons["meal.submitClarification"].isEnabled)
+        XCTAssertTrue(app.descendants(matching: .any)["meal.actionBar"].exists)
+        XCTAssertFalse(submitButton.isEnabled)
+
+        answerField.tap()
+        answerField.typeText("Etwa 250 Gramm")
+        XCTAssertTrue(answerField.isHittable)
+        XCTAssertTrue(submitButton.isHittable)
+        XCTAssertLessThanOrEqual(answerField.frame.maxY, submitButton.frame.minY)
 
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "Nutrition clarification"

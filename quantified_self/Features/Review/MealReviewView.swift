@@ -3,6 +3,11 @@ import SwiftData
 import SwiftUI
 
 struct MealReviewView: View {
+    private enum FocusedField: Hashable {
+        case clarification
+        case description
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Bindable var meal: Meal
 
@@ -23,6 +28,7 @@ struct MealReviewView: View {
     @State private var successMessage: String?
     @State private var editedTimestamp: Date
     @State private var portionAdjustment: PortionAdjustmentDraft
+    @FocusState private var focusedField: FocusedField?
 #if DEBUG
     @State private var hasTriggeredUITestQuickCapture = false
 #endif
@@ -51,11 +57,8 @@ struct MealReviewView: View {
     var body: some View {
         let portionMultipliers = PortionMultiplierSnapshot()
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 20) {
-                photoStrip
+            LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
                 titleSection
-                failureSection
-                liveAnalysisSection
 
                 if let revision = meal.activeRevision {
                     PortionNutritionSummary(
@@ -63,8 +66,16 @@ struct MealReviewView: View {
                         adjustment: portionAdjustment,
                         onCommit: { persistPortionMultiplier(for: revision) }
                     )
+                }
+
+                failureSection
+                liveAnalysisSection
+
+                if let revision = meal.activeRevision {
                     confidenceSection(revision)
                     clarificationSection(revision)
+                    photoStrip
+                    correctionAction
                     PortionComponentsSection(
                         revision: revision,
                         adjustment: portionAdjustment,
@@ -78,12 +89,14 @@ struct MealReviewView: View {
                     revisionHistorySection(portionMultipliers: portionMultipliers)
                     revisionFootnote(revision)
                 } else {
+                    photoStrip
                     unavailableState
                 }
             }
-            .padding()
-            .padding(.bottom, 96)
+            .padding(.horizontal, QuantLayout.pageInset)
+            .padding(.bottom, QuantLayout.sectionSpacing)
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Mahlzeit")
         .navigationBarTitleDisplayMode(.inline)
@@ -123,7 +136,6 @@ struct MealReviewView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(.green, in: .capsule)
-                    .shadow(radius: 6, y: 3)
                     .padding(.top, 8)
                     .accessibilityIdentifier("meal.duplicateSuccess")
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -185,17 +197,21 @@ struct MealReviewView: View {
     private var photoStrip: some View {
         let images = meal.images.sorted { $0.sortIndex < $1.sortIndex }
         if !images.isEmpty {
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 12) {
-                    ForEach(images) { image in
-                        StoredMealThumbnailView(
-                            storageKey: image.thumbnailStorageKey,
-                            size: 132
-                        )
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Fotos")
+                    .font(.headline)
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 12) {
+                        ForEach(images) { image in
+                            StoredMealThumbnailView(
+                                storageKey: image.thumbnailStorageKey,
+                                size: 132
+                            )
+                        }
                     }
                 }
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
         }
     }
 
@@ -203,34 +219,17 @@ struct MealReviewView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(meal.activeRevision?.mealName ?? "Mahlzeit")
                 .font(.largeTitle.bold())
-            HStack(spacing: 10) {
-                Button {
-                    editedTimestamp = meal.timestamp
-                    showsTimestampEditor = true
-                } label: {
-                    Label {
-                        Text(
-                            meal.timestamp,
-                            format: .dateTime
-                                .weekday()
-                                .day()
-                                .month()
-                                .hour()
-                                .minute()
-                                .locale(Locale(identifier: "de_DE"))
-                        )
-                    } icon: {
-                        Image(systemName: "pencil")
-                    }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    timestampButton
+                    Spacer(minLength: 4)
+                    MealStatusBadge(state: meal.analysisState)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Zeitpunkt ändern")
-                .accessibilityIdentifier("meal.editTimestamp")
-                Label(meal.analysisState.reviewTitle, systemImage: meal.analysisState.reviewSystemImage)
-                    .foregroundStyle(meal.analysisState.reviewColor)
+                VStack(alignment: .leading, spacing: 8) {
+                    timestampButton
+                    MealStatusBadge(state: meal.analysisState)
+                }
             }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
 
             if let comment = meal.userComment {
                 Label(comment, systemImage: "text.bubble")
@@ -240,23 +239,54 @@ struct MealReviewView: View {
         }
     }
 
-    private func confidenceSection(_ revision: MealAnalysisRevision) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            LabeledContent("Vertrauen") {
-                Label(revision.confidence.reviewTitle, systemImage: "gauge.with.dots.needle.50percent")
-                    .foregroundStyle(revision.confidence.reviewColor)
+    private var timestampButton: some View {
+        Button {
+            editedTimestamp = meal.timestamp
+            showsTimestampEditor = true
+        } label: {
+            Label {
+                Text(
+                    meal.timestamp,
+                    format: .dateTime
+                        .weekday()
+                        .day()
+                        .month()
+                        .hour()
+                        .minute()
+                        .locale(Locale(identifier: "de_DE"))
+                )
+            } icon: {
+                Image(systemName: "pencil")
             }
-            if let uncertainty = revision.uncertaintySummary, !uncertainty.isEmpty {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Mögliche Unsicherheit")
-                        .font(.subheadline.bold())
-                    Text(uncertainty)
-                        .foregroundStyle(.secondary)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Zeitpunkt ändern")
+        .accessibilityIdentifier("meal.editTimestamp")
+    }
+
+    @ViewBuilder
+    private func confidenceSection(_ revision: MealAnalysisRevision) -> some View {
+        if revision.confidence != .high || nonempty(revision.uncertaintySummary) != nil {
+            QuantCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Label("Schätzsicherheit", systemImage: "gauge.with.dots.needle.50percent")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text(revision.confidence.reviewTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(revision.confidence.reviewColor)
+                    }
+                    if let uncertainty = nonempty(revision.uncertaintySummary) {
+                        Text(uncertainty)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
-        .padding(18)
-        .background(.background, in: .rect(cornerRadius: 18))
     }
 
     @ViewBuilder
@@ -270,19 +300,30 @@ struct MealReviewView: View {
                     .foregroundStyle(.orange)
                 Text(question)
                     .font(.title3.weight(.semibold))
-                TextField("Antwort eingeben", text: $clarificationAnswer, axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(isWorking || clarificationLimitReached)
-                    .accessibilityIdentifier("meal.clarificationAnswer")
                 if clarificationLimitReached {
                     Text("Das Rückfragelimit ist erreicht. Nutze jetzt die beste Schätzung.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(18)
-            .background(.orange.opacity(0.1), in: .rect(cornerRadius: 18))
+            .padding(QuantLayout.cardPadding)
+            .background(
+                .orange.opacity(0.1),
+                in: .rect(cornerRadius: QuantLayout.cardCornerRadius)
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var correctionAction: some View {
+        if meal.analysisState == .confirmed || meal.analysisState == .awaitingConfirmation {
+            Button(action: { showsCorrectionEntry = true }) {
+                Label("Nachträglich korrigieren", systemImage: "pencil")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .disabled(isWorking)
+            .accessibilityIdentifier("meal.correct")
         }
     }
 
@@ -309,8 +350,11 @@ struct MealReviewView: View {
                 }
                 .padding(.top, 10)
             }
-            .padding(18)
-            .background(.background, in: .rect(cornerRadius: 18))
+            .padding(QuantLayout.cardPadding)
+            .background(
+                .background,
+                in: .rect(cornerRadius: QuantLayout.cardCornerRadius)
+            )
         }
     }
 
@@ -446,9 +490,12 @@ struct MealReviewView: View {
                     }
                 }
             }
-            .padding()
+            .padding(QuantLayout.cardPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+            .background(
+                .background,
+                in: .rect(cornerRadius: QuantLayout.cardCornerRadius)
+            )
         }
     }
 
@@ -553,8 +600,11 @@ struct MealReviewView: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(18)
-            .background(.background, in: .rect(cornerRadius: 18))
+            .padding(QuantLayout.cardPadding)
+            .background(
+                .background,
+                in: .rect(cornerRadius: QuantLayout.cardCornerRadius)
+            )
             .accessibilityIdentifier("meal.analysisFailureReason")
         }
     }
@@ -606,6 +656,7 @@ struct MealReviewView: View {
                     TextField("Mahlzeit beschreiben", text: $descriptionText, axis: .vertical)
                         .lineLimit(2...5)
                         .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .description)
                         .disabled(isWorking)
                         .accessibilityIdentifier("meal.description")
                     Button(action: saveDescriptionAndAnalyze) {
@@ -621,6 +672,13 @@ struct MealReviewView: View {
         } else if meal.analysisState == .needsClarification {
             actionBar {
                 VStack(spacing: 10) {
+                    TextField("Antwort eingeben", text: $clarificationAnswer, axis: .vertical)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .clarification)
+                        .disabled(isWorking || clarificationLimitReached)
+                        .accessibilityIdentifier("meal.clarificationAnswer")
+
                     Button(action: submitClarification) {
                         Label("Antwort senden", systemImage: "paperplane.fill")
                             .frame(maxWidth: .infinity)
@@ -646,22 +704,6 @@ struct MealReviewView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-            }
-        } else if meal.analysisState == .confirmed || meal.analysisState == .awaitingConfirmation {
-            actionBar {
-                VStack(spacing: 10) {
-                    Label("Bestätigt", systemImage: "checkmark.seal.fill")
-                        .font(.headline)
-                        .foregroundStyle(.green)
-                        .frame(maxWidth: .infinity)
-                    Button(action: { showsCorrectionEntry = true }) {
-                        Label("Nachträglich korrigieren", systemImage: "pencil")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(isWorking)
-                    .accessibilityIdentifier("meal.correct")
-                }
             }
         } else if meal.analysisState == .failed {
             actionBar {
@@ -732,9 +774,10 @@ struct MealReviewView: View {
 
     private func actionBar<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
-            .padding(.horizontal)
+            .padding(.horizontal, QuantLayout.pageInset)
             .padding(.vertical, 12)
             .background(.bar)
+            .accessibilityIdentifier("meal.actionBar")
     }
 
     private var clarificationLimitReached: Bool {
@@ -1068,8 +1111,11 @@ private struct PortionNutritionSummary: View {
                 }
             }
         }
-        .padding(20)
-        .background(.background, in: .rect(cornerRadius: 22))
+        .padding(QuantLayout.heroCardPadding)
+        .background(
+            .background,
+            in: .rect(cornerRadius: QuantLayout.heroCardCornerRadius)
+        )
     }
 
     private func macroTile(
@@ -1136,8 +1182,11 @@ private struct PortionComponentsSection: View {
                     }
                 }
             }
-            .padding(18)
-            .background(.background, in: .rect(cornerRadius: 18))
+            .padding(QuantLayout.cardPadding)
+            .background(
+                .background,
+                in: .rect(cornerRadius: QuantLayout.cardCornerRadius)
+            )
         }
     }
 }
@@ -1234,8 +1283,11 @@ private struct PortionAdditionalNutrientsSection: View {
             }
             .padding(.top, 12)
         }
-        .padding(18)
-        .background(.background, in: .rect(cornerRadius: 18))
+        .padding(QuantLayout.cardPadding)
+        .background(
+            .background,
+            in: .rect(cornerRadius: QuantLayout.cardCornerRadius)
+        )
     }
 
     private var additionalNutrients: [NutrientValue] {
@@ -1251,42 +1303,6 @@ private struct PortionAdditionalNutrientsSection: View {
 
     private func formattedValue(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(value < 10 ? 1 : 0)))
-    }
-}
-
-private extension AnalysisState {
-    var reviewTitle: LocalizedStringKey {
-        switch self {
-        case .awaitingDescription: "Beschreibung fehlt"
-        case .pending: "Ausstehend"
-        case .analyzing: "Wird analysiert"
-        case .needsClarification: "Rückfrage"
-        case .awaitingConfirmation: "Bestätigt"
-        case .confirmed: "Bestätigt"
-        case .failed: "Fehlgeschlagen"
-        }
-    }
-
-    var reviewSystemImage: String {
-        switch self {
-        case .awaitingDescription: "text.bubble.fill"
-        case .pending: "clock"
-        case .analyzing: "sparkles"
-        case .needsClarification: "questionmark.circle.fill"
-        case .awaitingConfirmation: "checkmark.seal.fill"
-        case .confirmed: "checkmark.seal.fill"
-        case .failed: "exclamationmark.triangle.fill"
-        }
-    }
-
-    var reviewColor: Color {
-        switch self {
-        case .awaitingDescription: .orange
-        case .pending, .analyzing: .secondary
-        case .needsClarification: .orange
-        case .awaitingConfirmation, .confirmed: .green
-        case .failed: .red
-        }
     }
 }
 
