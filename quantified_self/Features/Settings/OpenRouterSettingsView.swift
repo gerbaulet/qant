@@ -14,6 +14,7 @@ struct OpenRouterSettingsView: View {
     @State private var trafficLogMessageIsError = false
     @State private var showsTrafficLog = false
     @State private var hasFileBackedImages = false
+    @State private var hasLoadedInitialSettings = false
     private let isActive: Bool
     private let weeklyReminderScheduler = WeeklySummaryNotificationScheduler()
 
@@ -211,10 +212,13 @@ struct OpenRouterSettingsView: View {
             .navigationTitle("Einstellungen")
             .task(id: isActive) {
                 guard isActive else { return }
-                hasFileBackedImages = (try? CloudSyncReadinessImageLookup.containsImages(
-                    in: modelContext
-                )) ?? false
-                viewModel.load()
+                if !hasLoadedInitialSettings {
+                    hasFileBackedImages = (try? CloudSyncReadinessImageLookup.containsImages(
+                        in: modelContext
+                    )) ?? false
+                    viewModel.load()
+                    hasLoadedInitialSettings = true
+                }
                 if viewModel.hasStoredAPIKey {
                     await viewModel.loadModelOptions()
                 }
