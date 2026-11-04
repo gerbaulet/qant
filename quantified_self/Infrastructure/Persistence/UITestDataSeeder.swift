@@ -13,7 +13,10 @@ enum UITestDataSeeder {
         let wantsClarification = arguments.contains("--ui-testing-review-clarification")
         let wantsFailure = arguments.contains("--ui-testing-review-failure")
         let wantsProgress = arguments.contains("--ui-testing-review-progress")
-        guard wantsConfirmation || wantsConfirmed || wantsClarification || wantsFailure || wantsProgress else { return }
+        let wantsPhoto = arguments.contains("--ui-testing-review-photo")
+        let shouldSeed = wantsConfirmation || wantsConfirmed || wantsClarification || wantsFailure ||
+            wantsProgress || wantsPhoto
+        guard shouldSeed else { return }
 
         let status: AnalysisState = wantsConfirmed ? .confirmed : wantsProgress ? .analyzing : wantsFailure
             ? .failed
@@ -64,6 +67,13 @@ enum UITestDataSeeder {
             analysisState: status,
             activeRevisionID: wantsFailure ? nil : revision.id,
             clarificationCount: wantsConfirmation ? 1 : 0,
+            images: wantsPhoto ? [MealImage(
+                sortIndex: 0,
+                imageStorageKey: "ui-test/missing-image.jpg",
+                thumbnailStorageKey: "ui-test/missing-thumbnail.jpg",
+                pixelWidth: 1_200,
+                pixelHeight: 900
+            )] : [],
             analysisRevisions: [revision]
         )
         context.insert(meal)

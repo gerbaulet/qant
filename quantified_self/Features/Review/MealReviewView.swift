@@ -25,6 +25,7 @@ struct MealReviewView: View {
     @State private var showsCorrectionEntry = false
     @State private var showsDeleteConfirmation = false
     @State private var showsTimestampEditor = false
+    @State private var selectedPhoto: MealImage?
     @State private var successMessage: String?
     @State private var editedTimestamp: Date
     @State private var portionAdjustment: PortionAdjustmentDraft
@@ -147,6 +148,12 @@ struct MealReviewView: View {
         .sheet(isPresented: $showsTimestampEditor) {
             timestampEditor
         }
+        .fullScreenCover(item: $selectedPhoto) { image in
+            MealPhotoViewer(
+                storageKey: image.imageStorageKey,
+                imageStorage: imageStorage
+            )
+        }
         .confirmationDialog(
             "Mahlzeit löschen?",
             isPresented: $showsDeleteConfirmation,
@@ -202,11 +209,19 @@ struct MealReviewView: View {
                     .font(.headline)
                 ScrollView(.horizontal) {
                     LazyHStack(spacing: 12) {
-                        ForEach(images) { image in
-                            StoredMealThumbnailView(
-                                storageKey: image.thumbnailStorageKey,
-                                size: 132
-                            )
+                        ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
+                            Button {
+                                selectedPhoto = image
+                            } label: {
+                                StoredMealThumbnailView(
+                                    storageKey: image.thumbnailStorageKey,
+                                    size: 132
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Foto \(index + 1) vergrößern")
+                            .accessibilityHint("Öffnet eine Ansicht zum Zoomen")
+                            .accessibilityIdentifier("meal.photo.\(image.id.uuidString)")
                         }
                     }
                 }

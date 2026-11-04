@@ -170,6 +170,32 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testOpensMealPhotoViewer() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-photo",
+        ])
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+
+        let photo = app.buttons
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "meal.photo."))
+            .firstMatch
+        for _ in 0..<5 where !photo.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(photo.waitForExistence(timeout: 2))
+        photo.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["meal.photoViewer"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["meal.closePhotoViewer"].exists)
+    }
+
+    @MainActor
     func testOpenRouterLogFinishesLoadingAndKeepsTabsResponsive() throws {
         let app = XCUIApplication()
         app.launchArguments.append("--ui-testing")
