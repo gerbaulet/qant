@@ -27,6 +27,8 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(captureNavigationBar.waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["meal.photoLibrary"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["meal.camera"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["meal.detailsDisclosure"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["meal.timestamp"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["meal.categoryDisclosure"].exists)
         XCTAssertFalse(app.staticTexts["Art der Mahlzeit"].exists)
 
@@ -62,6 +64,42 @@ final class QuantUITests: XCTestCase {
         savedMealScreenshot.name = "Saved meal analysis failure and retry"
         savedMealScreenshot.lifetime = .keepAlways
         add(savedMealScreenshot)
+    }
+
+    @MainActor
+    func testConfirmsInteractiveDismissForUnsavedMealCapture() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let addFoodButton = app.buttons["today.addFood"]
+        XCTAssertTrue(addFoodButton.waitForExistence(timeout: 3))
+        addFoodButton.tap()
+
+        let captureNavigationBar = app.navigationBars["Neue Mahlzeit"]
+        XCTAssertTrue(captureNavigationBar.waitForExistence(timeout: 2))
+        let commentField = app.textFields["meal.comment"]
+        for _ in 0..<3 where !commentField.isHittable { app.swipeUp() }
+        XCTAssertTrue(commentField.isHittable)
+        commentField.tap()
+        commentField.typeText("Nicht gespeicherte Mahlzeit")
+        app.buttons["Fertig"].tap()
+
+        let discardButton = app.buttons["Verwerfen"]
+        let dismissHandle = app.descendants(matching: .any)["meal.dismissHandle"]
+        XCTAssertTrue(dismissHandle.waitForExistence(timeout: 2))
+        let sheetHandle = dismissHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let dismissTarget = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+        sheetHandle.press(forDuration: 0.1, thenDragTo: dismissTarget)
+        XCTAssertTrue(discardButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Änderungen verwerfen?"].exists)
+
+        app.buttons["Weiter bearbeiten"].tap()
+        XCTAssertTrue(captureNavigationBar.exists)
+        app.buttons["Abbrechen"].tap()
+        XCTAssertTrue(discardButton.waitForExistence(timeout: 2))
+        discardButton.tap()
+        XCTAssertTrue(captureNavigationBar.waitForNonExistence(timeout: 2))
     }
 
     @MainActor

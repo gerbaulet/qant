@@ -15,6 +15,7 @@ struct MealCaptureView: View {
     private let analysisProvider: any NutritionAnalysisProviding
     private let opensCameraOnAppear: Bool
     private let cameraCaptureFlow: CameraCaptureFlow
+    private let initialTimestamp: Date
 
     @State private var timestamp: Date
     @State private var comment = ""
@@ -24,7 +25,8 @@ struct MealCaptureView: View {
     @State private var isImportingImages = false
     @State private var isSaving = false
     @State private var alert: CaptureAlert?
-    @State private var showsTimestamp = false
+    @State private var showsDetails = false
+    @State private var showsDiscardConfirmation = false
     @State private var hasAttemptedAutomaticCamera = false
     @FocusState private var commentIsFocused: Bool
 
@@ -38,196 +40,239 @@ struct MealCaptureView: View {
         self.analysisProvider = analysisProvider
         self.opensCameraOnAppear = opensCameraOnAppear
         self.cameraCaptureFlow = .forCapture(openedFromShortcut: opensCameraOnAppear)
+        self.initialTimestamp = now
         _timestamp = State(initialValue: now)
     }
 
     var body: some View {
         NavigationStack {
-            Form {
-                if opensCameraOnAppear {
-                    Section {
-                        HStack {
+            captureContent
+                .accessibilityIdentifier("meal.captureForm")
+                .accessibilityValue(opensCameraOnAppear ? "Kamera" : "Standard")
+                .background(Color(.systemGroupedBackground))
+                .navigationTitle(opensCameraOnAppear ? "Schnellaufnahme" : "Neue Mahlzeit")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Abbrechen", action: requestDismiss)
+                            .disabled(isSaving)
+                    }
+
+                    if !opensCameraOnAppear {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Speichern") { save() }
+                                .fontWeight(.semibold)
+                                .disabled(isSaving || isImportingImages)
+                                .accessibilityIdentifier("meal.save")
+                        }
+                    }
+
+                    if !opensCameraOnAppear {
+                        ToolbarItemGroup(placement: .keyboard) {
                             Spacer()
-                            ProgressView("Kamera wird geöffnet …")
-                            Spacer()
-                        }
-                    }
-                } else {
-                    photosSection
-
-                    Section {
-                        TextField(
-                            "z. B. große Portion, ungefähr 350 g",
-                            text: $comment,
-                            axis: .vertical
-                        )
-                        .lineLimit(4...8)
-                        .focused($commentIsFocused)
-                        .accessibilityIdentifier("meal.comment")
-                    } header: {
-                        Text("Kommentar (optional)")
-                    } footer: {
-                        Text("Gewicht, Portionsgröße oder besondere Zutaten helfen später bei der Analyse.")
-                    }
-
-                    timestampSection
-                }
-            }
-            .accessibilityIdentifier("meal.captureForm")
-            .accessibilityValue(opensCameraOnAppear ? "Kamera" : "Standard")
-            .navigationTitle(opensCameraOnAppear ? "Schnellaufnahme" : "Neue Mahlzeit")
-            .navigationBarTitleDisplayMode(.inline)
-            .interactiveDismissDisabled(isSaving)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Abbrechen") {
-                        dismiss()
-                    }
-                    .disabled(isSaving)
-                }
-
-                if !opensCameraOnAppear {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Speichern") { save() }
-                            .fontWeight(.semibold)
-                            .disabled(isSaving || isImportingImages)
-                            .accessibilityIdentifier("meal.save")
-                    }
-                }
-
-                if !opensCameraOnAppear {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Fertig") {
-                            commentIsFocused = false
-                        }
-                    }
-                }
-            }
-            .onChange(of: photoPickerItems) { _, items in
-                guard !items.isEmpty else { return }
-                Task { await importPhotos(items) }
-            }
-            .task {
-                guard opensCameraOnAppear, !hasAttemptedAutomaticCamera else { return }
-                try? await Task.sleep(for: .milliseconds(300))
-                guard !Task.isCancelled else { return }
-                hasAttemptedAutomaticCamera = true
-                requestCamera()
-            }
-            .fullScreenCover(isPresented: $showsCamera) {
-                if cameraCaptureFlow == .useImmediately {
-                    DirectCameraCaptureView { imageData in
-                        Task { await saveQuickCapture(imageData) }
-                    } onCancel: {
-                        showsCamera = false
-                        dismiss()
-                    } onFailure: {
-                        showsCamera = false
-                        alert = .cameraCaptureFailed
-                    }
-                    .ignoresSafeArea()
-                } else {
-                    CameraPicker { imageData in
-                        showsCamera = false
-                        Task {
-                            isImportingImages = true
-                            defer { isImportingImages = false }
-                            await addImageData(imageData)
-                        }
-                    } onCancel: {
-                        showsCamera = false
-                    }
-                    .ignoresSafeArea()
-                }
-            }
-            .alert(item: $alert) { alert in
-                if alert.offersSettings {
-                    Alert(
-                        title: Text(alert.title),
-                        message: Text(alert.message),
-                        primaryButton: .default(Text("Einstellungen öffnen"), action: openSettings),
-                        secondaryButton: .cancel(Text("Abbrechen"))
-                    )
-                } else {
-                    Alert(
-                        title: Text(alert.title),
-                        message: Text(alert.message),
-                        dismissButton: .default(Text("OK"))
-                    )
-                }
-            }
-        }
-    }
-
-    private var timestampSection: some View {
-        Section {
-            DisclosureGroup("Zeitpunkt", isExpanded: $showsTimestamp) {
-                DatePicker(
-                    "Mahlzeit",
-                    selection: $timestamp,
-                    displayedComponents: [.date, .hourAndMinute]
-                )
-                .accessibilityIdentifier("meal.timestamp")
-            }
-            .accessibilityIdentifier("meal.timestampDisclosure")
-        }
-    }
-
-    private var photosSection: some View {
-        Section {
-            if attachedImages.isEmpty {
-                Label("Noch keine Fotos ausgewählt", systemImage: "photo.on.rectangle.angled")
-                    .foregroundStyle(.secondary)
-            } else {
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 12) {
-                        ForEach(attachedImages) { image in
-                            PendingMealImageThumbnail(image: image) {
-                                attachedImages.removeAll { $0.id == image.id }
+                            Button("Fertig") {
+                                commentIsFocused = false
                             }
                         }
                     }
-                    .padding(.vertical, 4)
                 }
-                .scrollIndicators(.hidden)
+                .onChange(of: photoPickerItems) { _, items in
+                    guard !items.isEmpty else { return }
+                    Task { await importPhotos(items) }
+                }
+                .task {
+                    guard opensCameraOnAppear, !hasAttemptedAutomaticCamera else { return }
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
+                    hasAttemptedAutomaticCamera = true
+                    requestCamera()
+                }
+                .fullScreenCover(isPresented: $showsCamera) {
+                    if cameraCaptureFlow == .useImmediately {
+                        DirectCameraCaptureView { imageData in
+                            Task { await saveQuickCapture(imageData) }
+                        } onCancel: {
+                            showsCamera = false
+                            dismiss()
+                        } onFailure: {
+                            showsCamera = false
+                            alert = .cameraCaptureFailed
+                        }
+                        .ignoresSafeArea()
+                    } else {
+                        CameraPicker { imageData in
+                            showsCamera = false
+                            Task {
+                                isImportingImages = true
+                                defer { isImportingImages = false }
+                                await addImageData(imageData)
+                            }
+                        } onCancel: {
+                            showsCamera = false
+                        }
+                        .ignoresSafeArea()
+                    }
+                }
+                .alert(item: $alert) { alert in
+                    if alert.offersSettings {
+                        Alert(
+                            title: Text(alert.title),
+                            message: Text(alert.message),
+                            primaryButton: .default(Text("Einstellungen öffnen"), action: openSettings),
+                            secondaryButton: .cancel(Text("Abbrechen"))
+                        )
+                    } else {
+                        Alert(
+                            title: Text(alert.title),
+                            message: Text(alert.message),
+                            dismissButton: .default(Text("OK"))
+                        )
+                    }
+                }
+                .alert("Änderungen verwerfen?", isPresented: $showsDiscardConfirmation) {
+                    Button("Weiter bearbeiten", role: .cancel) {}
+                    Button("Verwerfen", role: .destructive) { dismiss() }
+                } message: {
+                    Text("Fotos, Kommentar und geänderter Zeitpunkt werden nicht gespeichert.")
+                }
+        }
+        .interactiveDismissDisabled(isSaving || hasUnsavedChanges)
+        .overlay(alignment: .top) {
+            if hasUnsavedChanges, !isSaving {
+                SheetDismissAttemptGestureView(onAttempt: handleInteractiveDismissAttempt)
+                    .frame(width: 144, height: 120)
+                    .accessibilityIdentifier("meal.dismissHandle")
             }
+        }
+    }
 
-            HStack(spacing: 12) {
+    @ViewBuilder
+    private var captureContent: some View {
+        if opensCameraOnAppear {
+            VStack {
+                Spacer()
+                ProgressView("Kamera wird geöffnet …")
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
+                    photosCard
+                    commentCard
+                    detailsCard
+                }
+                .padding(.horizontal, QuantLayout.pageInset)
+                .padding(.vertical, QuantLayout.sectionSpacing)
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+    }
+
+    private var commentCard: some View {
+        QuantCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Kommentar (optional)")
+                    .font(.headline)
+                TextField(
+                    "z. B. große Portion, ungefähr 350 g",
+                    text: $comment,
+                    axis: .vertical
+                )
+                .lineLimit(4...8)
+                .textFieldStyle(.roundedBorder)
+                .focused($commentIsFocused)
+                .accessibilityIdentifier("meal.comment")
+                Text("Gewicht, Portionsgröße oder besondere Zutaten helfen bei der Analyse.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var detailsCard: some View {
+        QuantCard {
+            DisclosureGroup("Details", isExpanded: $showsDetails) {
+                DatePicker(
+                    "Zeitpunkt",
+                    selection: $timestamp,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .padding(.top, 12)
+                .accessibilityIdentifier("meal.timestamp")
+            }
+            .accessibilityIdentifier("meal.detailsDisclosure")
+        }
+    }
+
+    private var photosCard: some View {
+        QuantCard(style: .hero) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Fotos")
+                    .font(.headline)
+
+                if attachedImages.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 36, weight: .medium))
+                            .foregroundStyle(.tint)
+                        Text("Fotografiere die Mahlzeit")
+                            .font(.title3.weight(.semibold))
+                        Text("Zusätzliche Fotos von Verpackung oder Nährwerttabelle verbessern die Schätzung.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                } else {
+                    ScrollView(.horizontal) {
+                        LazyHStack(spacing: 12) {
+                            ForEach(attachedImages) { image in
+                                PendingMealImageThumbnail(image: image) {
+                                    attachedImages.removeAll { $0.id == image.id }
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .scrollIndicators(.hidden)
+                }
+
+                Button(action: requestCamera) {
+                    Label("Kamera öffnen", systemImage: "camera.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(!canAddImages || isImportingImages || isSaving)
+                .accessibilityIdentifier("meal.camera")
+
                 PhotosPicker(
                     selection: $photoPickerItems,
                     maxSelectionCount: remainingImageCapacity,
                     matching: .images
                 ) {
-                    Label("Mediathek", systemImage: "photo.on.rectangle")
+                    Label("Aus Mediathek wählen", systemImage: "photo.on.rectangle")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
                 .disabled(!canAddImages || isImportingImages || isSaving)
                 .accessibilityIdentifier("meal.photoLibrary")
 
-                Button(action: requestCamera) {
-                    Label("Kamera", systemImage: "camera")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!canAddImages || isImportingImages || isSaving)
-                .accessibilityIdentifier("meal.camera")
-            }
-
-            if isImportingImages {
-                HStack {
-                    ProgressView()
-                    Text("Fotos werden vorbereitet …")
+                if isImportingImages {
+                    HStack {
+                        ProgressView()
+                        Text("Fotos werden vorbereitet …")
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("Bis zu \(Self.maximumImageCount) Fotos, zum Beispiel Übersicht, Verpackung oder Nährwerttabelle.")
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-            } else {
-                Text("Bis zu \(Self.maximumImageCount) Fotos, zum Beispiel Übersicht, Verpackung oder Nährwerttabelle.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
-        } header: {
-            Text("Fotos")
         }
     }
 
@@ -237,6 +282,25 @@ struct MealCaptureView: View {
 
     private var remainingImageCapacity: Int {
         max(1, Self.maximumImageCount - attachedImages.count)
+    }
+
+    private var hasUnsavedChanges: Bool {
+        !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !attachedImages.isEmpty ||
+            abs(timestamp.timeIntervalSince(initialTimestamp)) > 0.5
+    }
+
+    private func requestDismiss() {
+        if hasUnsavedChanges {
+            showsDiscardConfirmation = true
+        } else {
+            dismiss()
+        }
+    }
+
+    private func handleInteractiveDismissAttempt() {
+        guard hasUnsavedChanges, !isSaving else { return }
+        showsDiscardConfirmation = true
     }
 
     private func importPhotos(_ items: [PhotosPickerItem]) async {
@@ -347,6 +411,65 @@ struct MealCaptureView: View {
     private func openSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
+    }
+}
+
+private struct SheetDismissAttemptGestureView: UIViewRepresentable {
+    let onAttempt: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onAttempt: onAttempt)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let recognizer = UIPanGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handlePan(_:))
+        )
+        recognizer.delegate = context.coordinator
+        view.addGestureRecognizer(recognizer)
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        context.coordinator.onAttempt = onAttempt
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var onAttempt: () -> Void
+        private var hasAttempted = false
+
+        init(onAttempt: @escaping () -> Void) {
+            self.onAttempt = onAttempt
+        }
+
+        @objc func handlePan(_ recognizer: UIPanGestureRecognizer) {
+            switch recognizer.state {
+            case .began:
+                hasAttempted = false
+            case .changed:
+                let translation = recognizer.translation(in: recognizer.view)
+                guard !hasAttempted,
+                      translation.y > 100,
+                      abs(translation.y) > abs(translation.x)
+                else { return }
+                hasAttempted = true
+                onAttempt()
+            case .ended, .cancelled, .failed:
+                hasAttempted = false
+            default:
+                break
+            }
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
     }
 }
 

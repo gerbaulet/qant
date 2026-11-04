@@ -53,6 +53,8 @@ struct ContentView: View {
         }
         .sheet(item: $mealCaptureMode) { mode in
             MealCaptureView(opensCameraOnAppear: mode == .camera)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         .overlay(alignment: .topTrailing) {
             AnalysisActivityButton(
