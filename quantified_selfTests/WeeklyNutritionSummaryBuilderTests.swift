@@ -57,10 +57,10 @@ struct WeeklyNutritionSummaryBuilderTests {
         #expect(summary.hasProvisionalValues)
     }
 
-    @Test("Sunday reminder temporarily repeats every evening at 20:00")
+    @Test("Weekly reminder repeats on Sunday at 20:00")
     func reminderDateComponents() {
         let components = WeeklySummaryNotificationSchedule.sundayEvening
-        #expect(components.weekday == nil)
+        #expect(components.weekday == 1)
         #expect(components.hour == 20)
         #expect(components.minute == 0)
         #expect(components.timeZone == .autoupdatingCurrent)

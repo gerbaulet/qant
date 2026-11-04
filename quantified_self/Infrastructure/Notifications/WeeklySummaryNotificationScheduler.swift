@@ -8,9 +8,13 @@ struct WeeklySummaryNotificationSchedule: Equatable, Sendable {
     static let testDelay: TimeInterval = 5
 
     static var sundayEvening: DateComponents {
-        // Temporary test cadence: omitting the weekday makes the unchanged
-        // Sunday reminder repeat every evening.
-        DateComponents(calendar: .autoupdatingCurrent, timeZone: .autoupdatingCurrent, hour: 20, minute: 0)
+        DateComponents(
+            calendar: .autoupdatingCurrent,
+            timeZone: .autoupdatingCurrent,
+            hour: 20,
+            minute: 0,
+            weekday: 1
+        )
     }
 }
 
