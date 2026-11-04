@@ -201,8 +201,16 @@ final class QuantUITests: XCTestCase {
         XCTAssertLessThan(photo.frame.maxY, detailTitle.frame.minY)
         photo.tap()
 
-        XCTAssertTrue(app.descendants(matching: .any)["meal.photoViewer"].waitForExistence(timeout: 2))
+        let photoViewer = app.descendants(matching: .any)["meal.photoViewer"]
+        XCTAssertTrue(photoViewer.waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["meal.closePhotoViewer"].exists)
+        photoViewer.swipeDown()
+        XCTAssertTrue(photoViewer.waitForNonExistence(timeout: 2))
+
+        let reviewScroll = app.scrollViews["meal.reviewScroll"]
+        XCTAssertTrue(reviewScroll.waitForExistence(timeout: 2))
+        reviewScroll.swipeDown()
+        XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForNonExistence(timeout: 2))
     }
 
     @MainActor

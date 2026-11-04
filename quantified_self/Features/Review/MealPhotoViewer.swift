@@ -17,6 +17,25 @@ enum MealPhotoZoomPolicy {
     }
 }
 
+enum DownwardDismissGesturePolicy {
+    static let minimumTranslation: CGFloat = 120
+    static let minimumPredictedTranslation: CGFloat = 200
+
+    static func shouldDismiss(
+        translation: CGSize,
+        predictedEndTranslation: CGSize,
+        isEnabled: Bool
+    ) -> Bool {
+        guard isEnabled,
+              translation.height > 0,
+              translation.height > abs(translation.width)
+        else { return false }
+
+        return translation.height >= minimumTranslation ||
+            predictedEndTranslation.height >= minimumPredictedTranslation
+    }
+}
+
 struct MealPhotoViewer: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -32,9 +51,10 @@ struct MealPhotoViewer: View {
                 Color.black.ignoresSafeArea()
 
                 if let image {
-                    ZoomableMealPhoto(image: image)
+                    ZoomableMealPhoto(image: image, onDismiss: dismiss.callAsFunction)
                         .accessibilityLabel("Mahlzeitenfoto")
-                        .accessibilityHint("Zum Vergrößern doppeltippen oder mit zwei Fingern zoomen")
+                        .accessibilityHint("Zum Vergrößern doppeltippen oder mit zwei Fingern zoomen. Zum Schließen nach unten wischen.")
+                        .accessibilityIdentifier("meal.zoomablePhoto")
                 } else if didFailToLoad {
                     ContentUnavailableView(
                         "Foto nicht verfügbar",
@@ -48,6 +68,7 @@ struct MealPhotoViewer: View {
                         .foregroundStyle(.white)
                 }
             }
+            .simultaneousGesture(fallbackDismissGesture)
             .navigationTitle("Foto")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -81,6 +102,18 @@ struct MealPhotoViewer: View {
         }
     }
 
+    private var fallbackDismissGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onEnded { value in
+                guard DownwardDismissGesturePolicy.shouldDismiss(
+                    translation: value.translation,
+                    predictedEndTranslation: value.predictedEndTranslation,
+                    isEnabled: image == nil
+                ) else { return }
+                dismiss()
+            }
+    }
+
     nonisolated private static func decode(_ data: Data) async -> UIImage? {
         await Task.detached(priority: .userInitiated) {
             UIImage(data: data)
@@ -90,14 +123,16 @@ struct MealPhotoViewer: View {
 
 private struct ZoomableMealPhoto: UIViewRepresentable {
     let image: UIImage
+    let onDismiss: () -> Void
 
     func makeUIView(context: Context) -> ZoomingImageScrollView {
-        let scrollView = ZoomingImageScrollView()
+        let scrollView = ZoomingImageScrollView(onDismiss: onDismiss)
         scrollView.configure(image: image)
         return scrollView
     }
 
     func updateUIView(_ scrollView: ZoomingImageScrollView, context: Context) {
+        scrollView.onDismiss = onDismiss
         guard scrollView.displayedImage !== image else { return }
         scrollView.configure(image: image)
     }
@@ -106,17 +141,21 @@ private struct ZoomableMealPhoto: UIViewRepresentable {
 private final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
     private let imageView = UIImageView()
     private var previousBoundsSize = CGSize.zero
+    private var dragStartedAtDismissPosition = false
+    var onDismiss: () -> Void
 
     var displayedImage: UIImage? {
         imageView.image
     }
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
+    init(onDismiss: @escaping () -> Void) {
+        self.onDismiss = onDismiss
+        super.init(frame: .zero)
         delegate = self
         minimumZoomScale = MealPhotoZoomPolicy.minimumScale
         maximumZoomScale = MealPhotoZoomPolicy.maximumScale
         bouncesZoom = true
+        alwaysBounceVertical = true
         backgroundColor = .black
         showsHorizontalScrollIndicator = false
         showsVerticalScrollIndicator = false
@@ -131,7 +170,7 @@ private final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
 
         isAccessibilityElement = true
         accessibilityLabel = "Mahlzeitenfoto"
-        accessibilityHint = "Zum Vergrößern doppeltippen oder mit zwei Fingern zoomen"
+        accessibilityHint = "Zum Vergrößern doppeltippen oder mit zwei Fingern zoomen. Zum Schließen nach unten wischen."
     }
 
     @available(*, unavailable)
@@ -164,6 +203,29 @@ private final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         centerImage()
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        let topOffset = -adjustedContentInset.top
+        dragStartedAtDismissPosition =
+            zoomScale <= minimumZoomScale + 0.01 &&
+            contentOffset.y <= topOffset + 1
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        defer { dragStartedAtDismissPosition = false }
+        let translation = panGestureRecognizer.translation(in: self)
+        let velocity = panGestureRecognizer.velocity(in: self)
+        let predictedEndTranslation = CGSize(
+            width: translation.x + velocity.x * 0.2,
+            height: translation.y + velocity.y * 0.2
+        )
+        guard DownwardDismissGesturePolicy.shouldDismiss(
+            translation: CGSize(width: translation.x, height: translation.y),
+            predictedEndTranslation: predictedEndTranslation,
+            isEnabled: dragStartedAtDismissPosition
+        ) else { return }
+        onDismiss()
     }
 
     @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {

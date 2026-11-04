@@ -9,6 +9,7 @@ struct MealReviewView: View {
     }
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @Bindable var meal: Meal
 
     private let analysisProvider: any NutritionAnalysisProviding
@@ -29,6 +30,8 @@ struct MealReviewView: View {
     @State private var successMessage: String?
     @State private var editedTimestamp: Date
     @State private var portionAdjustment: PortionAdjustmentDraft
+    @State private var isMealScrollAtTop = true
+    @State private var mealDismissDragStartedAtTop: Bool?
     @FocusState private var focusedField: FocusedField?
 #if DEBUG
     @State private var hasTriggeredUITestQuickCapture = false
@@ -97,6 +100,13 @@ struct MealReviewView: View {
             .padding(.bottom, QuantLayout.sectionSpacing)
         }
         .scrollDismissesKeyboard(.interactively)
+        .accessibilityIdentifier("meal.reviewScroll")
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentOffset.y <= -geometry.contentInsets.top + 1
+        } action: { _, isAtTop in
+            isMealScrollAtTop = isAtTop
+        }
+        .simultaneousGesture(mealDismissGesture)
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Mahlzeit")
         .navigationBarTitleDisplayMode(.inline)
@@ -197,6 +207,25 @@ struct MealReviewView: View {
                 successMessage = nil
             }
         }
+    }
+
+    private var mealDismissGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { _ in
+                if mealDismissDragStartedAtTop == nil {
+                    mealDismissDragStartedAtTop = isMealScrollAtTop
+                }
+            }
+            .onEnded { value in
+                let startedAtTop = mealDismissDragStartedAtTop ?? isMealScrollAtTop
+                mealDismissDragStartedAtTop = nil
+                guard DownwardDismissGesturePolicy.shouldDismiss(
+                    translation: value.translation,
+                    predictedEndTranslation: value.predictedEndTranslation,
+                    isEnabled: startedAtTop
+                ) else { return }
+                dismiss()
+            }
     }
 
     @ViewBuilder
