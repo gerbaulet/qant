@@ -151,6 +151,10 @@ final class QuantUITests: XCTestCase {
         app.swipeUp()
         XCTAssertTrue(app.secureTextFields["settings.openRouterAPIKey"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["settings.openRouterModelPicker"].waitForExistence(timeout: 2))
+        let advancedModelOptions = app.buttons["settings.openRouterAdvancedModelOptions"]
+        XCTAssertTrue(advancedModelOptions.waitForExistence(timeout: 2))
+        advancedModelOptions.tap()
+        XCTAssertTrue(app.textFields["settings.openRouterManualModelIdentifier"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["settings.openRouterProviderPreference"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["settings.loadOpenRouterModels"].waitForExistence(timeout: 2))
         let testConnectionButton = app.buttons["settings.testOpenRouter"]

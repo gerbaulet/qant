@@ -63,8 +63,8 @@ struct OpenRouterSettingsViewModelTests {
         #expect(catalog.requestCount == 1)
     }
 
-    @Test("Loading replaces a model that is absent from the catalog")
-    func replacesUnavailableStoredModel() {
+    @Test("Loading preserves a manually entered model that is absent from the catalog")
+    func preservesManualStoredModel() {
         let settings = SettingsStoreStub()
         settings.modelIdentifier = "removed/model"
         settings.modelCatalogCache = OpenRouterModelCatalogCache(
@@ -78,11 +78,11 @@ struct OpenRouterSettingsViewModelTests {
 
         viewModel.load()
 
-        #expect(viewModel.modelIdentifier == "cached/model")
+        #expect(viewModel.modelIdentifier == "removed/model")
     }
 
-    @Test("Saving rejects model identifiers outside the loaded catalog")
-    func rejectsUnavailableModel() {
+    @Test("Saving accepts a well-formed manual model identifier")
+    func acceptsManualModel() {
         let settings = SettingsStoreStub()
         let viewModel = makeViewModel(
             settings: settings,
@@ -92,9 +92,24 @@ struct OpenRouterSettingsViewModelTests {
 
         viewModel.save()
 
+        #expect(settings.modelIdentifier == "invented/model")
+        #expect(viewModel.statusMessage == "Konfiguration gespeichert.")
+    }
+
+    @Test("Saving rejects a malformed manual model identifier")
+    func rejectsMalformedManualModel() {
+        let settings = SettingsStoreStub()
+        let viewModel = makeViewModel(
+            settings: settings,
+            catalog: ModelCatalogStub(result: .success(refreshedOptions))
+        )
+        viewModel.modelIdentifier = "invented-model"
+
+        viewModel.save()
+
         #expect(settings.modelIdentifier.isEmpty)
         #expect(viewModel.testState == .failure(
-            "Bitte wähle ein aktuell verfügbares Modell aus der geladenen Liste."
+            "Gib eine Modell-ID im Format anbieter/modell ein."
         ))
     }
 

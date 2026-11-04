@@ -15,6 +15,7 @@ struct OpenRouterSettingsView: View {
     @State private var showsTrafficLog = false
     @State private var hasFileBackedImages = false
     @State private var hasLoadedInitialSettings = false
+    @State private var showsAdvancedModelOptions = false
     private let isActive: Bool
     private let weeklyReminderScheduler = WeeklySummaryNotificationScheduler()
 
@@ -95,6 +96,35 @@ struct OpenRouterSettingsView: View {
                                 .lineLimit(1)
                         }
                         .accessibilityIdentifier("settings.openRouterModelPicker")
+                    }
+
+                    Button {
+                        withAnimation {
+                            showsAdvancedModelOptions.toggle()
+                        }
+                    } label: {
+                        HStack {
+                            Text("Fortgeschritten")
+                            Spacer()
+                            Image(systemName: showsAdvancedModelOptions ? "chevron.up" : "chevron.down")
+                                .foregroundStyle(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.openRouterAdvancedModelOptions")
+                    .accessibilityValue(showsAdvancedModelOptions ? "Geöffnet" : "Geschlossen")
+
+                    if showsAdvancedModelOptions {
+                        TextField("anbieter/modell", text: $viewModel.modelIdentifier)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityLabel("Manuelle Modell-ID")
+                            .accessibilityIdentifier("settings.openRouterManualModelIdentifier")
+
+                        Text("Du kannst eine OpenRouter-Modell-ID manuell eintragen. Prüfe anschließend die Verbindung, da dieses Modell nicht durch Quants Kompatibilitätsfilter ausgewählt wurde.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
 
                     if viewModel.isAutoRouterSelected {

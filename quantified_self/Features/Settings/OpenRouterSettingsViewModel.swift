@@ -147,8 +147,10 @@ final class OpenRouterSettingsViewModel {
 
     private func persistConfiguration() throws {
         let trimmedModel = modelIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard modelOptions.contains(where: { $0.id == trimmedModel }) else {
-            throw OpenRouterClientError.modelUnavailable
+        let modelComponents = trimmedModel.split(separator: "/", omittingEmptySubsequences: false)
+        guard modelComponents.count >= 2,
+              !modelComponents.contains(where: \.isEmpty) else {
+            throw OpenRouterClientError.invalidModelIdentifier
         }
 
         settingsStore.modelIdentifier = trimmedModel
@@ -169,7 +171,11 @@ final class OpenRouterSettingsViewModel {
     }
 
     private func selectAvailableModelIfNeeded() {
-        guard !modelOptions.contains(where: { $0.id == modelIdentifier }) else { return }
+        let trimmedModel = modelIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedModel.isEmpty else {
+            modelIdentifier = trimmedModel
+            return
+        }
         modelIdentifier = modelOptions.first?.id ?? ""
     }
 }
