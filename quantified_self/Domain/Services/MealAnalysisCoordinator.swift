@@ -343,23 +343,21 @@ final class MealAnalysisCoordinator {
         )
         let outcomes = await [second, third]
         var validResults = [firstResult]
-        var firstFailure: Error?
         for outcome in outcomes {
             switch outcome {
             case let .success(result):
                 validResults.append(result)
-            case let .failure(error):
-                firstFailure = firstFailure ?? error
+            case .failure:
+                break
             }
         }
-        guard
-            validResults.count == NutritionAnalysisSamplingPolicy.targetEstimateCount,
-            let median = try? NutritionAnalysisSamplingPolicy.medianResult(from: validResults)
-        else {
-            AppLogger.nutritionAnalysis.error("Adaptive sampling did not produce three valid estimates")
-            throw firstFailure ?? NutritionAnalysisError.invalidResult(
-                "Es konnten nicht drei gültige Schätzungen erstellt werden."
-            )
+        guard validResults.count == NutritionAnalysisSamplingPolicy.targetEstimateCount else {
+            AppLogger.nutritionAnalysis.info("Keeping first valid result after an invalid additional estimate")
+            return (firstResult, validResults)
+        }
+        guard let median = try? NutritionAnalysisSamplingPolicy.medianResult(from: validResults) else {
+            AppLogger.nutritionAnalysis.info("Keeping first valid result after median selection failed")
+            return (firstResult, validResults)
         }
         return (median, validResults)
     }

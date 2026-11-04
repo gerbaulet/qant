@@ -238,8 +238,8 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.repairFeedback?.contains("Kalorien und Makronährstoffe") == true)
     }
 
-    @Test("Exhausted retries for an additional estimate leave the meal retryable")
-    func failsWhenAdditionalEstimateRemainsInvalid() async throws {
+    @Test("An invalid additional estimate keeps the first valid result")
+    func keepsFirstResultWhenAdditionalEstimateRemainsInvalid() async throws {
         let container = try makeContainer()
         let context = container.mainContext
         let image = MealImage(
@@ -268,10 +268,9 @@ struct MealAnalysisCoordinatorTests {
         await coordinator.analyze(meal)
 
         #expect(provider.requestCount == 4)
-        #expect(meal.analysisState == .failed)
-        #expect(meal.activeRevision == nil)
-        let failure = try #require(meal.analysisRevisions.first)
-        let calls = InitialAnalysisRunMetadata.decodeCalls(failure.providerMetadata)
+        #expect(meal.analysisState == .confirmed)
+        #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 500)
+        let calls = InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata)
         #expect(calls.count == 4)
         #expect(calls.filter { $0.sampleNumber == 2 }.map(\.status).allSatisfy { $0 == .failed })
         #expect(calls.filter { $0.status == .succeeded }.count == 2)
