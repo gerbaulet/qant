@@ -6,6 +6,12 @@ enum GoalHistoryError: Error, Equatable {
     case unableToAdvanceDay
 }
 
+struct GoalChange: Equatable, Sendable {
+    let nutrient: NutrientIdentifier
+    let targetValue: Double
+    let unit: NutrientUnit
+}
+
 /// Pure date and target logic shared by Settings, Today, and Trends.
 ///
 /// Periods are half-open: `validFrom` is included and `validUntil` is excluded.
@@ -75,6 +81,47 @@ enum GoalHistory {
             targetValue: targetValue,
             unit: unit
         )
+    }
+
+    /// Validates the entire batch before mutating any existing period.
+    /// Callers can therefore present several editable goals as one atomic form.
+    static func applyChanges(
+        _ changes: [GoalChange],
+        effectiveOn date: Date,
+        calendar: Calendar,
+        periods: [NutritionGoalPeriod],
+        now: Date = .now
+    ) throws -> [NutritionGoalPeriod] {
+        guard changes.allSatisfy({ $0.targetValue.isFinite && $0.targetValue > 0 }) else {
+            throw GoalHistoryError.invalidTarget
+        }
+
+        var availablePeriods = periods
+        var changedPeriods: [NutritionGoalPeriod] = []
+
+        for change in changes {
+            let current = goal(for: change.nutrient, at: date, in: availablePeriods)
+            guard current?.targetValue != change.targetValue || current?.unit != change.unit else {
+                continue
+            }
+
+            let changed = try applyChange(
+                for: change.nutrient,
+                targetValue: change.targetValue,
+                unit: change.unit,
+                effectiveOn: date,
+                calendar: calendar,
+                periods: availablePeriods,
+                now: now
+            )
+            changedPeriods.append(changed)
+
+            if !availablePeriods.contains(where: { $0.id == changed.id }) {
+                availablePeriods.append(changed)
+            }
+        }
+
+        return changedPeriods
     }
 
     /// Returns `nil` rather than silently treating a day with no configured goal

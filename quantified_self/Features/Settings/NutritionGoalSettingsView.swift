@@ -122,29 +122,28 @@ private struct NutritionGoalEditor: View {
     private func save() {
         do {
             let now = Date.now
-            for definition in NutritionGoalDefinition.all {
+            let changes = try NutritionGoalDefinition.all.map { definition in
                 guard let input = values[definition.nutrient],
                       let value = Double(input.replacingOccurrences(of: ",", with: ".")),
                       value > 0 else {
                     throw GoalHistoryError.invalidTarget
                 }
-                let current = GoalHistory.goal(
-                    for: definition.nutrient,
-                    at: now,
-                    in: goals
-                )
-                guard current?.targetValue != value || current?.unit != definition.unit else {
-                    continue
-                }
-                let changed = try GoalHistory.applyChange(
-                    for: definition.nutrient,
+
+                return GoalChange(
+                    nutrient: definition.nutrient,
                     targetValue: value,
-                    unit: definition.unit,
-                    effectiveOn: now,
-                    calendar: .autoupdatingCurrent,
-                    periods: goals,
-                    now: now
+                    unit: definition.unit
                 )
+            }
+            let changedGoals = try GoalHistory.applyChanges(
+                changes,
+                effectiveOn: now,
+                calendar: .autoupdatingCurrent,
+                periods: goals,
+                now: now
+            )
+
+            for changed in changedGoals {
                 if !goals.contains(where: { $0.id == changed.id }) {
                     modelContext.insert(changed)
                 }

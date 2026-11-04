@@ -114,6 +114,56 @@ struct GoalHistoryTests {
         }
     }
 
+    @Test("A goal batch validates every target before changing history")
+    func invalidBatchIsAtomic() {
+        let originalModifiedAt = date(2026, 1, 1)
+        let existing = NutritionGoalPeriod(
+            modifiedAt: originalModifiedAt,
+            validFrom: date(2026, 1, 1),
+            nutrientIdentifier: .energy,
+            targetValue: 2_300,
+            unit: .kilocalorie
+        )
+
+        #expect(throws: GoalHistoryError.invalidTarget) {
+            try GoalHistory.applyChanges(
+                [
+                    GoalChange(nutrient: .energy, targetValue: 2_100, unit: .kilocalorie),
+                    GoalChange(nutrient: .protein, targetValue: 0, unit: .gram),
+                ],
+                effectiveOn: date(2026, 6, 16, 18),
+                calendar: calendar,
+                periods: [existing],
+                now: date(2026, 6, 15)
+            )
+        }
+
+        #expect(existing.targetValue == 2_300)
+        #expect(existing.validUntil == nil)
+        #expect(existing.modifiedAt == originalModifiedAt)
+    }
+
+    @Test("A valid goal batch applies every changed target")
+    func validBatchAppliesEveryChange() throws {
+        let existing = goal(from: date(2026, 1, 1), value: 2_300)
+
+        let results = try GoalHistory.applyChanges(
+            [
+                GoalChange(nutrient: .energy, targetValue: 2_100, unit: .kilocalorie),
+                GoalChange(nutrient: .protein, targetValue: 120, unit: .gram),
+            ],
+            effectiveOn: date(2026, 6, 16, 18),
+            calendar: calendar,
+            periods: [existing],
+            now: date(2026, 6, 15)
+        )
+
+        #expect(results.count == 2)
+        #expect(results.contains { $0.nutrientIdentifier == .energy && $0.targetValue == 2_100 })
+        #expect(results.contains { $0.nutrientIdentifier == .protein && $0.targetValue == 120 })
+        #expect(existing.validUntil == date(2026, 6, 16))
+    }
+
     private func goal(
         from: Date,
         until: Date? = nil,
