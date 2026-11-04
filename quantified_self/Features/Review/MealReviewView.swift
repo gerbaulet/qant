@@ -59,6 +59,7 @@ struct MealReviewView: View {
         let portionMultipliers = PortionMultiplierSnapshot()
         ScrollView {
             LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
+                photoStrip
                 titleSection
 
                 if let revision = meal.activeRevision {
@@ -75,7 +76,6 @@ struct MealReviewView: View {
                 if let revision = meal.activeRevision {
                     confidenceSection(revision)
                     clarificationSection(revision)
-                    photoStrip
                     correctionAction
                     PortionComponentsSection(
                         revision: revision,
@@ -90,7 +90,6 @@ struct MealReviewView: View {
                     revisionHistorySection(portionMultipliers: portionMultipliers)
                     revisionFootnote(revision)
                 } else {
-                    photoStrip
                     unavailableState
                 }
             }
@@ -234,6 +233,7 @@ struct MealReviewView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(meal.activeRevision?.mealName ?? "Mahlzeit")
                 .font(.largeTitle.bold())
+                .accessibilityIdentifier("meal.title")
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) {
                     timestampButton

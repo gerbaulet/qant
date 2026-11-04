@@ -182,13 +182,16 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(mealName.waitForExistence(timeout: 3))
         mealName.tap()
 
+        XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 2))
+
         let photo = app.buttons
             .matching(NSPredicate(format: "identifier BEGINSWITH %@", "meal.photo."))
             .firstMatch
-        for _ in 0..<5 where !photo.isHittable {
-            app.swipeUp()
-        }
+        let detailTitle = app.staticTexts["meal.title"]
         XCTAssertTrue(photo.waitForExistence(timeout: 2))
+        XCTAssertTrue(detailTitle.waitForExistence(timeout: 2))
+        XCTAssertTrue(photo.isHittable)
+        XCTAssertLessThan(photo.frame.maxY, detailTitle.frame.minY)
         photo.tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["meal.photoViewer"].waitForExistence(timeout: 2))
