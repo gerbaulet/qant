@@ -148,6 +148,24 @@ struct TodayDashboardBuilderTests {
         #expect(snapshot.hasProvisionalWeeklyValues)
     }
 
+    @Test("Presentation builds dashboard and weekly summary from the same input")
+    func presentationCombinesDashboardAndWeeklySummary() {
+        let reference = date(2026, 8, 19, 12)
+        let monday = meal(at: date(2026, 8, 17, 12), state: .confirmed, energy: 2_000, protein: 100)
+        let wednesday = meal(at: reference, state: .confirmed, energy: 1_800, protein: 90)
+        let presentation = TodayDashboardPresentationBuilder.makePresentation(
+            for: reference,
+            meals: [monday, wednesday],
+            goals: goals(starting: date(2026, 8, 1)),
+            calendar: calendar
+        )
+
+        #expect(presentation.snapshot.energy.consumed == 1_800)
+        #expect(presentation.snapshot.weeklyEnergy.consumed == 3_800)
+        #expect(presentation.weeklySummary?.energyKilocalories == 3_800)
+        #expect(presentation.weeklySummary?.trackedDayCount == 2)
+    }
+
     @Test("Portion multiplier scales meal, daily and weekly nutrients")
     func portionMultiplier() {
         let reference = date(2026, 8, 23, 12)

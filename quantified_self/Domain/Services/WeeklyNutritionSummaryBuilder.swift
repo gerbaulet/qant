@@ -27,13 +27,29 @@ enum WeeklyNutritionSummaryBuilder {
         goals: [NutritionGoalPeriod],
         calendar: Calendar
     ) -> WeeklyNutritionSummary? {
+        makeSummary(
+            containing: date,
+            meals: meals,
+            goals: goals,
+            calendar: calendar,
+            portionMultipliers: PortionMultiplierSnapshot(),
+            activeRevisions: ActiveMealRevisionSnapshot(meals: meals)
+        )
+    }
+
+    static func makeSummary(
+        containing date: Date,
+        meals: [Meal],
+        goals: [NutritionGoalPeriod],
+        calendar: Calendar,
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
+    ) -> WeeklyNutritionSummary? {
         guard let interval = calendar.dateInterval(of: .weekOfYear, for: date),
               let previousDate = calendar.date(byAdding: .weekOfYear, value: -1, to: interval.start),
               let previousInterval = calendar.dateInterval(of: .weekOfYear, for: previousDate) else {
             return nil
         }
-        let portionMultipliers = PortionMultiplierSnapshot()
-        let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
 
         let current = aggregate(
             interval: interval,

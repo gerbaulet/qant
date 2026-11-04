@@ -233,21 +233,15 @@ private struct TodayDashboardContainer: View {
     private func refresh(for date: Date) async {
         guard let refreshID = refreshID(for: date), refreshID != lastRefreshID else { return }
         await Task.yield()
-        let nextSnapshot = TodayDashboardBuilder.makeSnapshot(
+        let presentation = TodayDashboardPresentationBuilder.makePresentation(
             for: date,
             meals: meals,
             goals: goals,
             calendar: .autoupdatingCurrent
         )
-        let nextWeeklySummary = WeeklyNutritionSummaryBuilder.makeSummary(
-            containing: date,
-            meals: meals,
-            goals: goals,
-            calendar: .autoupdatingCurrent
-        )
         guard !Task.isCancelled else { return }
-        snapshot = nextSnapshot
-        weeklySummary = nextWeeklySummary
+        snapshot = presentation.snapshot
+        weeklySummary = presentation.weeklySummary
         lastRefreshID = refreshID
     }
 

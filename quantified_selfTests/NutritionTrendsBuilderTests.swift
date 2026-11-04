@@ -154,6 +154,37 @@ struct NutritionTrendsBuilderTests {
         #expect(trend.actualPoints.map(\.value) == [0, 500, 1_200, 1_200])
     }
 
+    @Test("Cumulative chart point identities are stable and unique")
+    func cumulativePointIdentitiesAreStable() {
+        let meals = [
+            meal(at: date(2026, 8, 23, 8, 30), state: .confirmed, energy: 500, protein: 25),
+            meal(at: date(2026, 8, 23, 12, 15), state: .confirmed, energy: 700, protein: 35),
+        ]
+        let first = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 23, 14),
+            nutrient: .energy,
+            meals: meals,
+            calendar: calendar
+        )
+        let second = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 23, 14),
+            nutrient: .energy,
+            meals: meals,
+            calendar: calendar
+        )
+
+        #expect(first.actualPoints.map(\.id) == second.actualPoints.map(\.id))
+        #expect(Set(first.actualPoints.map(\.id)).count == first.actualPoints.count)
+
+        let midnightWithoutMeals = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 24),
+            nutrient: .energy,
+            meals: [],
+            calendar: calendar
+        )
+        #expect(Set(midnightWithoutMeals.actualPoints.map(\.id)).count == midnightWithoutMeals.actualPoints.count)
+    }
+
     @Test("Daily average weights each recorded day equally and ignores missing days")
     func dailyAverageUsesRecordedDays() {
         let firstBreakfast = meal(at: date(2026, 8, 20, 8), state: .confirmed, energy: 600, protein: 30)

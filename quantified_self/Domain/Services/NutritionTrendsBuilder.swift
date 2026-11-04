@@ -35,9 +35,10 @@ struct NutritionTrendPoint: Identifiable, Sendable {
 }
 
 struct CumulativeNutritionTrendPoint: Identifiable, Sendable {
-    let id = UUID()
     let hour: Double
     let value: Double
+
+    var id: Double { hour }
 }
 
 struct DailyCumulativeNutritionTrend: Sendable {
@@ -112,13 +113,26 @@ enum NutritionTrendsBuilder {
             portionMultipliers: portionMultipliers,
             activeRevisions: activeRevisions
         )
-        let totals = dailyTotals(
+        let today = calendar.startOfDay(for: date)
+        let comparisonStart = calendar.date(
+            byAdding: .day,
+            value: -(range.dayCount * 2),
+            to: today
+        ) ?? interval.start
+        let totalsInterval = DateInterval(
+            start: min(comparisonStart, interval.start),
+            end: interval.end
+        )
+        let allTotals = dailyTotals(
             meals: meals,
-            within: interval,
+            within: totalsInterval,
             calendar: calendar,
             portionMultipliers: portionMultipliers,
             activeRevisions: activeRevisions
         )
+        let totals = allTotals.filter {
+            $0.date >= interval.start && $0.date < interval.end
+        }
         var points = totals.compactMap { total -> NutritionTrendPoint? in
             guard let value = total.values[nutrient] else { return nil }
             return NutritionTrendPoint(
@@ -129,7 +143,6 @@ enum NutritionTrendsBuilder {
         }
         .sorted { $0.date < $1.date }
         if let forecastValue = dailyCumulativeTrend.forecastPoints.last?.value {
-            let today = calendar.startOfDay(for: date)
             points.removeAll { calendar.isDate($0.date, inSameDayAs: today) }
             points.append(NutritionTrendPoint(
                 date: today,
@@ -148,11 +161,9 @@ enum NutritionTrendsBuilder {
             periodComparison: makePeriodComparison(
                 for: date,
                 dayCount: range.dayCount,
-                meals: meals,
                 goals: goals,
                 calendar: calendar,
-                portionMultipliers: portionMultipliers,
-                activeRevisions: activeRevisions
+                dailyTotals: allTotals
             )
         )
     }
@@ -225,11 +236,14 @@ enum NutritionTrendsBuilder {
             activeRevisions: activeRevisions
         )
         let actualValue = actualPoints.last?.value ?? 0
-        return DailyCumulativeNutritionTrend(
-            actualPoints: actualPoints.isEmpty ? [
+        let emptyActualPoints = actualEndHour > 0
+            ? [
                 CumulativeNutritionTrendPoint(hour: 0, value: 0),
                 CumulativeNutritionTrendPoint(hour: min(actualEndHour, 24), value: 0),
-            ] : actualPoints,
+            ]
+            : [CumulativeNutritionTrendPoint(hour: 0, value: 0)]
+        return DailyCumulativeNutritionTrend(
+            actualPoints: actualPoints.isEmpty ? emptyActualPoints : actualPoints,
             averagePoints: cumulativePoints(
                 meals: averageMeals,
                 nutrient: nutrient,
@@ -329,10 +343,13 @@ enum NutritionTrendsBuilder {
             cumulativeValue += valuesByHour[hour, default: 0]
             points.append(CumulativeNutritionTrendPoint(hour: hour, value: cumulativeValue))
         }
-        points.append(CumulativeNutritionTrendPoint(
-            hour: max(endHour, valuesByHour.keys.max() ?? 0),
-            value: cumulativeValue
-        ))
+        let finalHour = max(endHour, valuesByHour.keys.max() ?? 0)
+        if points.last?.hour != finalHour {
+            points.append(CumulativeNutritionTrendPoint(
+                hour: finalHour,
+                value: cumulativeValue
+            ))
+        }
         return points
     }
 
@@ -346,11 +363,9 @@ enum NutritionTrendsBuilder {
     private static func makePeriodComparison(
         for date: Date,
         dayCount: Int,
-        meals: [Meal],
         goals: [NutritionGoalPeriod],
         calendar: Calendar,
-        portionMultipliers: PortionMultiplierSnapshot,
-        activeRevisions: ActiveMealRevisionSnapshot
+        dailyTotals: [DailyTotal]
     ) -> NutritionPeriodComparison {
         let currentEnd = calendar.startOfDay(for: date)
         let currentStart = calendar.date(
@@ -370,20 +385,16 @@ enum NutritionTrendsBuilder {
             current: summary(
                 for: currentInterval,
                 calendarDayCount: dayCount,
-                meals: meals,
                 goals: goals,
                 calendar: calendar,
-                portionMultipliers: portionMultipliers,
-                activeRevisions: activeRevisions
+                dailyTotals: dailyTotals
             ),
             previous: summary(
                 for: previousInterval,
                 calendarDayCount: dayCount,
-                meals: meals,
                 goals: goals,
                 calendar: calendar,
-                portionMultipliers: portionMultipliers,
-                activeRevisions: activeRevisions
+                dailyTotals: dailyTotals
             )
         )
     }
@@ -391,19 +402,13 @@ enum NutritionTrendsBuilder {
     private static func summary(
         for interval: DateInterval,
         calendarDayCount: Int,
-        meals: [Meal],
         goals: [NutritionGoalPeriod],
         calendar: Calendar,
-        portionMultipliers: PortionMultiplierSnapshot,
-        activeRevisions: ActiveMealRevisionSnapshot
+        dailyTotals: [DailyTotal]
     ) -> NutritionPeriodSummary {
-        let days = dailyTotals(
-            meals: meals,
-            within: interval,
-            calendar: calendar,
-            portionMultipliers: portionMultipliers,
-            activeRevisions: activeRevisions
-        )
+        let days = dailyTotals.filter {
+            $0.date >= interval.start && $0.date < interval.end
+        }
         var totals: [NutrientIdentifier: Double] = [:]
         for day in days {
             for nutrient in comparedNutrients {

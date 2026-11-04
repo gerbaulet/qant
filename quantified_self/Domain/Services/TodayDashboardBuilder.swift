@@ -53,6 +53,24 @@ enum TodayDashboardBuilder {
         goals: [NutritionGoalPeriod],
         calendar: Calendar
     ) -> TodayDashboardSnapshot {
+        makeSnapshot(
+            for: date,
+            meals: meals,
+            goals: goals,
+            calendar: calendar,
+            portionMultipliers: PortionMultiplierSnapshot(),
+            activeRevisions: ActiveMealRevisionSnapshot(meals: meals)
+        )
+    }
+
+    static func makeSnapshot(
+        for date: Date,
+        meals: [Meal],
+        goals: [NutritionGoalPeriod],
+        calendar: Calendar,
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
+    ) -> TodayDashboardSnapshot {
         guard let dayInterval = calendar.dateInterval(of: .day, for: date) else {
             return emptySnapshot(for: date, goals: goals)
         }
@@ -64,9 +82,6 @@ enum TodayDashboardBuilder {
                     $0.timestamp < dayInterval.end
             }
             .sorted { $0.timestamp > $1.timestamp }
-        let portionMultipliers = PortionMultiplierSnapshot()
-        let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
-
         let includedRevisions = todaysMeals.compactMap { meal -> MealAnalysisRevision? in
             guard let revision = activeRevisions.revision(for: meal),
                   revision.status.includesNutritionEstimate else {
@@ -279,6 +294,42 @@ enum TodayDashboardBuilder {
             meals: [],
             hasProvisionalValues: false,
             hasProvisionalWeeklyValues: false
+        )
+    }
+}
+
+struct TodayDashboardPresentation {
+    let snapshot: TodayDashboardSnapshot
+    let weeklySummary: WeeklyNutritionSummary?
+}
+
+@MainActor
+enum TodayDashboardPresentationBuilder {
+    static func makePresentation(
+        for date: Date,
+        meals: [Meal],
+        goals: [NutritionGoalPeriod],
+        calendar: Calendar
+    ) -> TodayDashboardPresentation {
+        let portionMultipliers = PortionMultiplierSnapshot()
+        let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
+        return TodayDashboardPresentation(
+            snapshot: TodayDashboardBuilder.makeSnapshot(
+                for: date,
+                meals: meals,
+                goals: goals,
+                calendar: calendar,
+                portionMultipliers: portionMultipliers,
+                activeRevisions: activeRevisions
+            ),
+            weeklySummary: WeeklyNutritionSummaryBuilder.makeSummary(
+                containing: date,
+                meals: meals,
+                goals: goals,
+                calendar: calendar,
+                portionMultipliers: portionMultipliers,
+                activeRevisions: activeRevisions
+            )
         )
     }
 }
