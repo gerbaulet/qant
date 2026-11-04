@@ -14,6 +14,7 @@ struct MealCaptureView: View {
     private let imageStorage: any ImageStorageProviding
     private let analysisProvider: any NutritionAnalysisProviding
     private let opensCameraOnAppear: Bool
+    private let isQuickCapture: Bool
     private let cameraCaptureFlow: CameraCaptureFlow
     private let initialTimestamp: Date
 
@@ -34,12 +35,14 @@ struct MealCaptureView: View {
         now: Date = .now,
         imageStorage: any ImageStorageProviding = FileImageStorage(),
         analysisProvider: any NutritionAnalysisProviding = OpenRouterNutritionAnalysisService(),
-        opensCameraOnAppear: Bool = false
+        opensCameraOnAppear: Bool = false,
+        isQuickCapture: Bool = false
     ) {
         self.imageStorage = imageStorage
         self.analysisProvider = analysisProvider
         self.opensCameraOnAppear = opensCameraOnAppear
-        self.cameraCaptureFlow = .forCapture(openedFromShortcut: opensCameraOnAppear)
+        self.isQuickCapture = isQuickCapture
+        self.cameraCaptureFlow = .forCapture(openedFromShortcut: isQuickCapture)
         self.initialTimestamp = now
         _timestamp = State(initialValue: now)
     }
@@ -50,7 +53,7 @@ struct MealCaptureView: View {
                 .accessibilityIdentifier("meal.captureForm")
                 .accessibilityValue(opensCameraOnAppear ? "Kamera" : "Standard")
                 .background(Color(.systemGroupedBackground))
-                .navigationTitle(opensCameraOnAppear ? "Schnellaufnahme" : "Neue Mahlzeit")
+                .navigationTitle(isQuickCapture ? "Schnellaufnahme" : "Neue Mahlzeit")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -58,7 +61,7 @@ struct MealCaptureView: View {
                             .disabled(isSaving)
                     }
 
-                    if !opensCameraOnAppear {
+                    if !isQuickCapture {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Speichern") { save() }
                                 .fontWeight(.semibold)
@@ -67,7 +70,7 @@ struct MealCaptureView: View {
                         }
                     }
 
-                    if !opensCameraOnAppear {
+                    if !isQuickCapture {
                         ToolbarItemGroup(placement: .keyboard) {
                             Spacer()
                             Button("Fertig") {
@@ -80,13 +83,7 @@ struct MealCaptureView: View {
                     guard !items.isEmpty else { return }
                     Task { await importPhotos(items) }
                 }
-                .task {
-                    guard opensCameraOnAppear, !hasAttemptedAutomaticCamera else { return }
-                    try? await Task.sleep(for: .milliseconds(300))
-                    guard !Task.isCancelled else { return }
-                    hasAttemptedAutomaticCamera = true
-                    requestCamera()
-                }
+                .onAppear(perform: scheduleAutomaticCamera)
                 .fullScreenCover(isPresented: $showsCamera) {
                     if cameraCaptureFlow == .useImmediately {
                         DirectCameraCaptureView { imageData in
@@ -148,7 +145,7 @@ struct MealCaptureView: View {
 
     @ViewBuilder
     private var captureContent: some View {
-        if opensCameraOnAppear {
+        if isQuickCapture {
             VStack {
                 Spacer()
                 ProgressView("Kamera wird geöffnet …")
@@ -290,6 +287,16 @@ struct MealCaptureView: View {
             abs(timestamp.timeIntervalSince(initialTimestamp)) > 0.5
     }
 
+    private func scheduleAutomaticCamera() {
+        guard opensCameraOnAppear, !hasAttemptedAutomaticCamera else { return }
+        hasAttemptedAutomaticCamera = true
+        Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            requestCamera()
+        }
+    }
+
     private func requestDismiss() {
         if hasUnsavedChanges {
             showsDiscardConfirmation = true
@@ -333,6 +340,12 @@ struct MealCaptureView: View {
     }
 
     private func requestCamera() {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+            alert = .cameraUnavailable
+            return
+        }
+#endif
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
             alert = .cameraUnavailable
             return

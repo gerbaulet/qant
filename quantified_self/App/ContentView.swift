@@ -52,7 +52,10 @@ struct ContentView: View {
             }
         }
         .sheet(item: $mealCaptureMode) { mode in
-            MealCaptureView(opensCameraOnAppear: mode == .camera)
+            MealCaptureView(
+                opensCameraOnAppear: true,
+                isQuickCapture: mode == .camera
+            )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }

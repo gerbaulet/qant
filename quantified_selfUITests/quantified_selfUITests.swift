@@ -25,6 +25,10 @@ final class QuantUITests: XCTestCase {
 
         let captureNavigationBar = app.navigationBars["Neue Mahlzeit"]
         XCTAssertTrue(captureNavigationBar.waitForExistence(timeout: 2))
+        let cameraUnavailableAlert = app.alerts["Kamera nicht verfügbar"]
+        XCTAssertTrue(cameraUnavailableAlert.waitForExistence(timeout: 2))
+        cameraUnavailableAlert.buttons["OK"].tap()
+        XCTAssertEqual(app.descendants(matching: .any)["meal.captureForm"].value as? String, "Kamera")
         XCTAssertTrue(app.buttons["meal.photoLibrary"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["meal.camera"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.descendants(matching: .any)["meal.detailsDisclosure"].exists)
@@ -78,6 +82,9 @@ final class QuantUITests: XCTestCase {
 
         let captureNavigationBar = app.navigationBars["Neue Mahlzeit"]
         XCTAssertTrue(captureNavigationBar.waitForExistence(timeout: 2))
+        let cameraUnavailableAlert = app.alerts["Kamera nicht verfügbar"]
+        XCTAssertTrue(cameraUnavailableAlert.waitForExistence(timeout: 2))
+        cameraUnavailableAlert.buttons["OK"].tap()
         let commentField = app.textFields["meal.comment"]
         for _ in 0..<3 where !commentField.isHittable { app.swipeUp() }
         XCTAssertTrue(commentField.isHittable)
