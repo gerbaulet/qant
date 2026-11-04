@@ -103,6 +103,21 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testTrendsUsesSharedCardLayout() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let trendsTab = app.tabBars.buttons["Trends"]
+        XCTAssertTrue(trendsTab.waitForExistence(timeout: 3))
+        trendsTab.tap()
+
+        XCTAssertTrue(app.navigationBars["Trends"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["trends.chartCard"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["trends.comparisonCard"].exists)
+    }
+
+    @MainActor
     func testQuickCaptureLaunchesDirectlyIntoCapture() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: ["--ui-testing", "--ui-testing-quick-capture"])
