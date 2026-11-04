@@ -290,7 +290,8 @@ struct MealAnalysisCoordinatorTests {
         let coordinator = MealAnalysisCoordinator(
             context: context,
             provider: provider,
-            imageStorage: AnalysisImageStorage(dataByKey: [:])
+            imageStorage: AnalysisImageStorage(dataByKey: [:]),
+            retryDelaySleeper: ImmediateRetryDelaySleeper()
         )
 
         await coordinator.analyze(meal)
@@ -309,7 +310,8 @@ struct MealAnalysisCoordinatorTests {
         let coordinator = MealAnalysisCoordinator(
             context: context,
             provider: AnalysisProviderStub(error: OpenRouterClientError.serverError),
-            imageStorage: AnalysisImageStorage(dataByKey: [:])
+            imageStorage: AnalysisImageStorage(dataByKey: [:]),
+            retryDelaySleeper: ImmediateRetryDelaySleeper()
         )
 
         await coordinator.analyze(meal)
@@ -320,9 +322,9 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.analysisRevisions.first?.status == .failed)
         #expect(meal.analysisRevisions.first?.failureMessage == "OpenRouter ist momentan nicht verfügbar.")
         let calls = InitialAnalysisRunMetadata.decodeCalls(meal.analysisRevisions.first?.providerMetadata)
-        #expect(calls.count == 2)
+        #expect(calls.count == 10)
         #expect(calls.allSatisfy { $0.status == .failed })
-        #expect(calls.map(\.attemptNumber) == [1, 2])
+        #expect(calls.map(\.attemptNumber) == Array(1...10))
         #expect(try context.fetch(FetchDescriptor<Meal>()).count == 1)
     }
 
@@ -375,7 +377,8 @@ struct MealAnalysisCoordinatorTests {
         let coordinator = MealAnalysisCoordinator(
             context: context,
             provider: provider,
-            imageStorage: AnalysisImageStorage(dataByKey: [:])
+            imageStorage: AnalysisImageStorage(dataByKey: [:]),
+            retryDelaySleeper: ImmediateRetryDelaySleeper()
         )
 
         await coordinator.analyze(meal)
@@ -401,7 +404,8 @@ struct MealAnalysisCoordinatorTests {
         let coordinator = MealAnalysisCoordinator(
             context: context,
             provider: provider,
-            imageStorage: AnalysisImageStorage(dataByKey: [:])
+            imageStorage: AnalysisImageStorage(dataByKey: [:]),
+            retryDelaySleeper: ImmediateRetryDelaySleeper()
         )
 
         await coordinator.analyze(meal)
@@ -510,7 +514,7 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.analysisState == .confirmed)
     }
 
-    @Test("Offline analyses fail after one retry")
+    @Test("Offline analyses use the full transient retry budget")
     func limitsOfflineRetries() async throws {
         let container = try makeContainer()
         let context = container.mainContext
@@ -519,7 +523,7 @@ struct MealAnalysisCoordinatorTests {
         try context.save()
         let provider = SequencedAnalysisProviderStub(outcomes: Array(
             repeating: .failure(OpenRouterClientError.transportFailure),
-            count: 2
+            count: 10
         ))
         let waiter = NetworkAvailabilityWaiterStub()
         let coordinator = MealAnalysisCoordinator(
@@ -531,25 +535,10 @@ struct MealAnalysisCoordinatorTests {
 
         await coordinator.analyze(meal)
 
-        #expect(waiter.waitCount == 1)
-        #expect(provider.requestCount == 2)
+        #expect(waiter.waitCount == 9)
+        #expect(provider.requestCount == 10)
         #expect(meal.analysisState == .failed)
         #expect(meal.analysisRevisions.first?.failureMessage?.contains("Internetverbindung") == true)
-    }
-
-    @Test("Interrupted analyses become retryable after app launch")
-    func recoversInterruptedAnalysis() throws {
-        let container = try makeContainer()
-        let context = container.mainContext
-        let meal = Meal(analysisState: .analyzing)
-        context.insert(meal)
-        try context.save()
-
-        try MealAnalysisCoordinator.recoverInterruptedAnalyses(in: context)
-
-        #expect(meal.analysisState == .failed)
-        #expect(meal.analysisRevisions.count == 1)
-        #expect(meal.analysisRevisions.first?.failureMessage?.contains("unterbrochen") == true)
     }
 
     @Test("Confirmation finalizes only the active awaiting revision")
@@ -961,7 +950,8 @@ struct MealAnalysisCoordinatorTests {
         let failingCoordinator = MealAnalysisCoordinator(
             context: context,
             provider: AnalysisProviderStub(error: OpenRouterClientError.serverError),
-            imageStorage: storage
+            imageStorage: storage,
+            retryDelaySleeper: ImmediateRetryDelaySleeper()
         )
 
         await failingCoordinator.correct("Es waren nur 100 g Reis.", for: meal)
@@ -989,7 +979,7 @@ struct MealAnalysisCoordinatorTests {
     }
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(NutritionSchemaV1.models)
+        let schema = Schema(NutritionSchemaV2.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(
             for: schema,
@@ -1226,6 +1216,10 @@ private final class NetworkAvailabilityWaiterStub: NetworkAvailabilityWaiting {
     func waitUntilAvailable() async throws {
         waitCount += 1
     }
+}
+
+private struct ImmediateRetryDelaySleeper: RetryDelaySleeping {
+    func sleep(beforeAttempt attempt: Int) async throws {}
 }
 
 @MainActor

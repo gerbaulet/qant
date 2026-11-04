@@ -243,6 +243,11 @@ final class SwiftDataMealRepository: MealRepository {
             )
         }
 
+        let pendingAnalyses = try context.fetch(FetchDescriptor<PendingMealAnalysis>())
+            .filter { $0.mealID == meal.id }
+        for pendingAnalysis in pendingAnalyses {
+            context.delete(pendingAnalysis)
+        }
         context.delete(meal)
         do {
             try context.save()

@@ -5,31 +5,13 @@ import SwiftData
 @MainActor
 final class MealAnalysisCoordinator {
     static let maximumClarificationCount = 2
-    static let maximumAutomaticAttemptCount = 2
-
-    static func recoverInterruptedAnalyses(in context: ModelContext, now: Date = .now) throws {
-        let meals = try context.fetch(FetchDescriptor<Meal>())
-        var recoveredAny = false
-        for meal in meals where meal.analysisState == .analyzing {
-            let previousRevision = meal.activeRevision
-            meal.analysisRevisions.append(failureRevision(
-                requestedAt: meal.modifiedAt,
-                createdAt: now,
-                trigger: previousRevision == nil ? .initial : .retry,
-                message: "Die Analyse wurde beim Beenden der App unterbrochen. Du kannst sie erneut versuchen.",
-                previousRevision: previousRevision
-            ))
-            meal.analysisState = .failed
-            meal.modifiedAt = now
-            recoveredAny = true
-        }
-        if recoveredAny { try context.save() }
-    }
+    static let maximumTransientAttemptCount = 10
 
     private let context: ModelContext
     private let provider: any NutritionAnalysisProviding
     private let imageStorage: any ImageStorageProviding
     private let networkAvailabilityWaiter: any NetworkAvailabilityWaiting
+    private let retryDelaySleeper: any RetryDelaySleeping
     private let backgroundExecutionManager: any BackgroundExecutionManaging
     private let textRecognizer: any NutritionLabelTextRecognizing
     private let progressStore: MealAnalysisProgressStore
@@ -40,6 +22,7 @@ final class MealAnalysisCoordinator {
         provider: any NutritionAnalysisProviding,
         imageStorage: any ImageStorageProviding,
         networkAvailabilityWaiter: any NetworkAvailabilityWaiting = SystemNetworkAvailabilityWaiter(),
+        retryDelaySleeper: (any RetryDelaySleeping)? = nil,
         backgroundExecutionManager: (any BackgroundExecutionManaging)? = nil,
         textRecognizer: any NutritionLabelTextRecognizing = VisionNutritionLabelTextRecognizer(),
         now: @escaping () -> Date = Date.init,
@@ -49,6 +32,7 @@ final class MealAnalysisCoordinator {
         self.provider = provider
         self.imageStorage = imageStorage
         self.networkAvailabilityWaiter = networkAvailabilityWaiter
+        self.retryDelaySleeper = retryDelaySleeper ?? SystemRetryDelaySleeper()
         self.backgroundExecutionManager = backgroundExecutionManager ?? SystemBackgroundExecutionManager.shared
         self.textRecognizer = textRecognizer
         self.progressStore = progressStore
@@ -134,6 +118,15 @@ final class MealAnalysisCoordinator {
         meal.analysisState = .confirmed
         meal.modifiedAt = now()
         try context.save()
+    }
+
+    func resume(_ pendingAnalysis: PendingMealAnalysis, for meal: Meal) async {
+        await performAnalysis(
+            meal,
+            trigger: pendingAnalysis.trigger,
+            clarificationAnswer: pendingAnalysis.clarificationAnswer,
+            userCorrection: pendingAnalysis.userCorrection
+        )
     }
 
     private func performAnalysis(
@@ -269,7 +262,11 @@ final class MealAnalysisCoordinator {
         callRecorder: AnalysisCallRecorder
     ) async throws -> (NutritionAnalysisResult, [NutritionAnalysisResult]) {
         var nextRequest = request
-        for attempt in 1...Self.maximumAutomaticAttemptCount {
+        var attempt = 0
+        var transientFailureCount = 0
+        var usedCorrectionAttempt = false
+        while true {
+            attempt += 1
             let callNumber = callRecorder.start(sampleNumber: sampleNumber, attemptNumber: attempt)
             var candidate: NutritionAnalysisResult?
             do {
@@ -296,22 +293,29 @@ final class MealAnalysisCoordinator {
                     sampleNumber: sampleNumber,
                     attemptNumber: attempt
                 )
-                guard Self.isRetryable(error),
-                      attempt < Self.maximumAutomaticAttemptCount else { throw error }
-                if Self.isTransportFailure(error) {
-                    AppLogger.nutritionAnalysis.info("Waiting for network before retrying analysis")
-                    callRecorder.waitForNetwork()
-                    try await networkAvailabilityWaiter.waitUntilAvailable()
-                } else {
+                guard Self.isRetryable(error) else { throw error }
+                if Self.isCorrectableResponseFailure(error) {
+                    guard !usedCorrectionAttempt else { throw error }
+                    usedCorrectionAttempt = true
                     nextRequest = request.repairing(
                         previousAnalysis: candidate,
                         feedback: error.localizedDescription
                     )
                     AppLogger.nutritionAnalysis.info("Requesting one corrected analysis")
+                    continue
+                }
+                transientFailureCount += 1
+                guard transientFailureCount < Self.maximumTransientAttemptCount else { throw error }
+                if Self.isTransportFailure(error) {
+                    AppLogger.nutritionAnalysis.info("Waiting for network before retrying analysis")
+                    callRecorder.waitForNetwork()
+                    try await networkAvailabilityWaiter.waitUntilAvailable()
+                } else {
+                    callRecorder.waitBeforeRetry(attempt: attempt + 1)
+                    try await retryDelaySleeper.sleep(beforeAttempt: attempt + 1)
                 }
             }
         }
-        throw NutritionAnalysisError.invalidResult("Das automatische Korrekturlimit wurde erreicht.")
     }
 
     private func adaptiveResult(
@@ -382,6 +386,16 @@ final class MealAnalysisCoordinator {
 
     private static func isTransportFailure(_ error: Error) -> Bool {
         (error as? OpenRouterClientError) == .transportFailure
+    }
+
+    private static func isCorrectableResponseFailure(_ error: Error) -> Bool {
+        guard let analysisError = error as? NutritionAnalysisError else { return false }
+        switch analysisError {
+        case .malformedResponse, .invalidResult:
+            return true
+        case .missingConfiguration, .invalidState:
+            return false
+        }
     }
 
     private static func isRetryable(_ error: Error) -> Bool {
@@ -596,6 +610,10 @@ private final class AnalysisCallRecorder {
 
     func waitForNetwork() {
         progressStore.setPhase("Verbindung unterbrochen. Auf Netzwerk für den nächsten Versuch warten …", for: mealID)
+    }
+
+    func waitBeforeRetry(attempt: Int) {
+        progressStore.setPhase("Temporärer Fehler. Automatischer Versuch \(attempt) von \(MealAnalysisCoordinator.maximumTransientAttemptCount) …", for: mealID)
     }
 
     private func record(_ summary: AnalysisCallSummary) {

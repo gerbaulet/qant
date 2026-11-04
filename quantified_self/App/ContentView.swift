@@ -20,8 +20,12 @@ struct ContentView: View {
     @State private var selectedSection: AppSection = .today
     @State private var mealCaptureMode: MealCaptureMode?
     @State private var activeQuickCaptureRequestID: UUID?
+    @State private var activeAnalysisMeal: Meal?
+    @State private var analysisProgressStore = MealAnalysisProgressStore.shared
     @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     private let quickCaptureRequests = QuickCaptureRequestStore()
     private let weeklyReminderScheduler = WeeklySummaryNotificationScheduler()
 
@@ -48,8 +52,45 @@ struct ContentView: View {
         .sheet(item: $mealCaptureMode) { mode in
             MealCaptureView(opensCameraOnAppear: mode == .camera)
         }
+        .sheet(item: $activeAnalysisMeal) { meal in
+            NavigationStack {
+                MealReviewView(
+                    meal: meal,
+                    onDelete: deleteMeal,
+                    onDuplicate: duplicateMeal
+                )
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if !analysisProgressStore.analyses.isEmpty {
+                Button(action: openMostRelevantAnalysis) {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(analysisProgressStore.analyses.count, format: .number)
+                            .font(.caption.bold().monospacedDigit())
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(.ultraThinMaterial, in: .capsule)
+                    .shadow(radius: 4, y: 2)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Laufende OpenRouter-Analysen: \(analysisProgressStore.analyses.count)")
+                .accessibilityIdentifier("analysis.activity")
+                .padding(.top, 6)
+                .padding(.trailing, 12)
+            }
+        }
         .onAppear(perform: presentRequestedQuickCapture)
         .task {
+#if DEBUG
+            if !ProcessInfo.processInfo.arguments.contains("--ui-testing-review-progress") {
+                try? MealAnalysisQueue.shared.resumePendingAnalyses(in: modelContext)
+            }
+#else
+            try? MealAnalysisQueue.shared.resumePendingAnalyses(in: modelContext)
+#endif
             if weeklyReminderEnabled {
                 _ = await weeklyReminderScheduler.enable()
             }
@@ -81,6 +122,39 @@ struct ContentView: View {
             guard activeQuickCaptureRequestID == requestID else { return }
             mealCaptureMode = .camera
         }
+    }
+
+    private func openMostRelevantAnalysis() {
+        activeAnalysisMeal = meals
+            .filter { analysisProgressStore.analyses[$0.id] != nil }
+            .sorted { lhs, rhs in
+                let lhsNeedsAnswer = lhs.activeRevision?.status == .needsClarification
+                let rhsNeedsAnswer = rhs.activeRevision?.status == .needsClarification
+                if lhsNeedsAnswer != rhsNeedsAnswer { return lhsNeedsAnswer }
+                let lhsStartedAt = analysisProgressStore.analyses[lhs.id]?.startedAt ?? .distantPast
+                let rhsStartedAt = analysisProgressStore.analyses[rhs.id]?.startedAt ?? .distantPast
+                return lhsStartedAt > rhsStartedAt
+            }
+            .first
+    }
+
+    private func deleteMeal(_ meal: Meal) {
+        MealAnalysisQueue.shared.cancel(for: meal.id, in: modelContext)
+        do {
+            let images = try SwiftDataMealRepository(context: modelContext).deleteMeal(meal)
+            activeAnalysisMeal = nil
+            Task {
+                let storage = FileImageStorage()
+                for image in images { await storage.deleteImage(image) }
+            }
+        } catch {
+            AppLogger.persistence.error("Meal deletion failed")
+        }
+    }
+
+    @MainActor
+    private func duplicateMeal(_ meal: Meal) async throws {
+        activeAnalysisMeal = try await MealDuplicationCoordinator(context: modelContext).duplicate(meal)
     }
 }
 
@@ -148,8 +222,7 @@ private struct TodayDashboardContainer: View {
 
     private func retryAnalysis(mealID: UUID) {
         guard let meal = meals.first(where: { $0.id == mealID }) else { return }
-        let coordinator = MealAnalysisCoordinator(context: modelContext)
-        Task { await coordinator.analyze(meal) }
+        Task { await MealAnalysisQueue.shared.analyze(meal, in: modelContext) }
     }
 
     private func openMeal(mealID: UUID) {
@@ -157,6 +230,7 @@ private struct TodayDashboardContainer: View {
     }
 
     private func deleteMeal(_ meal: Meal) {
+        MealAnalysisQueue.shared.cancel(for: meal.id, in: modelContext)
         do {
             let images = try SwiftDataMealRepository(context: modelContext).deleteMeal(meal)
             selectedMeal = nil
@@ -186,5 +260,5 @@ private struct TodayDashboardContainer: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: NutritionSchemaV1.models, inMemory: true)
+        .modelContainer(for: NutritionSchemaV2.models, inMemory: true)
 }

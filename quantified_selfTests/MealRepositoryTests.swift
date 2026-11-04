@@ -282,16 +282,19 @@ struct MealRepositoryTests {
             category: .lunch,
             images: [image]
         ))
+        context.insert(PendingMealAnalysis(mealID: meal.id, trigger: .initial))
+        try context.save()
 
         let deletedImages = try repository.deleteMeal(meal)
 
         #expect(deletedImages == [image])
         #expect(try context.fetch(FetchDescriptor<Meal>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<MealImage>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<PendingMealAnalysis>()).isEmpty)
     }
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(NutritionSchemaV1.models)
+        let schema = Schema(NutritionSchemaV2.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(
             for: schema,

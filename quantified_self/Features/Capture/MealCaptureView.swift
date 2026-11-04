@@ -310,14 +310,14 @@ struct MealCaptureView: View {
                     images: storedImages,
                     analysisState: shouldAnalyze ? .pending : .awaitingDescription
                 ))
-                let coordinator = MealAnalysisCoordinator(
-                    context: modelContext,
-                    provider: analysisProvider,
-                    imageStorage: imageStorage
-                )
                 dismiss()
                 if shouldAnalyze {
-                    await coordinator.analyze(meal)
+                    await MealAnalysisQueue.shared.analyze(
+                        meal,
+                        in: modelContext,
+                        provider: analysisProvider,
+                        imageStorage: imageStorage
+                    )
                 }
             } catch {
                 for image in storedImages {
@@ -352,5 +352,5 @@ struct MealCaptureView: View {
 
 #Preview {
     MealCaptureView()
-        .modelContainer(for: NutritionSchemaV1.models, inMemory: true)
+        .modelContainer(for: NutritionSchemaV2.models, inMemory: true)
 }

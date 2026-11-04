@@ -5,6 +5,44 @@ import Testing
 
 @MainActor
 struct PersistenceModelTests {
+    @Test("Version 1 stores migrate without losing meals")
+    func versionOneMigration() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "quant-migration-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appending(path: "Nutrition.store")
+
+        do {
+            let schema = Schema(NutritionSchemaV1.models)
+            let configuration = ModelConfiguration(
+                "MigrationTest",
+                schema: schema,
+                url: storeURL,
+                cloudKitDatabase: .none
+            )
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            container.mainContext.insert(Meal(userComment: "Bleibt erhalten"))
+            try container.mainContext.save()
+        }
+
+        let schema = Schema(NutritionSchemaV2.models)
+        let configuration = ModelConfiguration(
+            "MigrationTest",
+            schema: schema,
+            url: storeURL,
+            cloudKitDatabase: .none
+        )
+        let migrated = try ModelContainer(
+            for: schema,
+            migrationPlan: NutritionMigrationPlan.self,
+            configurations: [configuration]
+        )
+
+        #expect(try migrated.mainContext.fetch(FetchDescriptor<Meal>()).first?.userComment == "Bleibt erhalten")
+        #expect(try migrated.mainContext.fetch(FetchDescriptor<PendingMealAnalysis>()).isEmpty)
+    }
+
     @Test("Meal revisions and nutrients survive an in-memory SwiftData save")
     func modelGraphRoundTrip() throws {
         let container = try NutritionModelContainerFactory.makeContainer(isStoredInMemoryOnly: true)

@@ -69,7 +69,7 @@ struct MealsHistoryContainer: View {
 
     private func retryAnalysis(_ id: UUID) {
         guard let meal = meals.first(where: { $0.id == id }) else { return }
-        Task { await MealAnalysisCoordinator(context: modelContext).analyze(meal) }
+        Task { await MealAnalysisQueue.shared.analyze(meal, in: modelContext) }
     }
 
     private func requestDeletion(_ id: UUID) {
@@ -115,6 +115,7 @@ struct MealsHistoryContainer: View {
     }
 
     private func deleteMeal(_ meal: Meal) {
+        MealAnalysisQueue.shared.cancel(for: meal.id, in: modelContext)
         do {
             let images = try SwiftDataMealRepository(context: modelContext).deleteMeal(meal)
             selectedMeal = nil

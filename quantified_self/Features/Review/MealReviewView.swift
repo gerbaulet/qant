@@ -791,7 +791,13 @@ struct MealReviewView: View {
     private func submitClarification() {
         isWorking = true
         Task {
-            await makeCoordinator().answerClarification(clarificationAnswer, for: meal)
+            await MealAnalysisQueue.shared.answerClarification(
+                clarificationAnswer,
+                for: meal,
+                in: modelContext,
+                provider: analysisProvider,
+                imageStorage: imageStorage
+            )
             clarificationAnswer = ""
             isWorking = false
         }
@@ -810,7 +816,13 @@ struct MealReviewView: View {
         showsCorrectionEntry = false
         isWorking = true
         Task {
-            await makeCoordinator().correct(correction, for: meal)
+            await MealAnalysisQueue.shared.correct(
+                correction,
+                for: meal,
+                in: modelContext,
+                provider: analysisProvider,
+                imageStorage: imageStorage
+            )
             correctionText = ""
             isWorking = false
         }
@@ -819,7 +831,12 @@ struct MealReviewView: View {
     private func retryAnalysis() {
         isWorking = true
         Task {
-            await makeCoordinator().analyze(meal)
+            await MealAnalysisQueue.shared.analyze(
+                meal,
+                in: modelContext,
+                provider: analysisProvider,
+                imageStorage: imageStorage
+            )
             isWorking = false
         }
     }
@@ -830,7 +847,12 @@ struct MealReviewView: View {
             try SwiftDataMealRepository(context: modelContext).addDescription(descriptionText, to: meal)
             descriptionText = ""
             Task {
-                await makeCoordinator().analyze(meal)
+                await MealAnalysisQueue.shared.analyze(
+                    meal,
+                    in: modelContext,
+                    provider: analysisProvider,
+                    imageStorage: imageStorage
+                )
                 isWorking = false
             }
         } catch {

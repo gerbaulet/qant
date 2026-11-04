@@ -70,6 +70,37 @@ final class Meal {
 }
 
 @Model
+final class PendingMealAnalysis {
+    var id: UUID
+    var mealID: UUID
+    var createdAt: Date
+    var triggerRawValue: String
+    var clarificationAnswer: String?
+    var userCorrection: String?
+
+    init(
+        id: UUID = UUID(),
+        mealID: UUID,
+        createdAt: Date = .now,
+        trigger: AnalysisTrigger,
+        clarificationAnswer: String? = nil,
+        userCorrection: String? = nil
+    ) {
+        self.id = id
+        self.mealID = mealID
+        self.createdAt = createdAt
+        self.triggerRawValue = trigger.rawValue
+        self.clarificationAnswer = clarificationAnswer
+        self.userCorrection = userCorrection
+    }
+
+    var trigger: AnalysisTrigger {
+        get { AnalysisTrigger(rawValue: triggerRawValue) ?? .retry }
+        set { triggerRawValue = newValue.rawValue }
+    }
+}
+
+@Model
 final class MealImage {
     var id: UUID
     var createdAt: Date

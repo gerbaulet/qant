@@ -15,6 +15,7 @@ struct LiveAnalysisCall: Identifiable, Equatable {
 }
 
 struct MealAnalysisProgress: Equatable {
+    var startedAt: Date = .now
     var phase = "Bilder werden vorbereitet und Verpackungstext wird gelesen …"
     var calls: [LiveAnalysisCall] = []
 
@@ -31,7 +32,9 @@ final class MealAnalysisProgressStore {
     private static let maximumStreamCharacterCount = 64_000
     private(set) var analyses: [UUID: MealAnalysisProgress] = [:]
 
-    func begin(_ mealID: UUID) { analyses[mealID] = MealAnalysisProgress() }
+    func begin(_ mealID: UUID, at date: Date = .now) {
+        analyses[mealID] = MealAnalysisProgress(startedAt: date)
+    }
     func end(_ mealID: UUID) { analyses[mealID] = nil }
     func setPhase(_ phase: String, for mealID: UUID) { analyses[mealID]?.phase = phase }
 
