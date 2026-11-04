@@ -5,7 +5,7 @@ import SwiftData
 @MainActor
 final class MealAnalysisCoordinator {
     static let maximumClarificationCount = 2
-    static let maximumTransientAttemptCount = 10
+    static let maximumTransientAttemptCount = 5
 
     static func finalizeLegacyAwaitingConfirmations(in context: ModelContext) throws {
         let meals = try context.fetch(FetchDescriptor<Meal>())

@@ -321,9 +321,9 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.analysisRevisions.first?.status == .failed)
         #expect(meal.analysisRevisions.first?.failureMessage == "OpenRouter ist momentan nicht verfügbar.")
         let calls = InitialAnalysisRunMetadata.decodeCalls(meal.analysisRevisions.first?.providerMetadata)
-        #expect(calls.count == 10)
+        #expect(calls.count == 5)
         #expect(calls.allSatisfy { $0.status == .failed })
-        #expect(calls.map(\.attemptNumber) == Array(1...10))
+        #expect(calls.map(\.attemptNumber) == Array(1...5))
         #expect(try context.fetch(FetchDescriptor<Meal>()).count == 1)
     }
 
@@ -522,7 +522,7 @@ struct MealAnalysisCoordinatorTests {
         try context.save()
         let provider = SequencedAnalysisProviderStub(outcomes: Array(
             repeating: .failure(OpenRouterClientError.transportFailure),
-            count: 10
+            count: 5
         ))
         let waiter = NetworkAvailabilityWaiterStub()
         let coordinator = MealAnalysisCoordinator(
@@ -534,8 +534,8 @@ struct MealAnalysisCoordinatorTests {
 
         await coordinator.analyze(meal)
 
-        #expect(waiter.waitCount == 9)
-        #expect(provider.requestCount == 10)
+        #expect(waiter.waitCount == 4)
+        #expect(provider.requestCount == 5)
         #expect(meal.analysisState == .failed)
         #expect(meal.analysisRevisions.first?.failureMessage?.contains("Internetverbindung") == true)
     }
