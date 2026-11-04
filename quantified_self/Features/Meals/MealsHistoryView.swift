@@ -199,9 +199,9 @@ struct MealsHistoryView: View {
                     Text("Monat").tag(MealHistoryGrouping.month)
                 }
                 .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(.bar)
+                .padding(.horizontal, QuantLayout.pageInset)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
                 .accessibilityIdentifier("meals.grouping")
 
                 Group {
@@ -221,7 +221,17 @@ struct MealsHistoryView: View {
                             ForEach(sections) { section in
                                 Section {
                                     ForEach(section.entries) { entry in
-                                        mealRow(entry)
+                                        MealSummaryRow(
+                                            id: entry.id,
+                                            name: entry.name,
+                                            timestamp: entry.timestamp,
+                                            energyKilocalories: entry.energyKilocalories,
+                                            analysisState: entry.analysisState,
+                                            isProvisional: entry.isProvisional,
+                                            thumbnailStorageKey: entry.thumbnailStorageKey,
+                                            onOpen: { onOpenMeal(entry.id) },
+                                            onRetry: { onRetryMeal(entry.id) }
+                                        )
                                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                                 Button(role: .destructive) {
                                                     onDeleteMeal(entry.id)
@@ -262,44 +272,6 @@ struct MealsHistoryView: View {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func mealRow(_ entry: MealHistoryEntry) -> some View {
-        HStack(spacing: 12) {
-            Button { onOpenMeal(entry.id) } label: {
-                HStack(spacing: 12) {
-                    StoredMealThumbnailView(storageKey: entry.thumbnailStorageKey)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(entry.name?.isEmpty == false ? entry.name! : "Mahlzeit")
-                            .font(.headline)
-                            .lineLimit(1)
-                        HStack(spacing: 7) {
-                            Text(entry.timestamp, format: .dateTime.hour().minute())
-                            if entry.analysisState != .confirmed {
-                                Label(entry.analysisState.historyTitle, systemImage: entry.analysisState.historySystemImage)
-                                    .foregroundStyle(entry.analysisState.historyColor)
-                            }
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 8)
-                    if let energy = entry.energyKilocalories {
-                        Text("\(entry.isProvisional ? "~" : "")\(wholeNumber(energy)) kcal")
-                            .font(.subheadline.bold().monospacedDigit())
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-
-            if entry.analysisState == .failed {
-                Button { onRetryMeal(entry.id) } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Analyse erneut versuchen")
-            }
-        }
-    }
-
     private func sectionTitle(_ section: MealHistorySection) -> String {
         switch grouping {
         case .day:
@@ -329,41 +301,5 @@ struct MealsHistoryView: View {
 
     private func wholeNumber(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0)))
-    }
-}
-
-private extension AnalysisState {
-    var historyTitle: LocalizedStringKey {
-        switch self {
-        case .awaitingDescription: "Beschreibung fehlt"
-        case .pending: "Ausstehend"
-        case .analyzing: "Analyse"
-        case .needsClarification: "Rückfrage"
-        case .awaitingConfirmation: "Bestätigt"
-        case .confirmed: "Bestätigt"
-        case .failed: "Fehlgeschlagen"
-        }
-    }
-
-    var historySystemImage: String {
-        switch self {
-        case .awaitingDescription: "text.bubble"
-        case .pending: "clock"
-        case .analyzing: "sparkles"
-        case .needsClarification: "questionmark.circle"
-        case .awaitingConfirmation: "checkmark.seal.fill"
-        case .confirmed: "checkmark.seal.fill"
-        case .failed: "exclamationmark.triangle.fill"
-        }
-    }
-
-    var historyColor: Color {
-        switch self {
-        case .awaitingDescription: .orange
-        case .pending, .analyzing: .secondary
-        case .needsClarification: .orange
-        case .awaitingConfirmation, .confirmed: .green
-        case .failed: .red
-        }
     }
 }

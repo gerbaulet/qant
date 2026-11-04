@@ -24,7 +24,7 @@ struct TodayDashboardView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
+                LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
                     dateHeader
                     calorieCard
                     hintsSection
@@ -32,7 +32,7 @@ struct TodayDashboardView: View {
                     macroCard
                     mealsSection
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, QuantLayout.pageInset)
                 .padding(.bottom, 96)
             }
             .background(Color(.systemGroupedBackground))
@@ -61,117 +61,117 @@ struct TodayDashboardView: View {
     }
 
     private var calorieCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Kalorien")
-                    .font(.headline)
-                Spacer()
-                if snapshot.hasProvisionalValues {
-                    Text("VORLÄUFIG")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.orange)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.orange.opacity(0.12), in: .capsule)
+        QuantCard(style: .hero) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Kalorien")
+                        .font(.headline)
+                    Spacer()
+                    if snapshot.hasProvisionalValues {
+                        Text("VORLÄUFIG")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.orange.opacity(0.12), in: .capsule)
+                    }
                 }
-            }
 
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(estimatedNumber(snapshot.energy.consumed))
-                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(estimatedNumber(snapshot.energy.consumed))
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    if let target = snapshot.energy.target {
+                        Text("/ \(wholeNumber(target)) kcal")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("kcal")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 if let target = snapshot.energy.target {
-                    Text("/ \(wholeNumber(target)) kcal")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("kcal")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    ProgressView(
+                        value: min(snapshot.energy.consumed, target),
+                        total: target
+                    )
+                    .tint(remainingColor)
+                    .accessibilityLabel("Kalorienfortschritt")
+                    .accessibilityValue(progressAccessibilityValue)
                 }
-            }
 
-            if let target = snapshot.energy.target {
-                ProgressView(
-                    value: min(snapshot.energy.consumed, target),
-                    total: target
-                )
-                .tint(remainingColor)
-                .accessibilityLabel("Kalorienfortschritt")
-                .accessibilityValue(progressAccessibilityValue)
+                Text(remainingEnergyText)
+                    .font(.headline)
+                    .foregroundStyle(remainingColor)
             }
-
-            Text(remainingEnergyText)
-                .font(.headline)
-                .foregroundStyle(remainingColor)
         }
-        .padding(20)
-        .background(.background, in: .rect(cornerRadius: 22))
         .accessibilityElement(children: .combine)
     }
 
     private var macroCard: some View {
-        VStack(spacing: 18) {
-            ForEach(snapshot.macros + [snapshot.fiber]) { progress in
-                macroRow(progress)
+        QuantCard(style: .hero) {
+            VStack(spacing: 18) {
+                ForEach(snapshot.macros + [snapshot.fiber]) { progress in
+                    macroRow(progress)
+                }
             }
         }
-        .padding(20)
-        .background(.background, in: .rect(cornerRadius: 22))
     }
 
     private var weeklyCalorieCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Diese Woche")
-                .font(.headline)
-            if snapshot.hasProvisionalWeeklyValues {
-                Text("~ Enthält vorläufige Schätzwerte aus offenen Rückfragen.")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(snapshot.hasProvisionalWeeklyValues ? "~" : "")\(wholeNumber(snapshot.weeklyEnergy.consumed)) kcal")
-                    .font(.title3.bold().monospacedDigit())
-                Spacer()
+        QuantCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Diese Woche")
+                    .font(.headline)
+                if snapshot.hasProvisionalWeeklyValues {
+                    Text("~ Enthält vorläufige Schätzwerte aus offenen Rückfragen.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                HStack(alignment: .firstTextBaseline) {
+                    Text("\(snapshot.hasProvisionalWeeklyValues ? "~" : "")\(wholeNumber(snapshot.weeklyEnergy.consumed)) kcal")
+                        .font(.title3.bold().monospacedDigit())
+                    Spacer()
+                    if let target = snapshot.weeklyEnergy.target {
+                        Text("von \(wholeNumber(target)) kcal")
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 if let target = snapshot.weeklyEnergy.target {
-                    Text("von \(wholeNumber(target)) kcal")
+                    ProgressView(
+                        value: min(snapshot.weeklyEnergy.consumed, target),
+                        total: target
+                    )
+                    Text(weeklyRemainingText(target: target))
+                        .font(.subheadline)
+                        .foregroundStyle(snapshot.weeklyEnergy.consumed <= target ? .green : .orange)
+                } else {
+                    Text("Für diese Woche ist kein vollständiges Kalorienziel verfügbar.")
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-            }
-            if let target = snapshot.weeklyEnergy.target {
-                ProgressView(
-                    value: min(snapshot.weeklyEnergy.consumed, target),
-                    total: target
-                )
-                Text(weeklyRemainingText(target: target))
-                    .font(.subheadline)
-                    .foregroundStyle(snapshot.weeklyEnergy.consumed <= target ? .green : .orange)
-            } else {
-                Text("Für diese Woche ist kein vollständiges Kalorienziel verfügbar.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
 
-            if let weeklySummary, weeklySummary.trackedDayCount > 0 {
-                Divider()
-                LabeledContent("Tagesdurchschnitt") {
-                    Text("\(weeklySummary.hasProvisionalValues ? "~" : "")\(wholeNumber(weeklySummary.averageEnergyKilocalories ?? 0)) kcal")
-                }
-                LabeledContent("Makros Ø") {
-                    Text("\(weeklySummary.hasProvisionalValues ? "~" : "")\(macroAverageText(weeklySummary))")
-                        .multilineTextAlignment(.trailing)
-                }
-                LabeledContent("Tage im Ziel") {
-                    Text("\(weeklySummary.daysWithinEnergyTarget) von \(weeklySummary.trackedDayCount)")
-                }
-                if let change = weeklySummary.previousWeekAverageEnergyChangePercent {
-                    LabeledContent("Zur Vorwoche") {
-                        Text("\(weeklySummary.comparisonHasProvisionalValues ? "~" : "")\(change.formatted(.percent.scale(1).sign(strategy: .always()).precision(.fractionLength(0))))")
+                if let weeklySummary, weeklySummary.trackedDayCount > 0 {
+                    Divider()
+                    LabeledContent("Tagesdurchschnitt") {
+                        Text("\(weeklySummary.hasProvisionalValues ? "~" : "")\(wholeNumber(weeklySummary.averageEnergyKilocalories ?? 0)) kcal")
+                    }
+                    LabeledContent("Makros Ø") {
+                        Text("\(weeklySummary.hasProvisionalValues ? "~" : "")\(macroAverageText(weeklySummary))")
+                            .multilineTextAlignment(.trailing)
+                    }
+                    LabeledContent("Tage im Ziel") {
+                        Text("\(weeklySummary.daysWithinEnergyTarget) von \(weeklySummary.trackedDayCount)")
+                    }
+                    if let change = weeklySummary.previousWeekAverageEnergyChangePercent {
+                        LabeledContent("Zur Vorwoche") {
+                            Text("\(weeklySummary.comparisonHasProvisionalValues ? "~" : "")\(change.formatted(.percent.scale(1).sign(strategy: .always()).precision(.fractionLength(0))))")
+                        }
                     }
                 }
             }
         }
-        .padding(18)
-        .background(.background, in: .rect(cornerRadius: 18))
     }
 
     private func macroAverageText(_ summary: WeeklyNutritionSummary) -> String {
@@ -221,7 +221,7 @@ struct TodayDashboardView: View {
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(.background, in: .rect(cornerRadius: 22))
+                .background(.background, in: .rect(cornerRadius: QuantLayout.heroCardCornerRadius))
             } else {
                 ForEach(snapshot.meals) { meal in
                     mealRow(meal)
@@ -249,70 +249,24 @@ struct TodayDashboardView: View {
                     }
                 }
             }
-            .padding(18)
-            .background(.blue.opacity(0.08), in: .rect(cornerRadius: 18))
+            .padding(QuantLayout.cardPadding)
+            .background(.blue.opacity(0.08), in: .rect(cornerRadius: QuantLayout.cardCornerRadius))
         }
     }
 
     private func mealRow(_ meal: TodayMealSummary) -> some View {
-        HStack(spacing: 14) {
-            Button {
-                onOpenMeal(meal.id)
-            } label: {
-                HStack(spacing: 14) {
-                    StoredMealThumbnailView(storageKey: meal.thumbnailStorageKey)
-
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(mealDisplayName(meal))
-                            .font(.headline)
-                            .lineLimit(1)
-                        HStack(spacing: 8) {
-                            Text(meal.timestamp, format: .dateTime.hour().minute())
-                            analysisStateLabel(meal)
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    if let energy = meal.energyKilocalories {
-                        Text("\(meal.isProvisional ? "~" : "")\(wholeNumber(energy)) kcal")
-                            .font(.subheadline.weight(.semibold).monospacedDigit())
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Öffnet die Analyse dieser Mahlzeit")
-            .accessibilityIdentifier("meal.open.\(meal.id.uuidString)")
-
-            if meal.analysisState == .failed {
-                Button {
-                    onRetryMeal(meal.id)
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Analyse erneut versuchen")
-                .accessibilityIdentifier("meal.retry.\(meal.id.uuidString)")
-            }
-        }
-        .padding(14)
-        .background(.background, in: .rect(cornerRadius: 18))
-    }
-
-    private func analysisStateLabel(_ meal: TodayMealSummary) -> some View {
-        Group {
-            if meal.analysisState != .confirmed {
-                Label(meal.analysisState.dashboardTitle, systemImage: meal.analysisState.dashboardSystemImage)
-                    .foregroundStyle(meal.analysisState.dashboardColor)
-            }
-        }
-    }
-
-    private func mealDisplayName(_ meal: TodayMealSummary) -> String {
-        guard let name = meal.name, !name.isEmpty else { return "Mahlzeit" }
-        return name
+        MealSummaryRow(
+            id: meal.id,
+            name: meal.name,
+            timestamp: meal.timestamp,
+            energyKilocalories: meal.energyKilocalories,
+            analysisState: meal.analysisState,
+            isProvisional: meal.isProvisional,
+            thumbnailStorageKey: meal.thumbnailStorageKey,
+            showsCardBackground: true,
+            onOpen: { onOpenMeal(meal.id) },
+            onRetry: { onRetryMeal(meal.id) }
+        )
     }
 
     private var addFoodButton: some View {
@@ -388,42 +342,6 @@ private extension NutrientIdentifier {
         case .fat: .purple
         case .fiber: .green
         default: .accentColor
-        }
-    }
-}
-
-private extension AnalysisState {
-    var dashboardTitle: LocalizedStringKey {
-        switch self {
-        case .awaitingDescription: "Beschreibung fehlt"
-        case .pending: "Ausstehend"
-        case .analyzing: "Wird analysiert"
-        case .needsClarification: "Rückfrage"
-        case .awaitingConfirmation: "Bestätigt"
-        case .confirmed: "Bestätigt"
-        case .failed: "Fehlgeschlagen"
-        }
-    }
-
-    var dashboardSystemImage: String {
-        switch self {
-        case .awaitingDescription: "text.bubble"
-        case .pending: "clock"
-        case .analyzing: "sparkles"
-        case .needsClarification: "questionmark.circle"
-        case .awaitingConfirmation: "checkmark.seal.fill"
-        case .confirmed: "checkmark.seal.fill"
-        case .failed: "exclamationmark.triangle.fill"
-        }
-    }
-
-    var dashboardColor: Color {
-        switch self {
-        case .awaitingDescription: .orange
-        case .pending, .analyzing: .secondary
-        case .needsClarification: .orange
-        case .awaitingConfirmation, .confirmed: .green
-        case .failed: .red
         }
     }
 }
