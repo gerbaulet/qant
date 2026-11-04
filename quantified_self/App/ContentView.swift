@@ -25,7 +25,6 @@ struct ContentView: View {
     @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     private let quickCaptureRequests = QuickCaptureRequestStore()
     private let weeklyReminderScheduler = WeeklySummaryNotificationScheduler()
 
@@ -62,25 +61,10 @@ struct ContentView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if !analysisProgressStore.analyses.isEmpty {
-                Button(action: openMostRelevantAnalysis) {
-                    HStack(spacing: 6) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text(analysisProgressStore.analyses.count, format: .number)
-                            .font(.caption.bold().monospacedDigit())
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(.ultraThinMaterial, in: .capsule)
-                    .shadow(radius: 4, y: 2)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Laufende OpenRouter-Analysen: \(analysisProgressStore.analyses.count)")
-                .accessibilityIdentifier("analysis.activity")
-                .padding(.top, 6)
-                .padding(.trailing, 12)
-            }
+            AnalysisActivityButton(
+                progressStore: analysisProgressStore,
+                action: openMostRelevantAnalysis
+            )
         }
         .onAppear(perform: presentRequestedQuickCapture)
         .task {
@@ -125,6 +109,7 @@ struct ContentView: View {
     }
 
     private func openMostRelevantAnalysis() {
+        let meals = (try? modelContext.fetch(FetchDescriptor<Meal>())) ?? []
         activeAnalysisMeal = meals
             .filter { analysisProgressStore.analyses[$0.id] != nil }
             .sorted { lhs, rhs in
@@ -155,6 +140,33 @@ struct ContentView: View {
     @MainActor
     private func duplicateMeal(_ meal: Meal) async throws {
         activeAnalysisMeal = try await MealDuplicationCoordinator(context: modelContext).duplicate(meal)
+    }
+}
+
+private struct AnalysisActivityButton: View {
+    let progressStore: MealAnalysisProgressStore
+    let action: () -> Void
+
+    var body: some View {
+        if !progressStore.analyses.isEmpty {
+            Button(action: action) {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(progressStore.analyses.count, format: .number)
+                        .font(.caption.bold().monospacedDigit())
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(.ultraThinMaterial, in: .capsule)
+                .shadow(radius: 4, y: 2)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Laufende OpenRouter-Analysen: \(progressStore.analyses.count)")
+            .accessibilityIdentifier("analysis.activity")
+            .padding(.top, 6)
+            .padding(.trailing, 12)
+        }
     }
 }
 
