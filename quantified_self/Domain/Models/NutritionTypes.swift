@@ -20,6 +20,19 @@ enum AnalysisState: String, Codable, CaseIterable, Sendable {
     case awaitingConfirmation
     case confirmed
     case failed
+
+    var includesNutritionEstimate: Bool {
+        switch self {
+        case .needsClarification, .awaitingConfirmation, .confirmed:
+            true
+        case .awaitingDescription, .pending, .analyzing, .failed:
+            false
+        }
+    }
+
+    var isProvisionalNutritionEstimate: Bool {
+        includesNutritionEstimate && self != .confirmed
+    }
 }
 
 enum AnalysisTrigger: String, Codable, CaseIterable, Sendable {

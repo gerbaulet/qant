@@ -22,11 +22,13 @@ struct NutritionTrendPoint: Identifiable, Sendable {
     let date: Date
     let value: Double
     let isForecast: Bool
+    let isProvisional: Bool
 
-    init(date: Date, value: Double, isForecast: Bool = false) {
+    init(date: Date, value: Double, isForecast: Bool = false, isProvisional: Bool = false) {
         self.date = date
         self.value = value
         self.isForecast = isForecast
+        self.isProvisional = isProvisional
     }
 
     var id: Date { date }
@@ -45,6 +47,7 @@ struct DailyCumulativeNutritionTrend: Sendable {
     let hasActualData: Bool
     let averageDayCount: Int
     let forecastDayCount: Int
+    let hasProvisionalValues: Bool
 }
 
 struct NutritionPeriodSummary: Sendable {
@@ -54,6 +57,7 @@ struct NutritionPeriodSummary: Sendable {
     let totals: [NutrientIdentifier: Double]
     let daysAboveEnergyTarget: Int
     let daysAtOrBelowEnergyTarget: Int
+    let hasProvisionalValues: Bool
 
     func average(for nutrient: NutrientIdentifier) -> Double? {
         guard trackedDayCount > 0, let total = totals[nutrient] else { return nil }
@@ -117,7 +121,11 @@ enum NutritionTrendsBuilder {
         )
         var points = totals.compactMap { total -> NutritionTrendPoint? in
             guard let value = total.values[nutrient] else { return nil }
-            return NutritionTrendPoint(date: total.date, value: value)
+            return NutritionTrendPoint(
+                date: total.date,
+                value: value,
+                isProvisional: total.hasProvisionalValues
+            )
         }
         .sorted { $0.date < $1.date }
         if let forecastValue = dailyCumulativeTrend.forecastPoints.last?.value {
@@ -181,19 +189,20 @@ enum NutritionTrendsBuilder {
                 forecastPoints: [],
                 hasActualData: false,
                 averageDayCount: 0,
-                forecastDayCount: 0
+                forecastDayCount: 0,
+                hasProvisionalValues: false
             )
         }
 
-        let confirmedMeals = meals.filter { meal in
+        let includedMeals = meals.filter { meal in
             meal.mealState != .archived &&
                 meal.timestamp < selectedDay.end &&
-                activeRevisions.revision(for: meal)?.status == .confirmed
+                activeRevisions.revision(for: meal)?.status.includesNutritionEstimate == true
         }
-        let selectedDayMeals = confirmedMeals.filter { meal in
+        let selectedDayMeals = includedMeals.filter { meal in
             meal.timestamp >= selectedDay.start
         }
-        let historicalMeals = confirmedMeals.filter { $0.timestamp < selectedDay.start }
+        let historicalMeals = includedMeals.filter { $0.timestamp < selectedDay.start }
         let recordedDays = Set(historicalMeals.map { calendar.startOfDay(for: $0.timestamp) })
             .sorted(by: >)
             .prefix(90)
@@ -243,7 +252,10 @@ enum NutritionTrendsBuilder {
             ),
             hasActualData: !selectedDayMeals.isEmpty,
             averageDayCount: recordedDaySet.count,
-            forecastDayCount: recordedDaySet.count
+            forecastDayCount: recordedDaySet.count,
+            hasProvisionalValues: (selectedDayMeals + averageMeals).contains {
+                activeRevisions.revision(for: $0)?.status.isProvisionalNutritionEstimate == true
+            }
         )
     }
 
@@ -415,13 +427,15 @@ enum NutritionTrendsBuilder {
             trackedDayCount: days.count,
             totals: totals,
             daysAboveEnergyTarget: above,
-            daysAtOrBelowEnergyTarget: atOrBelow
+            daysAtOrBelowEnergyTarget: atOrBelow,
+            hasProvisionalValues: days.contains(where: \.hasProvisionalValues)
         )
     }
 
     private struct DailyTotal {
         let date: Date
         let values: [NutrientIdentifier: Double]
+        let hasProvisionalValues: Bool
     }
 
     private static func dailyTotals(
@@ -431,13 +445,13 @@ enum NutritionTrendsBuilder {
         portionMultipliers: PortionMultiplierSnapshot,
         activeRevisions: ActiveMealRevisionSnapshot
     ) -> [DailyTotal] {
-        let confirmedMeals = meals.filter { meal in
+        let includedMeals = meals.filter { meal in
             meal.mealState != .archived &&
                 meal.timestamp >= interval.start &&
                 meal.timestamp < interval.end &&
-                activeRevisions.revision(for: meal)?.status == .confirmed
+                activeRevisions.revision(for: meal)?.status.includesNutritionEstimate == true
         }
-        let grouped = Dictionary(grouping: confirmedMeals) {
+        let grouped = Dictionary(grouping: includedMeals) {
             calendar.startOfDay(for: $0.timestamp)
         }
         return grouped.map { date, meals in
@@ -453,7 +467,13 @@ enum NutritionTrendsBuilder {
                     )
                 }
             }
-            return DailyTotal(date: date, values: values)
+            return DailyTotal(
+                date: date,
+                values: values,
+                hasProvisionalValues: meals.contains {
+                    activeRevisions.revision(for: $0)?.status.isProvisionalNutritionEstimate == true
+                }
+            )
         }
     }
 

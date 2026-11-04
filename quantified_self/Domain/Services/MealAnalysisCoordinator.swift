@@ -7,6 +7,19 @@ final class MealAnalysisCoordinator {
     static let maximumClarificationCount = 2
     static let maximumTransientAttemptCount = 10
 
+    static func finalizeLegacyAwaitingConfirmations(in context: ModelContext) throws {
+        let meals = try context.fetch(FetchDescriptor<Meal>())
+        var changed = false
+        for meal in meals where meal.analysisState == .awaitingConfirmation {
+            if meal.activeRevision?.status == .awaitingConfirmation {
+                meal.activeRevision?.status = .confirmed
+            }
+            meal.analysisState = .confirmed
+            changed = true
+        }
+        if changed { try context.save() }
+    }
+
     private let context: ModelContext
     private let provider: any NutritionAnalysisProviding
     private let imageStorage: any ImageStorageProviding
@@ -103,21 +116,6 @@ final class MealAnalysisCoordinator {
             trigger: .correction,
             userCorrection: trimmedCorrection
         )
-    }
-
-    func confirm(_ meal: Meal) throws {
-        guard
-            meal.analysisState == .awaitingConfirmation,
-            let revision = meal.activeRevision,
-            revision.status == .awaitingConfirmation
-        else {
-            throw NutritionAnalysisError.invalidState
-        }
-
-        revision.status = .confirmed
-        meal.analysisState = .confirmed
-        meal.modifiedAt = now()
-        try context.save()
     }
 
     func resume(_ pendingAnalysis: PendingMealAnalysis, for meal: Meal) async {
@@ -485,17 +483,7 @@ final class MealAnalysisCoordinator {
         for meal: Meal
     ) {
         let asksClarification = result.clarificationQuestion?.isEmpty == false
-        let hasClarificationHistory = meal.clarificationCount > 0 || meal.analysisRevisions.contains {
-            $0.clarificationQuestion?.isEmpty == false
-        }
-        let status: AnalysisState
-        if asksClarification {
-            status = .needsClarification
-        } else if hasClarificationHistory {
-            status = .awaitingConfirmation
-        } else {
-            status = .confirmed
-        }
+        let status: AnalysisState = asksClarification ? .needsClarification : .confirmed
         let revision = MealAnalysisRevision(
             createdAt: now(),
             requestDate: requestDate,

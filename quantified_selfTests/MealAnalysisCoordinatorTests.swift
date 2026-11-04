@@ -541,8 +541,8 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.analysisRevisions.first?.failureMessage?.contains("Internetverbindung") == true)
     }
 
-    @Test("Confirmation finalizes only the active awaiting revision")
-    func confirmsActiveRevision() throws {
+    @Test("Legacy confirmation states finalize on app launch")
+    func finalizesLegacyConfirmation() throws {
         let container = try makeContainer()
         let context = container.mainContext
         let revision = makeRevision(status: .awaitingConfirmation)
@@ -553,13 +553,7 @@ struct MealAnalysisCoordinatorTests {
         )
         context.insert(meal)
         try context.save()
-        let coordinator = MealAnalysisCoordinator(
-            context: context,
-            provider: AnalysisProviderStub(error: OpenRouterClientError.serverError),
-            imageStorage: AnalysisImageStorage(dataByKey: [:])
-        )
-
-        try coordinator.confirm(meal)
+        try MealAnalysisCoordinator.finalizeLegacyAwaitingConfirmations(in: context)
 
         #expect(meal.analysisState == .confirmed)
         #expect(revision.status == .confirmed)
@@ -590,7 +584,7 @@ struct MealAnalysisCoordinatorTests {
 
         await coordinator.answerClarification("  Etwa zwei Esslöffel  ", for: meal)
 
-        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisState == .confirmed)
         #expect(meal.analysisRevisions.count == 2)
         #expect(meal.clarificationCount == 1)
         #expect(meal.activeRevision?.id != previousRevision.id)
@@ -823,7 +817,7 @@ struct MealAnalysisCoordinatorTests {
         await coordinator.answerClarification("Nein", for: meal)
 
         #expect(provider.requestCount == 2)
-        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisState == .confirmed)
         #expect(meal.clarificationCount == 2)
         #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
         #expect(provider.receivedRequests.last?.clarificationHistory == [
@@ -864,7 +858,7 @@ struct MealAnalysisCoordinatorTests {
         await coordinator.answerClarification("Ja, eine Scheibe Brot", for: meal)
 
         #expect(provider.requestCount == 1)
-        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisState == .confirmed)
         #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 800)
         #expect(meal.activeRevision?.uncertaintySummary?.contains("Brotscheibe") == true)
     }
@@ -897,7 +891,7 @@ struct MealAnalysisCoordinatorTests {
         await coordinator.answerClarification("Eine große Portion", for: meal)
 
         #expect(provider.requestCount == 2)
-        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisState == .confirmed)
         #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
     }
 
@@ -930,7 +924,7 @@ struct MealAnalysisCoordinatorTests {
         await coordinator.answerClarification("Zwei Esslöffel", for: meal)
 
         #expect(provider.requestCount == 2)
-        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisState == .confirmed)
         #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
     }
 

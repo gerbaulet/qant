@@ -77,7 +77,7 @@ struct MealAnalysisQueueTests {
         #expect(provider.receivedRequest?.clarificationAnswer == "Zwei Esslöffel")
         #expect(meal.activeRevision?.trigger == .clarification)
         #expect(meal.activeRevision?.clarificationAnswer == "Zwei Esslöffel")
-        #expect(meal.analysisState == .awaitingConfirmation)
+        #expect(meal.analysisState == .confirmed)
     }
 
     @Test("App launch creates a recoverable job for a legacy interrupted analysis")

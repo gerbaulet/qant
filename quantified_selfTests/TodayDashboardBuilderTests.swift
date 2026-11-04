@@ -24,7 +24,7 @@ struct TodayDashboardBuilderTests {
         )
         let provisional = meal(
             at: date(2026, 8, 23, 13),
-            state: .awaitingConfirmation,
+            state: .needsClarification,
             energy: 700,
             protein: 40
         )
@@ -55,6 +55,7 @@ struct TodayDashboardBuilderTests {
         #expect(snapshot.meals.first?.timestamp == pending.timestamp)
         #expect(snapshot.meals.first?.energyKilocalories == nil)
         #expect(snapshot.hasProvisionalValues)
+        #expect(snapshot.hasProvisionalWeeklyValues)
     }
 
     @Test("Current-calendar day boundaries include the start and exclude the end")
@@ -119,7 +120,7 @@ struct TodayDashboardBuilderTests {
     func weeklyProgress() {
         let reference = date(2026, 8, 19, 12)
         let monday = meal(at: date(2026, 8, 17, 12), state: .confirmed, energy: 2_000, protein: 100)
-        let wednesday = meal(at: date(2026, 8, 19, 12), state: .awaitingConfirmation, energy: 1_800, protein: 90)
+        let wednesday = meal(at: date(2026, 8, 19, 12), state: .needsClarification, energy: 1_800, protein: 90)
         let priorWeek = meal(at: date(2026, 8, 16, 12), state: .confirmed, energy: 3_000, protein: 100)
         let oldGoal = NutritionGoalPeriod(
             validFrom: date(2026, 8, 1),
@@ -144,6 +145,7 @@ struct TodayDashboardBuilderTests {
 
         #expect(snapshot.weeklyEnergy.consumed == 3_800)
         #expect(snapshot.weeklyEnergy.target == 15_000)
+        #expect(snapshot.hasProvisionalWeeklyValues)
     }
 
     @Test("Portion multiplier scales meal, daily and weekly nutrients")

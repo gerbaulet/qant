@@ -244,7 +244,7 @@ enum NutritionHintBuilder {
 
     private static func hasRegularMealSpacing(_ meals: [TodayMealSummary]) -> Bool {
         let timestamps = meals
-            .filter { $0.analysisState == .confirmed }
+            .filter { $0.analysisState.includesNutritionEstimate }
             .map(\.timestamp)
             .sorted()
         guard timestamps.count >= 3 else { return false }

@@ -123,8 +123,13 @@ struct TodayDashboardView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Diese Woche")
                 .font(.headline)
+            if snapshot.hasProvisionalWeeklyValues {
+                Text("~ Enthält vorläufige Schätzwerte aus offenen Rückfragen.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             HStack(alignment: .firstTextBaseline) {
-                Text("\(wholeNumber(snapshot.weeklyEnergy.consumed)) kcal")
+                Text("\(snapshot.hasProvisionalWeeklyValues ? "~" : "")\(wholeNumber(snapshot.weeklyEnergy.consumed)) kcal")
                     .font(.title3.bold().monospacedDigit())
                 Spacer()
                 if let target = snapshot.weeklyEnergy.target {
@@ -149,10 +154,10 @@ struct TodayDashboardView: View {
             if let weeklySummary, weeklySummary.trackedDayCount > 0 {
                 Divider()
                 LabeledContent("Tagesdurchschnitt") {
-                    Text("\(wholeNumber(weeklySummary.averageEnergyKilocalories ?? 0)) kcal")
+                    Text("\(weeklySummary.hasProvisionalValues ? "~" : "")\(wholeNumber(weeklySummary.averageEnergyKilocalories ?? 0)) kcal")
                 }
                 LabeledContent("Makros Ø") {
-                    Text(macroAverageText(weeklySummary))
+                    Text("\(weeklySummary.hasProvisionalValues ? "~" : "")\(macroAverageText(weeklySummary))")
                         .multilineTextAlignment(.trailing)
                 }
                 LabeledContent("Tage im Ziel") {
@@ -160,7 +165,7 @@ struct TodayDashboardView: View {
                 }
                 if let change = weeklySummary.previousWeekAverageEnergyChangePercent {
                     LabeledContent("Zur Vorwoche") {
-                        Text(change.formatted(.percent.scale(1).sign(strategy: .always()).precision(.fractionLength(0))))
+                        Text("\(weeklySummary.comparisonHasProvisionalValues ? "~" : "")\(change.formatted(.percent.scale(1).sign(strategy: .always()).precision(.fractionLength(0))))")
                     }
                 }
             }
@@ -394,7 +399,7 @@ private extension AnalysisState {
         case .pending: "Ausstehend"
         case .analyzing: "Wird analysiert"
         case .needsClarification: "Rückfrage"
-        case .awaitingConfirmation: "Zu bestätigen"
+        case .awaitingConfirmation: "Bestätigt"
         case .confirmed: "Bestätigt"
         case .failed: "Fehlgeschlagen"
         }
@@ -406,7 +411,7 @@ private extension AnalysisState {
         case .pending: "clock"
         case .analyzing: "sparkles"
         case .needsClarification: "questionmark.circle"
-        case .awaitingConfirmation: "checkmark.circle"
+        case .awaitingConfirmation: "checkmark.seal.fill"
         case .confirmed: "checkmark.seal.fill"
         case .failed: "exclamationmark.triangle.fill"
         }
@@ -416,8 +421,8 @@ private extension AnalysisState {
         switch self {
         case .awaitingDescription: .orange
         case .pending, .analyzing: .secondary
-        case .needsClarification, .awaitingConfirmation: .orange
-        case .confirmed: .green
+        case .needsClarification: .orange
+        case .awaitingConfirmation, .confirmed: .green
         case .failed: .red
         }
     }

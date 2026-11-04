@@ -35,12 +35,12 @@ struct WeeklyNutritionSummaryBuilderTests {
         #expect(summary.previousWeekAverageEnergyChangePercent == 10)
     }
 
-    @Test("DST week uses calendar days and excludes provisional and archived meals")
+    @Test("DST week uses calendar days and includes provisional but not archived meals")
     func daylightSavingWeek() throws {
         let calendar = berlinCalendar
         let reference = date(2026, 3, 29, 12, calendar: calendar)
         let confirmed = meal(at: date(2026, 3, 29, 1, calendar: calendar), energy: 800, protein: 40)
-        let provisional = meal(at: date(2026, 3, 29, 3, calendar: calendar), energy: 900, protein: 50, state: .awaitingConfirmation)
+        let provisional = meal(at: date(2026, 3, 29, 3, calendar: calendar), energy: 900, protein: 50, state: .needsClarification)
         let archived = meal(at: date(2026, 3, 28, 12, calendar: calendar), energy: 700, protein: 30)
         archived.mealState = .archived
 
@@ -52,8 +52,9 @@ struct WeeklyNutritionSummaryBuilderTests {
         ))
 
         #expect(summary.interval.duration == 167 * 60 * 60)
-        #expect(summary.energyKilocalories == 800)
+        #expect(summary.energyKilocalories == 1_700)
         #expect(summary.trackedDayCount == 1)
+        #expect(summary.hasProvisionalValues)
     }
 
     @Test("Sunday reminder temporarily repeats every evening at 20:00")

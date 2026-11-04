@@ -13,9 +13,11 @@ struct WeeklyNutritionSummary: Sendable {
     let daysWithinEnergyTarget: Int
     let daysAboveEnergyTarget: Int
     let previousWeekAverageEnergyChangePercent: Double?
+    let hasProvisionalValues: Bool
+    let comparisonHasProvisionalValues: Bool
 }
 
-/// Builds stable historical statistics from confirmed revisions only. Missing
+/// Builds stable historical statistics from usable revisions. Missing
 /// days remain missing instead of being interpreted as zero intake.
 @MainActor
 enum WeeklyNutritionSummaryBuilder {
@@ -70,7 +72,9 @@ enum WeeklyNutritionSummaryBuilder {
             averageFiberGrams: current.averageFiber,
             daysWithinEnergyTarget: current.daysWithinTarget,
             daysAboveEnergyTarget: current.daysAboveTarget,
-            previousWeekAverageEnergyChangePercent: change
+            previousWeekAverageEnergyChangePercent: change,
+            hasProvisionalValues: current.hasProvisionalValues,
+            comparisonHasProvisionalValues: current.hasProvisionalValues || previous.hasProvisionalValues
         )
     }
 
@@ -84,6 +88,7 @@ enum WeeklyNutritionSummaryBuilder {
         var daysWithinTarget = 0
         var daysAboveTarget = 0
         var weeklyTarget: Double?
+        var hasProvisionalValues = false
 
         var averageEnergy: Double? { average(energy) }
         var averageProtein: Double? { average(protein) }
@@ -116,7 +121,7 @@ enum WeeklyNutritionSummaryBuilder {
             meal.mealState != .archived &&
                 meal.timestamp >= interval.start &&
                 meal.timestamp < interval.end &&
-                activeRevisions.revision(for: meal)?.status == .confirmed
+                activeRevisions.revision(for: meal)?.status.includesNutritionEstimate == true
         }
         let mealsByDay = Dictionary(grouping: relevantMeals) {
             calendar.startOfDay(for: $0.timestamp)
@@ -127,6 +132,9 @@ enum WeeklyNutritionSummaryBuilder {
                 activeRevisions.revision(for: $0)
             }
             if !revisions.isEmpty {
+                result.hasProvisionalValues = result.hasProvisionalValues || revisions.contains {
+                    $0.status.isProvisionalNutritionEstimate
+                }
                 result.trackedDays += 1
                 let totals = nutrientTotals(
                     revisions: revisions,

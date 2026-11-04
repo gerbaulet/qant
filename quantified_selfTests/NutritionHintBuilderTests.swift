@@ -218,7 +218,8 @@ struct NutritionHintBuilderTests {
                     thumbnailStorageKey: nil
                 )
             },
-            hasProvisionalValues: false
+            hasProvisionalValues: false,
+            hasProvisionalWeeklyValues: false
         )
     }
 

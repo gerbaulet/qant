@@ -17,7 +17,7 @@ enum UITestDataSeeder {
 
         let status: AnalysisState = wantsConfirmed ? .confirmed : wantsProgress ? .analyzing : wantsFailure
             ? .failed
-            : wantsClarification ? .needsClarification : .awaitingConfirmation
+            : wantsClarification ? .needsClarification : .confirmed
         let revision = MealAnalysisRevision(
             modelIdentifier: "example/vision-model",
             providerIdentifier: "Example Provider",

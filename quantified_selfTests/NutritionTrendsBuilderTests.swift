@@ -12,11 +12,11 @@ struct NutritionTrendsBuilderTests {
         return calendar
     }
 
-    @Test("Trend points include confirmed meals only and combine each local day")
-    func confirmedDailyPoints() {
+    @Test("Trend points include provisional meals and combine each local day")
+    func dailyPointsIncludeProvisionalValues() {
         let first = meal(at: date(2026, 8, 5, 8), state: .confirmed, energy: 500, protein: 25)
         let second = meal(at: date(2026, 8, 5, 19), state: .confirmed, energy: 700, protein: 35)
-        let provisional = meal(at: date(2026, 8, 6, 12), state: .awaitingConfirmation, energy: 900, protein: 50)
+        let provisional = meal(at: date(2026, 8, 6, 12), state: .needsClarification, energy: 900, protein: 50)
 
         let snapshot = NutritionTrendsBuilder.makeSnapshot(
             for: date(2026, 8, 23, 12),
@@ -27,8 +27,10 @@ struct NutritionTrendsBuilderTests {
             calendar: calendar
         )
 
-        #expect(snapshot.points.count == 1)
+        #expect(snapshot.points.count == 2)
         #expect(snapshot.points.first?.value == 1_200)
+        #expect(snapshot.points.last?.value == 900)
+        #expect(snapshot.points.last?.isProvisional == true)
     }
 
     @Test("Week, month, and year use rolling calendar-day windows")

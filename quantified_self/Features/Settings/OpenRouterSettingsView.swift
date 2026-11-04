@@ -59,7 +59,7 @@ struct OpenRouterSettingsView: View {
                 } header: {
                     Text("Wochenübersicht")
                 } footer: {
-                    Text("Eine lokale Erinnerung erscheint sonntags gegen 20:00 Uhr. Die Übersicht wird erst beim Öffnen der App aus bestätigten Mahlzeiten berechnet.")
+                    Text("Eine lokale Erinnerung erscheint sonntags gegen 20:00 Uhr. Die Übersicht wird beim Öffnen der App aus allen verfügbaren Schätzungen berechnet; vorläufige Werte sind mit ~ markiert.")
                 }
 
                 Section {

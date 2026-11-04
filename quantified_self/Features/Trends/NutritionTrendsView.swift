@@ -95,11 +95,14 @@ struct NutritionTrendsView: View {
         return VStack(alignment: .leading, spacing: 14) {
             Text(nutrient.trendTitle)
                 .font(.headline)
+            if snapshot.points.contains(where: \.isProvisional) {
+                provisionalNotice
+            }
             if snapshot.points.isEmpty {
                 ContentUnavailableView(
-                    "Keine bestätigten Daten",
+                    "Keine auswertbaren Daten",
                     systemImage: "chart.xyaxis.line",
-                    description: Text("Bestätigte Mahlzeiten erscheinen hier als Tageswerte.")
+                    description: Text("Analysierte Mahlzeiten erscheinen hier als Tageswerte.")
                 )
                 .frame(minHeight: 220)
             } else {
@@ -150,12 +153,15 @@ struct NutritionTrendsView: View {
         return VStack(alignment: .leading, spacing: 14) {
             Text(nutrient.trendTitle)
                 .font(.headline)
+            if trend.hasProvisionalValues {
+                provisionalNotice
+            }
 
             if !trend.hasActualData && trend.averageDayCount == 0 {
                 ContentUnavailableView(
                     "Noch nicht genug Vergleichstage",
                     systemImage: "chart.xyaxis.line",
-                    description: Text("Für eine Prognose braucht Quant mindestens drei frühere Tage mit bestätigten Mahlzeiten.")
+                    description: Text("Für eine Prognose braucht Quant mindestens drei frühere Tage mit analysierten Mahlzeiten.")
                 )
                 .frame(minHeight: 220)
             } else {
@@ -281,6 +287,9 @@ struct NutritionTrendsView: View {
             Text(comparisonDescription)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if comparison.current.hasProvisionalValues || comparison.previous.hasProvisionalValues {
+                provisionalNotice
+            }
 
             ForEach(displayedNutrients, id: \.self) { nutrient in
                 comparisonRow(nutrient, comparison: comparison)
@@ -319,10 +328,13 @@ struct NutritionTrendsView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 3) {
-                Text("\(formatted(previous)) → \(formatted(current)) \(nutrient.trendUnit.rawValue)")
+                Text("\(comparison.previous.hasProvisionalValues ? "~" : "")\(formatted(previous)) → \(comparison.current.hasProvisionalValues ? "~" : "")\(formatted(current)) \(nutrient.trendUnit.rawValue)")
                     .font(.subheadline.monospacedDigit())
                 if let change {
-                    Text(change.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1))) + " %")
+                    Text(
+                        ((comparison.current.hasProvisionalValues || comparison.previous.hasProvisionalValues) ? "~" : "") +
+                            change.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1))) + " %"
+                    )
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                 }
@@ -346,12 +358,18 @@ struct NutritionTrendsView: View {
         return value.formatted(.number.precision(.fractionLength(value < 10 ? 1 : 0)))
     }
 
+    private var provisionalNotice: some View {
+        Text("~ Enthält vorläufige Schätzwerte aus offenen Rückfragen.")
+            .font(.caption)
+            .foregroundStyle(.orange)
+    }
+
     private var chartAccessibilityValue: String {
         snapshot.points.map { point in
             let date = point.date.formatted(
                 .dateTime.day().month().locale(Locale(identifier: "de_DE"))
             )
-            let prefix = point.isForecast ? "Prognose " : ""
+            let prefix = point.isForecast ? "Prognose " : point.isProvisional ? "Vorläufig " : ""
             return "\(date): \(prefix)\(formatted(point.value)) \(nutrient.trendUnit.rawValue)"
         }.joined(separator: ", ")
     }

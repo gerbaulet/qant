@@ -34,6 +34,7 @@ struct TodayDashboardSnapshot: Sendable {
     let fiber: NutrientProgress
     let meals: [TodayMealSummary]
     let hasProvisionalValues: Bool
+    let hasProvisionalWeeklyValues: Bool
 }
 
 /// Converts persisted entities into immutable presentation data. Views do not
@@ -68,7 +69,7 @@ enum TodayDashboardBuilder {
 
         let includedRevisions = todaysMeals.compactMap { meal -> MealAnalysisRevision? in
             guard let revision = activeRevisions.revision(for: meal),
-                  isIncludedInProvisionalTotals(revision.status) else {
+                  revision.status.includesNutritionEstimate else {
                 return nil
             }
             return revision
@@ -113,7 +114,7 @@ enum TodayDashboardBuilder {
 
         let summaries = todaysMeals.map { meal in
             let revision = activeRevisions.revision(for: meal)
-            let included = revision.map { isIncludedInProvisionalTotals($0.status) } ?? false
+            let included = revision?.status.includesNutritionEstimate ?? false
             return TodayMealSummary(
                 id: meal.id,
                 timestamp: meal.timestamp,
@@ -127,7 +128,7 @@ enum TodayDashboardBuilder {
                     )
                     : nil,
                 analysisState: meal.analysisState,
-                isProvisional: included && revision?.status != .confirmed,
+                isProvisional: revision?.status.isProvisionalNutritionEstimate ?? false,
                 thumbnailStorageKey: meal.images.min(by: { $0.sortIndex < $1.sortIndex })?.thumbnailStorageKey
             )
         }
@@ -135,11 +136,12 @@ enum TodayDashboardBuilder {
         return TodayDashboardSnapshot(
             date: date,
             energy: energy,
-            weeklyEnergy: weeklyEnergy,
+            weeklyEnergy: weeklyEnergy.progress,
             macros: macros,
             fiber: fiber,
             meals: summaries,
-            hasProvisionalValues: includedRevisions.contains { $0.status != .confirmed }
+            hasProvisionalValues: includedRevisions.contains { $0.status.isProvisionalNutritionEstimate },
+            hasProvisionalWeeklyValues: weeklyEnergy.hasProvisionalValues
         )
     }
 
@@ -188,15 +190,6 @@ enum TodayDashboardBuilder {
         }
     }
 
-    private static func isIncludedInProvisionalTotals(_ state: AnalysisState) -> Bool {
-        switch state {
-        case .needsClarification, .awaitingConfirmation, .confirmed:
-            true
-        case .awaitingDescription, .pending, .analyzing, .failed:
-            false
-        }
-    }
-
     private static func makeWeeklyEnergyProgress(
         for date: Date,
         meals: [Meal],
@@ -204,16 +197,19 @@ enum TodayDashboardBuilder {
         calendar: Calendar,
         portionMultipliers: PortionMultiplierSnapshot,
         activeRevisions: ActiveMealRevisionSnapshot
-    ) -> NutrientProgress {
+    ) -> (progress: NutrientProgress, hasProvisionalValues: Bool) {
         guard let week = calendar.dateInterval(of: .weekOfYear, for: date) else {
-            return NutrientProgress(id: .energy, consumed: 0, target: nil, unit: .kilocalorie)
+            return (
+                NutrientProgress(id: .energy, consumed: 0, target: nil, unit: .kilocalorie),
+                false
+            )
         }
         let revisions = meals.compactMap { meal -> MealAnalysisRevision? in
             guard meal.mealState != .archived,
                   meal.timestamp >= week.start,
                   meal.timestamp < week.end,
                   let revision = activeRevisions.revision(for: meal),
-                  isIncludedInProvisionalTotals(revision.status) else {
+                  revision.status.includesNutritionEstimate else {
                 return nil
             }
             return revision
@@ -224,16 +220,19 @@ enum TodayDashboardBuilder {
             calendar: calendar,
             periods: goals
         )) ?? nil
-        return NutrientProgress(
-            id: .energy,
-            consumed: nutrientTotal(
-                for: .energy,
-                unit: .kilocalorie,
-                in: revisions,
-                portionMultipliers: portionMultipliers
+        return (
+            NutrientProgress(
+                id: .energy,
+                consumed: nutrientTotal(
+                    for: .energy,
+                    unit: .kilocalorie,
+                    in: revisions,
+                    portionMultipliers: portionMultipliers
+                ),
+                target: target,
+                unit: .kilocalorie
             ),
-            target: target,
-            unit: .kilocalorie
+            revisions.contains { $0.status.isProvisionalNutritionEstimate }
         )
     }
 
@@ -278,7 +277,8 @@ enum TodayDashboardBuilder {
                 unit: .gram
             ),
             meals: [],
-            hasProvisionalValues: false
+            hasProvisionalValues: false,
+            hasProvisionalWeeklyValues: false
         )
     }
 }

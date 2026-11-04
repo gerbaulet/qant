@@ -48,7 +48,7 @@ final class QuantUITests: XCTestCase {
         let savedMealState = app.staticTexts
             .matching(NSPredicate(
                 format: "label IN %@",
-                ["Ausstehend", "Wird analysiert", "Fehlgeschlagen", "Zu bestätigen", "Rückfrage"]
+                ["Ausstehend", "Wird analysiert", "Fehlgeschlagen", "Rückfrage"]
             ))
             .firstMatch
         XCTAssertTrue(savedMealState.waitForExistence(timeout: 2))
@@ -248,7 +248,7 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
-    func testReviewsAndConfirmsNutritionEstimate() throws {
+    func testReviewsAutomaticallyConfirmedNutritionEstimate() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [
             "--ui-testing",
@@ -262,15 +262,13 @@ final class QuantUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Analyse prüfen"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["~785 kcal"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["meal.confirm"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Bestätigt"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["meal.confirm"].exists)
 
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "Nutrition analysis review"
         screenshot.lifetime = .keepAlways
         add(screenshot)
-
-        app.buttons["meal.confirm"].tap()
-        XCTAssertTrue(app.staticTexts["Bestätigt"].waitForExistence(timeout: 2))
     }
 
     @MainActor

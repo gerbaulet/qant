@@ -46,7 +46,7 @@ extension TodayDashboardSnapshot {
                     timestamp: date.addingTimeInterval(-4 * 60 * 60),
                     name: "Chicken Curry mit Reis",
                     energyKilocalories: 785,
-                    analysisState: .awaitingConfirmation,
+                    analysisState: .needsClarification,
                     isProvisional: true,
                     thumbnailStorageKey: "preview/lunch-thumb.heic"
                 ),
@@ -60,7 +60,8 @@ extension TodayDashboardSnapshot {
                     thumbnailStorageKey: "preview/breakfast-thumb.heic"
                 ),
             ],
-            hasProvisionalValues: true
+            hasProvisionalValues: true,
+            hasProvisionalWeeklyValues: true
         )
     }
 }

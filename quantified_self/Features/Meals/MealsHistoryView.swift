@@ -289,7 +289,7 @@ private extension AnalysisState {
         case .pending: "Ausstehend"
         case .analyzing: "Analyse"
         case .needsClarification: "Rückfrage"
-        case .awaitingConfirmation: "Zu bestätigen"
+        case .awaitingConfirmation: "Bestätigt"
         case .confirmed: "Bestätigt"
         case .failed: "Fehlgeschlagen"
         }
@@ -301,7 +301,7 @@ private extension AnalysisState {
         case .pending: "clock"
         case .analyzing: "sparkles"
         case .needsClarification: "questionmark.circle"
-        case .awaitingConfirmation: "checkmark.circle"
+        case .awaitingConfirmation: "checkmark.seal.fill"
         case .confirmed: "checkmark.seal.fill"
         case .failed: "exclamationmark.triangle.fill"
         }
@@ -311,8 +311,8 @@ private extension AnalysisState {
         switch self {
         case .awaitingDescription: .orange
         case .pending, .analyzing: .secondary
-        case .needsClarification, .awaitingConfirmation: .orange
-        case .confirmed: .green
+        case .needsClarification: .orange
+        case .awaitingConfirmation, .confirmed: .green
         case .failed: .red
         }
     }

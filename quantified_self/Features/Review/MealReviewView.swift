@@ -617,27 +617,6 @@ struct MealReviewView: View {
                     .accessibilityIdentifier("meal.submitDescription")
                 }
             }
-        } else if meal.analysisState == .awaitingConfirmation {
-            actionBar {
-                VStack(spacing: 10) {
-                    Button(action: confirm) {
-                        Label("Schätzung bestätigen", systemImage: "checkmark.seal.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(isWorking)
-                    .accessibilityIdentifier("meal.confirm")
-
-                    Button(action: { showsCorrectionEntry = true }) {
-                        Label("Schätzung korrigieren", systemImage: "pencil")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(isWorking)
-                    .accessibilityIdentifier("meal.correct")
-                }
-            }
         } else if meal.analysisState == .needsClarification {
             actionBar {
                 VStack(spacing: 10) {
@@ -667,7 +646,7 @@ struct MealReviewView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-        } else if meal.analysisState == .confirmed {
+        } else if meal.analysisState == .confirmed || meal.analysisState == .awaitingConfirmation {
             actionBar {
                 VStack(spacing: 10) {
                     Label("Bestätigt", systemImage: "checkmark.seal.fill")
@@ -766,14 +745,6 @@ struct MealReviewView: View {
             get: { alertMessage != nil },
             set: { if !$0 { alertMessage = nil } }
         )
-    }
-
-    private func confirm() {
-        do {
-            try makeCoordinator().confirm(meal)
-        } catch {
-            alertMessage = error.localizedDescription
-        }
     }
 
     private func saveTimestamp() {
@@ -1289,7 +1260,7 @@ private extension AnalysisState {
         case .pending: "Ausstehend"
         case .analyzing: "Wird analysiert"
         case .needsClarification: "Rückfrage"
-        case .awaitingConfirmation: "Zu bestätigen"
+        case .awaitingConfirmation: "Bestätigt"
         case .confirmed: "Bestätigt"
         case .failed: "Fehlgeschlagen"
         }
@@ -1301,7 +1272,7 @@ private extension AnalysisState {
         case .pending: "clock"
         case .analyzing: "sparkles"
         case .needsClarification: "questionmark.circle.fill"
-        case .awaitingConfirmation: "checkmark.circle"
+        case .awaitingConfirmation: "checkmark.seal.fill"
         case .confirmed: "checkmark.seal.fill"
         case .failed: "exclamationmark.triangle.fill"
         }
@@ -1311,8 +1282,8 @@ private extension AnalysisState {
         switch self {
         case .awaitingDescription: .orange
         case .pending, .analyzing: .secondary
-        case .needsClarification, .awaitingConfirmation: .orange
-        case .confirmed: .green
+        case .needsClarification: .orange
+        case .awaitingConfirmation, .confirmed: .green
         case .failed: .red
         }
     }

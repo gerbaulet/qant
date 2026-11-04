@@ -18,6 +18,7 @@ struct QuantApp: App {
                 mode: .current,
                 isStoredInMemoryOnly: usesEphemeralStore
             )
+            try MealAnalysisCoordinator.finalizeLegacyAwaitingConfirmations(in: container.mainContext)
             try InitialDataSeeder.seedGoalsIfNeeded(in: container.mainContext)
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--ui-testing-quick-capture") {
