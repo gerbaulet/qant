@@ -146,7 +146,7 @@ struct OpenRouterSettingsViewModelTests {
     func preservesProviderPreference() {
         let settings = SettingsStoreStub()
         settings.modelIdentifier = "cached/model"
-        settings.providerPreference = .faster
+        settings.providerPreference = .lowLatency
         settings.modelCatalogCache = OpenRouterModelCatalogCache(
             options: cachedOptions,
             fetchedAt: currentDate
@@ -157,7 +157,7 @@ struct OpenRouterSettingsViewModelTests {
         )
 
         viewModel.load()
-        #expect(viewModel.providerPreference == .faster)
+        #expect(viewModel.providerPreference == .lowLatency)
 
         viewModel.providerPreference = .balanced
         viewModel.save()

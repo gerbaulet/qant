@@ -388,13 +388,14 @@ struct OpenRouterNutritionAnalysisServiceTests {
         let provider = try #require(json["provider"] as? [String: Any])
         #expect(provider["require_parameters"] as? Bool == true)
         #expect(provider["sort"] == nil)
+        #expect(provider["preferred_max_latency"] == nil)
     }
 
-    @Test("Faster provider preference prioritizes throughput")
-    func prioritizesProviderThroughput() async throws {
+    @Test("Low latency provider preference sets the preferred p90 latency")
+    func setsPreferredProviderLatency() async throws {
         let client = ChatClientStub(responseData: try Self.chatResponseData())
         let settings = AnalysisSettingsStore(modelIdentifier: "example/vision-model")
-        settings.providerPreference = .faster
+        settings.providerPreference = .lowLatency
         let service = OpenRouterNutritionAnalysisService(
             secretStore: AnalysisSecretStore(secret: "test-key"),
             settingsStore: settings,
@@ -407,7 +408,9 @@ struct OpenRouterNutritionAnalysisServiceTests {
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let provider = try #require(json["provider"] as? [String: Any])
         #expect(provider["require_parameters"] as? Bool == true)
-        #expect(provider["sort"] as? String == "throughput")
+        #expect(provider["sort"] == nil)
+        let preferredLatency = try #require(provider["preferred_max_latency"] as? [String: Any])
+        #expect(preferredLatency["p90"] as? Int == 5)
     }
 
     @Test("Streaming content is forwarded while an analysis runs")

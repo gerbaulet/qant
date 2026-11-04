@@ -116,7 +116,7 @@ struct OpenRouterSettingsView: View {
                     }
                     .accessibilityIdentifier("settings.openRouterProviderPreference")
 
-                    Text("„Schneller“ priorisiert Provider mit hohem Durchsatz. Das kann Wartezeiten reduzieren, aber etwas teurer sein.")
+                    Text("„Niedrige Latenz“ bevorzugt Provider, deren Antworten in 90 % der Fälle innerhalb von fünf Sekunden beginnen. Das kann etwas teurer sein.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 

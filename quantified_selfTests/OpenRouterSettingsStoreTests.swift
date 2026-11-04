@@ -38,9 +38,10 @@ struct OpenRouterSettingsStoreTests {
 
         let firstStore = UserDefaultsOpenRouterSettingsStore(defaults: defaults)
         #expect(firstStore.providerPreference == .balanced)
-        firstStore.providerPreference = .faster
+        firstStore.providerPreference = .lowLatency
 
-        #expect(UserDefaultsOpenRouterSettingsStore(defaults: defaults).providerPreference == .faster)
+        #expect(defaults.string(forKey: "openrouter.provider-preference") == "faster")
+        #expect(UserDefaultsOpenRouterSettingsStore(defaults: defaults).providerPreference == .lowLatency)
     }
 
     @Test("Model catalog cache persists options and refresh time")

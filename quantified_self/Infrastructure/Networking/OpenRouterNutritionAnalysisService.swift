@@ -140,8 +140,10 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         var provider: [String: Any] = [
             "require_parameters": true,
         ]
-        if settingsStore.providerPreference == .faster {
-            provider["sort"] = "throughput"
+        if settingsStore.providerPreference == .lowLatency {
+            provider["preferred_max_latency"] = [
+                "p90": 5,
+            ]
         }
 
         var body: [String: Any] = [

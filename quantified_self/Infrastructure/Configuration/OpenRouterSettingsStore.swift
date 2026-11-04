@@ -9,14 +9,14 @@ protocol OpenRouterSettingsStoring: AnyObject {
 
 enum OpenRouterProviderPreference: String, CaseIterable, Codable, Equatable, Identifiable {
     case balanced
-    case faster
+    case lowLatency = "faster"
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .balanced: "Ausgewogen (Standard)"
-        case .faster: "Schneller"
+        case .lowLatency: "Niedrige Latenz"
         }
     }
 }
