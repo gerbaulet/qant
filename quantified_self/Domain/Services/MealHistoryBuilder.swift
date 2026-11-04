@@ -12,7 +12,6 @@ struct MealHistoryEntry: Identifiable, Sendable {
     let id: UUID
     let timestamp: Date
     let name: String?
-    let category: MealCategory
     let energyKilocalories: Double?
     let analysisState: AnalysisState
     let isProvisional: Bool
@@ -143,7 +142,6 @@ enum MealHistoryBuilder {
             id: meal.id,
             timestamp: meal.timestamp,
             name: revision?.mealName,
-            category: meal.category,
             energyKilocalories: energy,
             analysisState: meal.analysisState,
             isProvisional: includesNutrition && revision?.status != .confirmed,

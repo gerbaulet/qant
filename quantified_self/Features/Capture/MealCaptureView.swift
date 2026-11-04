@@ -11,8 +11,6 @@ struct MealCaptureView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
-    private let classificationSchedule: MealClassificationSchedule
-    private let calendar: Calendar
     private let imageStorage: any ImageStorageProviding
     private let analysisProvider: any NutritionAnalysisProviding
     private let opensCameraOnAppear: Bool
@@ -20,8 +18,6 @@ struct MealCaptureView: View {
 
     @State private var timestamp: Date
     @State private var comment = ""
-    @State private var category: MealCategory
-    @State private var usesAutomaticCategory = true
     @State private var attachedImages: [PendingMealImage] = []
     @State private var photoPickerItems: [PhotosPickerItem] = []
     @State private var showsCamera = false
@@ -29,29 +25,20 @@ struct MealCaptureView: View {
     @State private var isSaving = false
     @State private var alert: CaptureAlert?
     @State private var showsTimestamp = false
-    @State private var showsMealCategory = false
     @State private var hasAttemptedAutomaticCamera = false
     @FocusState private var commentIsFocused: Bool
 
     init(
         now: Date = .now,
-        classificationSchedule: MealClassificationSchedule = .default,
-        calendar: Calendar = .autoupdatingCurrent,
         imageStorage: any ImageStorageProviding = FileImageStorage(),
         analysisProvider: any NutritionAnalysisProviding = OpenRouterNutritionAnalysisService(),
         opensCameraOnAppear: Bool = false
     ) {
-        self.classificationSchedule = classificationSchedule
-        self.calendar = calendar
         self.imageStorage = imageStorage
         self.analysisProvider = analysisProvider
         self.opensCameraOnAppear = opensCameraOnAppear
         self.cameraCaptureFlow = .forCapture(openedFromShortcut: opensCameraOnAppear)
         _timestamp = State(initialValue: now)
-        _category = State(initialValue: classificationSchedule.category(
-            for: now,
-            calendar: calendar
-        ))
     }
 
     var body: some View {
@@ -84,7 +71,6 @@ struct MealCaptureView: View {
                     }
 
                     timestampSection
-                    mealCategorySection
                 }
             }
             .accessibilityIdentifier("meal.captureForm")
@@ -116,11 +102,6 @@ struct MealCaptureView: View {
                             commentIsFocused = false
                         }
                     }
-                }
-            }
-            .onChange(of: timestamp) {
-                if usesAutomaticCategory {
-                    updateAutomaticCategory()
                 }
             }
             .onChange(of: photoPickerItems) { _, items in
@@ -193,31 +174,6 @@ struct MealCaptureView: View {
         }
     }
 
-    private var mealCategorySection: some View {
-        Section {
-            DisclosureGroup("Art der Mahlzeit", isExpanded: $showsMealCategory) {
-                Picker("Kategorie", selection: categoryBinding) {
-                    ForEach(MealCategory.allCases, id: \.self) { category in
-                        Text(category.captureTitle).tag(category)
-                    }
-                }
-                .accessibilityIdentifier("meal.category")
-
-                if !usesAutomaticCategory {
-                    Button("Wieder automatisch bestimmen") {
-                        usesAutomaticCategory = true
-                        updateAutomaticCategory()
-                    }
-                } else {
-                    Label("Automatisch nach Uhrzeit gewählt", systemImage: "clock.badge.checkmark")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .accessibilityIdentifier("meal.categoryDisclosure")
-        }
-    }
-
     private var photosSection: some View {
         Section {
             if attachedImages.isEmpty {
@@ -281,20 +237,6 @@ struct MealCaptureView: View {
 
     private var remainingImageCapacity: Int {
         max(1, Self.maximumImageCount - attachedImages.count)
-    }
-
-    private var categoryBinding: Binding<MealCategory> {
-        Binding(
-            get: { category },
-            set: {
-                category = $0
-                usesAutomaticCategory = false
-            }
-        )
-    }
-
-    private func updateAutomaticCategory() {
-        category = classificationSchedule.category(for: timestamp, calendar: calendar)
     }
 
     private func importPhotos(_ items: [PhotosPickerItem]) async {
@@ -364,7 +306,7 @@ struct MealCaptureView: View {
                 let meal = try repository.createMeal(from: MealDraft(
                     timestamp: timestamp,
                     comment: comment,
-                    category: category,
+                    category: .snack,
                     images: storedImages,
                     analysisState: shouldAnalyze ? .pending : .awaitingDescription
                 ))
@@ -405,17 +347,6 @@ struct MealCaptureView: View {
     private func openSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
-    }
-}
-
-private extension MealCategory {
-    var captureTitle: LocalizedStringKey {
-        switch self {
-        case .breakfast: "Frühstück"
-        case .lunch: "Mittagessen"
-        case .dinner: "Abendessen"
-        case .snack: "Snack"
-        }
     }
 }
 

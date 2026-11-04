@@ -27,6 +27,8 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(captureNavigationBar.waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["meal.photoLibrary"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["meal.camera"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.descendants(matching: .any)["meal.categoryDisclosure"].exists)
+        XCTAssertFalse(app.staticTexts["Art der Mahlzeit"].exists)
 
         let captureScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         captureScreenshot.name = "Meal capture"

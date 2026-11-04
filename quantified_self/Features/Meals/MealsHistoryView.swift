@@ -222,7 +222,6 @@ struct MealsHistoryView: View {
                             .lineLimit(1)
                         HStack(spacing: 7) {
                             Text(entry.timestamp, format: .dateTime.hour().minute())
-                            Text(entry.category.historyTitle)
                             if entry.analysisState != .confirmed {
                                 Label(entry.analysisState.historyTitle, systemImage: entry.analysisState.historySystemImage)
                                     .foregroundStyle(entry.analysisState.historyColor)
@@ -279,17 +278,6 @@ struct MealsHistoryView: View {
 
     private func wholeNumber(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0)))
-    }
-}
-
-private extension MealCategory {
-    var historyTitle: LocalizedStringKey {
-        switch self {
-        case .breakfast: "Frühstück"
-        case .lunch: "Mittagessen"
-        case .dinner: "Abendessen"
-        case .snack: "Snack"
-        }
     }
 }
 

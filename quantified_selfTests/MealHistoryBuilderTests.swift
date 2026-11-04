@@ -26,7 +26,6 @@ struct MealHistoryBuilderTests {
         #expect(sections.count == 2)
         #expect(sections[0].entries.map(\.id) == [nextDay.id])
         #expect(sections[1].entries.map(\.id) == [dinner.id, breakfast.id])
-        #expect(sections[1].entries.first?.category == .dinner)
         #expect(sections[1].entries.first?.energyKilocalories == 780)
         #expect(sections[0].totalEnergyKilocalories == 650)
         #expect(sections[1].totalEnergyKilocalories == 1_200)
