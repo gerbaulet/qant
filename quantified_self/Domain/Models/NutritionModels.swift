@@ -26,7 +26,7 @@ final class Meal {
         modifiedAt: Date = .now,
         timestamp: Date = .now,
         userComment: String? = nil,
-        category: MealCategory = .snack,
+        category: MealCategory = .unspecified,
         mealState: MealState = .captured,
         analysisState: AnalysisState = .pending,
         activeRevisionID: UUID? = nil,
@@ -49,7 +49,7 @@ final class Meal {
     }
 
     var category: MealCategory {
-        get { MealCategory(rawValue: categoryRawValue) ?? .snack }
+        get { MealCategory(rawValue: categoryRawValue) ?? .unspecified }
         set { categoryRawValue = newValue.rawValue }
     }
 

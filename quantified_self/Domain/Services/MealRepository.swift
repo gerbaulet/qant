@@ -12,7 +12,7 @@ struct MealDraft: Sendable {
     init(
         timestamp: Date,
         comment: String,
-        category: MealCategory,
+        category: MealCategory = .unspecified,
         images: [StoredMealImage] = [],
         analysisState: AnalysisState = .pending
     ) {

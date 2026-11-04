@@ -1,6 +1,7 @@
 import Foundation
 
 enum MealCategory: String, Codable, CaseIterable, Sendable {
+    case unspecified
     case breakfast
     case lunch
     case dinner

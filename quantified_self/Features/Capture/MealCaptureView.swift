@@ -306,7 +306,7 @@ struct MealCaptureView: View {
                 let meal = try repository.createMeal(from: MealDraft(
                     timestamp: timestamp,
                     comment: comment,
-                    category: .snack,
+                    category: .unspecified,
                     images: storedImages,
                     analysisState: shouldAnalyze ? .pending : .awaitingDescription
                 ))

@@ -73,6 +73,20 @@ struct MealRepositoryTests {
         #expect(created.userComment == nil)
     }
 
+    @Test("New meals use the neutral category unless explicitly categorized")
+    func neutralCategory() throws {
+        let container = try makeContainer()
+        let repository = SwiftDataMealRepository(context: container.mainContext)
+
+        let created = try repository.createMeal(
+            from: MealDraft(timestamp: .now, comment: "Abendessen")
+        )
+
+        #expect(created.category == .unspecified)
+        created.categoryRawValue = "future-category"
+        #expect(created.category == .unspecified)
+    }
+
     @Test("A quick capture waits for a description before analysis")
     func quickCaptureDescription() throws {
         let container = try makeContainer()

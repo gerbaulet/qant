@@ -66,8 +66,9 @@ erneut implementieren.
   auch wenn Quant bereits im Vordergrund ist.
 - Vor dem Sprung zur Kamera müssen präsentierte Mahlzeitendetails, Review-Sheets,
   Dialoge und andere Modals zuverlässig geschlossen werden.
-- In der Aufnahmeansicht stehen „Zeitpunkt“ und „Art der Mahlzeit“ unten. Sie
-  sind standardmäßig eingeklappt und können bei Bedarf aufgeklappt werden.
+- In der Aufnahmeansicht steht unten eine standardmäßig eingeklappte Karte
+  „Details“ mit dem Zeitpunkt. Eine Mahlzeitenart wird nicht abgefragt; neue
+  Mahlzeiten erhalten den neutralen Kategoriewert `unspecified`.
 - Mahlzeiten können gelöscht werden. Dabei auch zugehörige Analysedaten und von
   der App verwaltete Bilddateien konsistent entfernen.
 
