@@ -159,65 +159,104 @@ struct ContentView: View {
 }
 
 private struct TodayDashboardContainer: View {
+    private struct RefreshID: Hashable {
+        let presentationVersion: NutritionPresentationVersion
+        let hour: Date
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var selectedMeal: Meal?
     @State private var duplicateConfirmationMealID: UUID?
+    @State private var snapshot: TodayDashboardSnapshot?
+    @State private var weeklySummary: WeeklyNutritionSummary?
+    @State private var lastRefreshID: RefreshID?
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
     private let widgetSynchronizer = WidgetCalorieSnapshotSynchronizer()
 
     let isActive: Bool
     let onAddFood: () -> Void
 
-    @ViewBuilder
     var body: some View {
-        if isActive {
-            TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
-                let snapshot = TodayDashboardBuilder.makeSnapshot(
-                    for: context.date,
-                    meals: meals,
-                    goals: goals,
-                    calendar: .autoupdatingCurrent
-                )
-                let widgetSnapshot = WidgetCalorieSnapshot(
-                    dayStart: Calendar.autoupdatingCurrent.startOfDay(for: context.date),
-                    energyKilocalories: snapshot.energy.consumed,
-                    hasProvisionalValues: snapshot.hasProvisionalValues
-                )
-                TodayDashboardView(
-                    snapshot: snapshot,
-                    weeklySummary: WeeklyNutritionSummaryBuilder.makeSummary(
-                        containing: context.date,
-                        meals: meals,
-                        goals: goals,
-                        calendar: .autoupdatingCurrent
-                    ),
-                    onAddFood: onAddFood,
-                    onRetryMeal: retryAnalysis,
-                    onOpenMeal: openMeal
-                )
-                .task(id: widgetSnapshot) {
-                    widgetSynchronizer.synchronize(widgetSnapshot)
+        TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
+            dashboardContent
+                .task(id: refreshID(for: context.date)) {
+                    await refresh(for: context.date)
                 }
+        }
+        .sheet(item: $selectedMeal) { meal in
+            NavigationStack {
+                MealReviewView(
+                    meal: meal,
+                    showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
+                    onDelete: deleteMeal,
+                    onDuplicate: duplicateMeal
+                )
             }
-            .sheet(item: $selectedMeal) { meal in
-                NavigationStack {
-                    MealReviewView(
-                        meal: meal,
-                        showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
-                        onDelete: deleteMeal,
-                        onDuplicate: duplicateMeal
-                    )
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
-                selectedMeal = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
+            selectedMeal = nil
+        }
+    }
+
+    @ViewBuilder
+    private var dashboardContent: some View {
+        if let snapshot {
+            TodayDashboardView(
+                snapshot: snapshot,
+                weeklySummary: weeklySummary,
+                onAddFood: onAddFood,
+                onRetryMeal: retryAnalysis,
+                onOpenMeal: openMeal
+            )
+            .task(id: widgetSnapshot(for: snapshot)) {
+                widgetSynchronizer.synchronize(widgetSnapshot(for: snapshot))
             }
         } else {
-            Color.clear
-                .accessibilityHidden(true)
+            NavigationStack {
+                ProgressView("Übersicht wird geladen …")
+                    .navigationTitle("Heute")
+            }
         }
+    }
+
+    private func refreshID(for date: Date) -> RefreshID? {
+        guard isActive else { return nil }
+        let calendar = Calendar.autoupdatingCurrent
+        return RefreshID(
+            presentationVersion: NutritionPresentationVersion(meals: meals, goals: goals),
+            hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date
+        )
+    }
+
+    private func refresh(for date: Date) async {
+        guard let refreshID = refreshID(for: date), refreshID != lastRefreshID else { return }
+        await Task.yield()
+        let nextSnapshot = TodayDashboardBuilder.makeSnapshot(
+            for: date,
+            meals: meals,
+            goals: goals,
+            calendar: .autoupdatingCurrent
+        )
+        let nextWeeklySummary = WeeklyNutritionSummaryBuilder.makeSummary(
+            containing: date,
+            meals: meals,
+            goals: goals,
+            calendar: .autoupdatingCurrent
+        )
+        guard !Task.isCancelled else { return }
+        snapshot = nextSnapshot
+        weeklySummary = nextWeeklySummary
+        lastRefreshID = refreshID
+    }
+
+    private func widgetSnapshot(for snapshot: TodayDashboardSnapshot) -> WidgetCalorieSnapshot {
+        WidgetCalorieSnapshot(
+            dayStart: Calendar.autoupdatingCurrent.startOfDay(for: snapshot.date),
+            energyKilocalories: snapshot.energy.consumed,
+            hasProvisionalValues: snapshot.hasProvisionalValues
+        )
     }
 
     private func retryAnalysis(mealID: UUID) {

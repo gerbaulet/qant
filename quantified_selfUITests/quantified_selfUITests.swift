@@ -196,6 +196,36 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testTodayKeepsScrollPositionAcrossTabSwitches() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-confirmation",
+        ])
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        for _ in 0..<5 where !mealName.isHittable || mealName.frame.midY > app.frame.height * 0.7 {
+            app.swipeUp()
+        }
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        XCTAssertTrue(mealName.isHittable)
+        let positionBeforeSwitch = mealName.frame.midY
+
+        let mealsTab = app.tabBars.buttons["Mahlzeiten"]
+        XCTAssertTrue(mealsTab.isHittable)
+        mealsTab.tap()
+        XCTAssertTrue(app.navigationBars["Mahlzeiten"].waitForExistence(timeout: 2))
+
+        let todayTab = app.tabBars.buttons["Heute"]
+        XCTAssertTrue(todayTab.isHittable)
+        todayTab.tap()
+        XCTAssertTrue(mealName.waitForExistence(timeout: 2))
+        XCTAssertTrue(mealName.isHittable)
+        XCTAssertEqual(mealName.frame.midY, positionBeforeSwitch, accuracy: 20)
+    }
+
+    @MainActor
     func testSearchesMealsByCurrentAnalysisContent() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [

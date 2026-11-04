@@ -3,33 +3,71 @@ import SwiftData
 import SwiftUI
 
 struct NutritionTrendsContainer: View {
+    private struct RefreshID: Hashable {
+        let presentationVersion: NutritionPresentationVersion
+        let hour: Date
+        let range: NutritionTrendRange
+        let nutrient: NutrientIdentifier
+    }
+
     @Query(sort: \Meal.timestamp) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var range = NutritionTrendRange.month
     @State private var nutrient = NutrientIdentifier.energy
+    @State private var snapshot: NutritionTrendsSnapshot?
+    @State private var lastRefreshID: RefreshID?
     let isActive: Bool
 
-    @ViewBuilder
     var body: some View {
-        if isActive {
-            TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
-                NutritionTrendsView(
-                    snapshot: NutritionTrendsBuilder.makeSnapshot(
-                        for: context.date,
-                        range: range,
-                        nutrient: nutrient,
-                        meals: meals,
-                        goals: goals,
-                        calendar: .autoupdatingCurrent
-                    ),
-                    range: $range,
-                    nutrient: $nutrient
-                )
-            }
-        } else {
-            Color.clear
-                .accessibilityHidden(true)
+        TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
+            trendsContent
+                .task(id: refreshID(for: context.date)) {
+                    await refresh(for: context.date)
+                }
         }
+    }
+
+    @ViewBuilder
+    private var trendsContent: some View {
+        if let snapshot, snapshot.range == range, snapshot.nutrient == nutrient {
+            NutritionTrendsView(
+                snapshot: snapshot,
+                range: $range,
+                nutrient: $nutrient
+            )
+        } else {
+            NavigationStack {
+                ProgressView("Trends werden geladen …")
+                    .navigationTitle("Trends")
+            }
+        }
+    }
+
+    private func refreshID(for date: Date) -> RefreshID? {
+        guard isActive else { return nil }
+        let calendar = Calendar.autoupdatingCurrent
+        return RefreshID(
+            presentationVersion: NutritionPresentationVersion(meals: meals, goals: goals),
+            hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date,
+            range: range,
+            nutrient: nutrient
+        )
+    }
+
+    private func refresh(for date: Date) async {
+        guard let refreshID = refreshID(for: date), refreshID != lastRefreshID else { return }
+        await Task.yield()
+        let nextSnapshot = NutritionTrendsBuilder.makeSnapshot(
+            for: date,
+            range: range,
+            nutrient: nutrient,
+            meals: meals,
+            goals: goals,
+            calendar: .autoupdatingCurrent
+        )
+        guard !Task.isCancelled else { return }
+        snapshot = nextSnapshot
+        lastRefreshID = refreshID
     }
 }
 
