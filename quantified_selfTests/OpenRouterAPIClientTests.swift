@@ -131,7 +131,7 @@ struct OpenRouterAPIClientTests {
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-secret")
             #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
             #expect(request.value(forHTTPHeaderField: "Accept") == "text/event-stream")
-            #expect(request.timeoutInterval == 5 * 60)
+            #expect(request.timeoutInterval == 60)
             return Self.response(
                 for: request,
                 status: 200,

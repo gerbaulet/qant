@@ -91,7 +91,7 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
 }
 
 struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCatalogProviding, OpenRouterChatCompleting {
-    private static let chatCompletionTimeout: TimeInterval = 5 * 60
+    private static let chatCompletionTimeout: TimeInterval = 60
 
     private struct ChatCompletionStreamChunk: Decodable {
         struct Choice: Decodable {
