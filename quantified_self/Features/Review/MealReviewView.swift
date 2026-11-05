@@ -232,29 +232,25 @@ struct MealReviewView: View {
     private var photoStrip: some View {
         let images = meal.images.sorted { $0.sortIndex < $1.sortIndex }
         if !images.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Fotos")
-                    .font(.headline)
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 12) {
-                        ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
-                            Button {
-                                selectedPhoto = image
-                            } label: {
-                                StoredMealThumbnailView(
-                                    storageKey: image.thumbnailStorageKey,
-                                    size: 132
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Foto \(index + 1) vergrößern")
-                            .accessibilityHint("Öffnet eine Ansicht zum Zoomen")
-                            .accessibilityIdentifier("meal.photo.\(image.id.uuidString)")
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 12) {
+                    ForEach(Array(images.enumerated()), id: \.element.id) { index, image in
+                        Button {
+                            selectedPhoto = image
+                        } label: {
+                            StoredMealThumbnailView(
+                                storageKey: image.thumbnailStorageKey,
+                                size: 132
+                            )
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Foto \(index + 1) vergrößern")
+                        .accessibilityHint("Öffnet eine Ansicht zum Zoomen")
+                        .accessibilityIdentifier("meal.photo.\(image.id.uuidString)")
                     }
                 }
-                .scrollIndicators(.hidden)
             }
+            .scrollIndicators(.hidden)
         }
     }
 

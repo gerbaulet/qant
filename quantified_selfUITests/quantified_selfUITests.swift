@@ -196,6 +196,7 @@ final class QuantUITests: XCTestCase {
             .firstMatch
         let detailTitle = app.staticTexts["meal.title"]
         XCTAssertTrue(photo.waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Fotos"].exists)
         XCTAssertTrue(detailTitle.waitForExistence(timeout: 2))
         XCTAssertTrue(photo.isHittable)
         XCTAssertLessThan(photo.frame.maxY, detailTitle.frame.minY)
