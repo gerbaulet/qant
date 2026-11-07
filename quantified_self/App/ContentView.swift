@@ -20,8 +20,6 @@ struct ContentView: View {
     @State private var selectedSection: AppSection = .today
     @State private var mealCaptureMode: MealCaptureMode?
     @State private var activeQuickCaptureRequestID: UUID?
-    @State private var requestedTodayMealID: UUID?
-    @State private var analysisProgressStore = MealAnalysisProgressStore.shared
     @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
@@ -31,10 +29,7 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedSection) {
             Tab("Heute", systemImage: "sun.max.fill", value: .today) {
-                TodayDashboardContainer(
-                    isActive: selectedSection == .today,
-                    requestedMealID: $requestedTodayMealID
-                ) {
+                TodayDashboardContainer(isActive: selectedSection == .today) {
                     mealCaptureMode = .standard
                 }
             }
@@ -58,12 +53,6 @@ struct ContentView: View {
             )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
-        }
-        .overlay(alignment: .topTrailing) {
-            AnalysisActivityButton(
-                progressStore: analysisProgressStore,
-                action: openMostRelevantAnalysis
-            )
         }
         .onAppear(perform: presentRequestedQuickCapture)
         .task {
@@ -99,7 +88,6 @@ struct ContentView: View {
         let requestID = UUID()
         activeQuickCaptureRequestID = requestID
         selectedSection = .today
-        requestedTodayMealID = nil
         mealCaptureMode = nil
         Task {
             // Let the active detail route and any nested editor finish
@@ -110,50 +98,6 @@ struct ContentView: View {
         }
     }
 
-    private func openMostRelevantAnalysis() {
-        let meals = (try? modelContext.fetch(FetchDescriptor<Meal>())) ?? []
-        let meal = meals
-            .filter { analysisProgressStore.analyses[$0.id] != nil }
-            .sorted { lhs, rhs in
-                let lhsNeedsAnswer = lhs.activeRevision?.status == .needsClarification
-                let rhsNeedsAnswer = rhs.activeRevision?.status == .needsClarification
-                if lhsNeedsAnswer != rhsNeedsAnswer { return lhsNeedsAnswer }
-                let lhsStartedAt = analysisProgressStore.analyses[lhs.id]?.startedAt ?? .distantPast
-                let rhsStartedAt = analysisProgressStore.analyses[rhs.id]?.startedAt ?? .distantPast
-                return lhsStartedAt > rhsStartedAt
-            }
-            .first
-        guard let meal else { return }
-        selectedSection = .today
-        requestedTodayMealID = meal.id
-    }
-}
-
-private struct AnalysisActivityButton: View {
-    let progressStore: MealAnalysisProgressStore
-    let action: () -> Void
-
-    var body: some View {
-        if !progressStore.analyses.isEmpty {
-            Button(action: action) {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(progressStore.analyses.count, format: .number)
-                        .font(.caption.bold().monospacedDigit())
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(.ultraThinMaterial, in: .capsule)
-                .shadow(radius: 4, y: 2)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Laufende OpenRouter-Analysen: \(progressStore.analyses.count)")
-            .accessibilityIdentifier("analysis.activity")
-            .padding(.top, 6)
-            .padding(.trailing, 12)
-        }
-    }
 }
 
 private struct TodayDashboardContainer: View {
@@ -174,7 +118,6 @@ private struct TodayDashboardContainer: View {
     private let widgetSynchronizer = WidgetCalorieSnapshotSynchronizer()
 
     let isActive: Bool
-    @Binding var requestedMealID: UUID?
     let onAddFood: () -> Void
 
     var body: some View {
@@ -186,11 +129,6 @@ private struct TodayDashboardContainer: View {
                     }
             }
             .navigationDestination(for: UUID.self, destination: mealDestination)
-        }
-        .onChange(of: requestedMealID) { _, mealID in
-            guard let mealID, meals.contains(where: { $0.id == mealID }) else { return }
-            navigationPath = [mealID]
-            requestedMealID = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
             navigationPath.removeAll()

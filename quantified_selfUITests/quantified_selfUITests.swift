@@ -361,10 +361,10 @@ final class QuantUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["--ui-testing", "--ui-testing-review-progress"]
         app.launch()
-        let activity = app.buttons["analysis.activity"]
-        XCTAssertTrue(activity.waitForExistence(timeout: 3))
-        XCTAssertEqual(activity.label, "Laufende OpenRouter-Analysen: 1")
-        activity.tap()
+        XCTAssertFalse(app.buttons["analysis.activity"].waitForExistence(timeout: 1))
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
         XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 3))
         let counts = app.staticTexts["meal.analysisProgress.counts"]
         XCTAssertTrue(counts.waitForExistence(timeout: 3))
