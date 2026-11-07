@@ -5,6 +5,87 @@ import Testing
 
 @MainActor
 struct PersistenceModelTests {
+    @Test("An analysis appended to an existing meal keeps its calories after reopening the store")
+    func appendedAnalysisGraphRoundTrip() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "quant-analysis-round-trip-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appending(path: "Nutrition.store")
+        let mealID = UUID()
+
+        do {
+            let schema = Schema(NutritionSchemaV2.models)
+            let configuration = ModelConfiguration(
+                "AnalysisRoundTrip",
+                schema: schema,
+                url: storeURL,
+                cloudKitDatabase: .none
+            )
+            let container = try ModelContainer(
+                for: schema,
+                migrationPlan: NutritionMigrationPlan.self,
+                configurations: [configuration]
+            )
+            let context = container.mainContext
+            let meal = Meal(id: mealID)
+            context.insert(meal)
+            try context.save()
+
+            let revision = MealAnalysisRevision(
+                modelIdentifier: "example/model",
+                providerMetadata: InitialAnalysisRunMetadata.encodeCalls([
+                    AnalysisCallSummary(
+                        callNumber: 1,
+                        sampleNumber: 1,
+                        attemptNumber: 1,
+                        status: .succeeded,
+                        modelIdentifier: "example/model",
+                        providerIdentifier: "Example",
+                        energyKilocalories: 640,
+                        errorMessage: nil
+                    ),
+                ]),
+                status: .confirmed,
+                mealName: "Test meal",
+                confidence: .medium,
+                nutrients: [
+                    NutrientValue(
+                        identifier: .energy,
+                        value: 640,
+                        unit: .kilocalorie,
+                        confidence: .medium,
+                        provenance: .visualEstimate
+                    ),
+                ]
+            )
+            meal.analysisRevisions.append(revision)
+            meal.activeRevisionID = revision.id
+            meal.analysisState = .confirmed
+            try context.save()
+        }
+
+        let schema = Schema(NutritionSchemaV2.models)
+        let configuration = ModelConfiguration(
+            "AnalysisRoundTrip",
+            schema: schema,
+            url: storeURL,
+            cloudKitDatabase: .none
+        )
+        let reopened = try ModelContainer(
+            for: schema,
+            migrationPlan: NutritionMigrationPlan.self,
+            configurations: [configuration]
+        )
+        let meal = try #require(
+            reopened.mainContext.fetch(FetchDescriptor<Meal>()).first { $0.id == mealID }
+        )
+
+        #expect(meal.activeRevision?.nutrients.first?.value == 640)
+        #expect(meal.activeRevision?.normalizedPortionMultiplier == 1)
+        #expect(InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata).first?.energyKilocalories == 640)
+    }
+
     @Test("Version 1 stores migrate without losing meals")
     func versionOneMigration() throws {
         let directory = FileManager.default.temporaryDirectory

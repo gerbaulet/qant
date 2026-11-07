@@ -1,7 +1,13 @@
 import Foundation
 
 enum NutritionAnalysisCalculator {
-    static func calculateTotals(from result: NutritionAnalysisResult) -> NutritionAnalysisResult {
+    /// Converts per-100-gram component nutrients to consumed amounts without
+    /// replacing the totals reported by the model. The preserved totals let
+    /// callers validate the model's component math before deterministic
+    /// aggregation makes both sides equal by construction.
+    static func scalingComponentsToConsumedAmounts(
+        from result: NutritionAnalysisResult
+    ) -> NutritionAnalysisResult {
         let core = NutritionAnalysisValidator.coreNutrients
         let components = result.components.map { component in
             AnalyzedFoodComponent(
@@ -26,6 +32,25 @@ enum NutritionAnalysisCalculator {
                     }
             )
         }
+
+        return NutritionAnalysisResult(
+            mealName: result.mealName,
+            estimatedTotalWeightGrams: result.estimatedTotalWeightGrams,
+            confidence: result.confidence,
+            uncertaintySummary: result.uncertaintySummary,
+            clarificationQuestion: result.clarificationQuestion,
+            nutrients: result.nutrients,
+            components: components,
+            modelIdentifier: result.modelIdentifier,
+            providerIdentifier: result.providerIdentifier,
+            requestMetrics: result.requestMetrics
+        )
+    }
+
+    static func calculateTotals(from result: NutritionAnalysisResult) -> NutritionAnalysisResult {
+        let consumedResult = scalingComponentsToConsumedAmounts(from: result)
+        let core = NutritionAnalysisValidator.coreNutrients
+        let components = consumedResult.components
         let canSumComponents = !components.isEmpty && components.allSatisfy { component in
             core.allSatisfy { identifier in
                 component.nutrients.contains { $0.identifier == identifier }
@@ -48,25 +73,25 @@ enum NutritionAnalysisCalculator {
                 )
             }
         } else {
-            nutrients = result.nutrients.filter { core.contains($0.identifier) }
+            nutrients = consumedResult.nutrients.filter { core.contains($0.identifier) }
         }
 
         let componentWeights = components.compactMap(\.estimatedWeightGrams)
         let totalWeight = !components.isEmpty && componentWeights.count == components.count
             ? componentWeights.reduce(0, +)
-            : result.estimatedTotalWeightGrams
+            : consumedResult.estimatedTotalWeightGrams
 
         return NutritionAnalysisResult(
-            mealName: result.mealName,
+            mealName: consumedResult.mealName,
             estimatedTotalWeightGrams: totalWeight,
-            confidence: result.confidence,
-            uncertaintySummary: result.uncertaintySummary,
-            clarificationQuestion: result.clarificationQuestion,
+            confidence: consumedResult.confidence,
+            uncertaintySummary: consumedResult.uncertaintySummary,
+            clarificationQuestion: consumedResult.clarificationQuestion,
             nutrients: nutrients,
             components: components,
-            modelIdentifier: result.modelIdentifier,
-            providerIdentifier: result.providerIdentifier,
-            requestMetrics: result.requestMetrics
+            modelIdentifier: consumedResult.modelIdentifier,
+            providerIdentifier: consumedResult.providerIdentifier,
+            requestMetrics: consumedResult.requestMetrics
         )
     }
 

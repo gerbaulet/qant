@@ -33,6 +33,37 @@ struct NutritionAnalysisCalculatorTests {
         #expect(calculated.nutrients.count == 6)
     }
 
+    @Test("Scaling component values preserves reported totals for consistency validation")
+    func scalingPreservesReportedTotals() throws {
+        let reported = NutritionAnalysisValidatorTests.validResult()
+        let toast = component(
+            name: "Toast",
+            weight: 50,
+            basis: .per100Grams,
+            values: [400, 20, 40, 16, 8, 0]
+        )
+        let input = NutritionAnalysisResult(
+            mealName: reported.mealName,
+            estimatedTotalWeightGrams: 50,
+            confidence: reported.confidence,
+            uncertaintySummary: reported.uncertaintySummary,
+            clarificationQuestion: nil,
+            nutrients: reported.nutrients,
+            components: [toast],
+            modelIdentifier: reported.modelIdentifier,
+            providerIdentifier: reported.providerIdentifier
+        )
+
+        let scaled = NutritionAnalysisCalculator.scalingComponentsToConsumedAmounts(from: input)
+
+        #expect(scaled.nutrients.first { $0.identifier == .energy }?.value == 640)
+        #expect(scaled.components.first?.nutrientBasis == .consumedAmount)
+        #expect(scaled.components.first?.nutrients.first { $0.identifier == .energy }?.value == 200)
+        #expect(throws: NutritionAnalysisError.self) {
+            try NutritionAnalysisConsistencyValidator.validate(scaled)
+        }
+    }
+
     @Test("Impossible energy density is rejected without a fixed calorie cap")
     func rejectsImpossibleEnergyDensity() {
         let component = component(name: "Toast mit Käse", weight: 92.5, values: [1_273, 15, 20, 20, 3, 0])

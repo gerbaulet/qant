@@ -273,7 +273,10 @@ final class MealAnalysisCoordinator {
                 }
                 candidate = rawResult
                 try NutritionAnalysisValidator.validate(rawResult)
-                let result = NutritionAnalysisCalculator.calculateTotals(from: rawResult)
+                let consumedAmounts = NutritionAnalysisCalculator
+                    .scalingComponentsToConsumedAmounts(from: rawResult)
+                try NutritionAnalysisConsistencyValidator.validate(consumedAmounts)
+                let result = NutritionAnalysisCalculator.calculateTotals(from: consumedAmounts)
                 try NutritionAnalysisValidator.validate(result)
                 try NutritionAnalysisConsistencyValidator.validate(result)
                 if trigger == .clarification {

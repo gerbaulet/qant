@@ -55,9 +55,23 @@ struct MealAnalysisCoordinatorTests {
         #expect(calls.allSatisfy { $0.clarificationAnswer == nil })
         #expect(provider.receivedRequest?.recognizedLabelText == ["pro Scheibe 37,5 g", "248 kcal pro 100 g"])
 
-        meal.activeRevision?.portionMultiplier = 1.5
-        #expect(meal.activeRevision?.normalizedPortionMultiplier == 1.5)
-        #expect(InitialAnalysisRunMetadata.decode(meal.activeRevision?.providerMetadata) == runs)
+        context.rollback()
+        let persistedMeal = try #require(context.fetch(FetchDescriptor<Meal>()).first)
+        #expect(persistedMeal.activeRevision?.nutrients.first {
+            $0.knownIdentifier == .energy && $0.knownUnit == .kilocalorie
+        }?.value == 640)
+        let dashboard = TodayDashboardBuilder.makeSnapshot(
+            for: persistedMeal.timestamp,
+            meals: [persistedMeal],
+            goals: [],
+            calendar: Calendar(identifier: .gregorian)
+        )
+        #expect(dashboard.energy.consumed == 640)
+        #expect(dashboard.meals.first?.energyKilocalories == 640)
+
+        persistedMeal.activeRevision?.portionMultiplier = 1.5
+        #expect(persistedMeal.activeRevision?.normalizedPortionMultiplier == 1.5)
+        #expect(InitialAnalysisRunMetadata.decode(persistedMeal.activeRevision?.providerMetadata) == runs)
     }
 
     @Test("Background execution remains active until the analysis finishes")
@@ -460,6 +474,34 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.requestCount == 2)
         #expect(meal.analysisState == .confirmed)
         #expect(meal.analysisRevisions.count == 1)
+    }
+
+    @Test("Reported calories are not replaced by inconsistent zero-calorie components")
+    func retriesComponentsThatWouldZeroReportedCalories() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let provider = SequencedAnalysisProviderStub(results: [
+            resultWithZeroedComponents(),
+            NutritionAnalysisValidatorTests.validResult(),
+        ])
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(provider.requestCount == 2)
+        #expect(meal.analysisState == .confirmed)
+        #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
+        let calls = InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata)
+        #expect(calls.map(\.status) == [.failed, .succeeded])
+        #expect(calls.map(\.energyKilocalories) == [640, 640])
+        #expect(calls.first?.errorMessage?.contains("Bestandteile") == true)
     }
 
     @Test("Invalid analysis values fail after one correction attempt")
@@ -1051,6 +1093,35 @@ struct MealAnalysisCoordinatorTests {
                 )
             },
             components: valid.components,
+            modelIdentifier: valid.modelIdentifier,
+            providerIdentifier: valid.providerIdentifier
+        )
+    }
+
+    private func resultWithZeroedComponents() -> NutritionAnalysisResult {
+        let valid = NutritionAnalysisValidatorTests.validResult()
+        return NutritionAnalysisResult(
+            mealName: valid.mealName,
+            estimatedTotalWeightGrams: valid.estimatedTotalWeightGrams,
+            confidence: valid.confidence,
+            uncertaintySummary: valid.uncertaintySummary,
+            clarificationQuestion: nil,
+            nutrients: valid.nutrients,
+            components: [
+                AnalyzedFoodComponent(
+                    name: "Gemüsecurry mit Reis",
+                    estimatedWeightGrams: valid.estimatedTotalWeightGrams,
+                    nutrients: valid.nutrients.map { nutrient in
+                        AnalyzedNutrient(
+                            identifier: nutrient.identifier,
+                            value: 0,
+                            unit: nutrient.unit,
+                            confidence: nutrient.confidence,
+                            provenance: nutrient.provenance
+                        )
+                    }
+                ),
+            ],
             modelIdentifier: valid.modelIdentifier,
             providerIdentifier: valid.providerIdentifier
         )
