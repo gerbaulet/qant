@@ -79,6 +79,44 @@ struct MealHistoryBuilderTests {
         #expect(section?.containsProvisionalEnergy == true)
     }
 
+    @Test("History uses validated call calories when the nutrient relationship is missing")
+    func callMetadataFallback() {
+        let revision = MealAnalysisRevision(
+            modelIdentifier: "test/model",
+            providerMetadata: InitialAnalysisRunMetadata.encodeCalls([
+                AnalysisCallSummary(
+                    callNumber: 1,
+                    sampleNumber: nil,
+                    attemptNumber: 1,
+                    status: .succeeded,
+                    modelIdentifier: "test/model",
+                    providerIdentifier: "Test",
+                    energyKilocalories: 483,
+                    errorMessage: nil
+                ),
+            ]),
+            trigger: .correction,
+            status: .confirmed,
+            mealName: "Kuchenstücke mit Schlagsahne",
+            confidence: .medium
+        )
+        let meal = Meal(
+            timestamp: date(2026, 8, 23, 12),
+            analysisState: .confirmed,
+            activeRevisionID: revision.id,
+            analysisRevisions: [revision]
+        )
+
+        let section = MealHistoryBuilder.makeSections(
+            meals: [meal],
+            grouping: .day,
+            calendar: calendar
+        ).first
+
+        #expect(section?.entries.first?.energyKilocalories == 483)
+        #expect(section?.totalEnergyKilocalories == 483)
+    }
+
     @Test("Search matches the current meal name, components, and user comment")
     func searchContent() {
         let curry = meal(

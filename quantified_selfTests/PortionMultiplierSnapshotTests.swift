@@ -56,6 +56,77 @@ struct PortionMultiplierSnapshotTests {
         #expect(snapshot.scaled(energy, for: revision) == 500)
         #expect(snapshot.scaled(protein, for: revision) == 30)
     }
+
+    @Test("A positive validated call replaces a broken persisted zero and requests repair")
+    func recoversPersistedZero() {
+        let calls = InitialAnalysisRunMetadata.encodeCalls([
+            AnalysisCallSummary(
+                callNumber: 1,
+                sampleNumber: nil,
+                attemptNumber: 1,
+                status: .succeeded,
+                modelIdentifier: "test/model",
+                providerIdentifier: "Test",
+                energyKilocalories: 483,
+                errorMessage: nil
+            ),
+        ])
+        let revision = MealAnalysisRevision(
+            modelIdentifier: "test/model",
+            providerMetadata: calls,
+            trigger: .correction,
+            status: .confirmed,
+            mealName: "Test",
+            confidence: .medium,
+            nutrients: NutritionAnalysisValidator.coreNutrients.map { identifier in
+                NutrientValue(
+                    identifier: identifier,
+                    value: 0,
+                    unit: identifier == .energy ? .kilocalorie : .gram,
+                    confidence: .medium,
+                    provenance: .visualEstimate
+                )
+            }
+        )
+
+        #expect(PortionMultiplierSnapshot().scaledValue(for: .energy, in: revision) == 483)
+        #expect(RevisionNutritionRecovery.needsRepair(revision))
+    }
+
+    @Test("Fallback selection keeps the median rule for three initial estimates")
+    func fallbackUsesInitialMedian() {
+        let metadata = InitialAnalysisRunMetadata.encodeCalls([
+            call(number: 1, sample: 1, energy: 500),
+            call(number: 2, sample: 2, energy: 700),
+            call(number: 3, sample: 3, energy: 600),
+        ])
+        let incompleteMetadata = InitialAnalysisRunMetadata.encodeCalls([
+            call(number: 1, sample: 1, energy: 500),
+            call(number: 2, sample: 2, energy: 700),
+        ])
+
+        #expect(InitialAnalysisRunMetadata.selectedEnergyKilocalories(
+            from: metadata,
+            trigger: .initial
+        ) == 600)
+        #expect(InitialAnalysisRunMetadata.selectedEnergyKilocalories(
+            from: incompleteMetadata,
+            trigger: .initial
+        ) == 500)
+    }
+
+    private func call(number: Int, sample: Int, energy: Double) -> AnalysisCallSummary {
+        AnalysisCallSummary(
+            callNumber: number,
+            sampleNumber: sample,
+            attemptNumber: 1,
+            status: .succeeded,
+            modelIdentifier: "test/model",
+            providerIdentifier: "Test",
+            energyKilocalories: energy,
+            errorMessage: nil
+        )
+    }
 }
 
 @MainActor
@@ -121,5 +192,32 @@ struct ComponentPortionScalingTests {
         let updatedCalls = InitialAnalysisRunMetadata.settingComponentMultipliers(["rice": 0], in: calls)
         #expect(InitialAnalysisRunMetadata.componentMultipliers(from: updatedCalls) == ["rice": 0])
         #expect(InitialAnalysisRunMetadata.portionMultiplier(from: updatedCalls) == 2)
+
+        let selectedEnergy = AnalyzedNutrient(
+            identifier: .energy,
+            value: 483,
+            unit: .kilocalorie,
+            confidence: .medium,
+            provenance: .visualEstimate
+        )
+        let selectedMetadata = InitialAnalysisRunMetadata.encodeCalls(
+            [AnalysisCallSummary(
+                callNumber: 1,
+                sampleNumber: nil,
+                attemptNumber: 1,
+                status: .succeeded,
+                modelIdentifier: "test/model",
+                providerIdentifier: "Test",
+                energyKilocalories: 483,
+                errorMessage: nil
+            )],
+            selectedNutrients: [selectedEnergy]
+        )
+        let selectedRescaled = InitialAnalysisRunMetadata.settingPortionMultiplier(1.5, in: selectedMetadata)
+        #expect(InitialAnalysisRunMetadata.selectedNutrient(
+            .energy,
+            from: selectedRescaled,
+            trigger: .correction
+        ) == selectedEnergy)
     }
 }

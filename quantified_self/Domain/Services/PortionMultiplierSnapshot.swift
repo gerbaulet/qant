@@ -34,6 +34,27 @@ final class PortionMultiplierSnapshot {
         value * multiplier(for: revision)
     }
 
+    func scaledValue(
+        for identifier: NutrientIdentifier,
+        in revision: MealAnalysisRevision
+    ) -> Double? {
+        let stored = revision.nutrients
+            .filter { $0.knownIdentifier == identifier }
+            .map { scaled($0, for: revision) }
+            .reduce(0, +)
+        let hasStoredValue = revision.nutrients.contains { $0.knownIdentifier == identifier }
+        let fallback = InitialAnalysisRunMetadata.selectedNutrient(
+            identifier,
+            from: revision.providerMetadata,
+            trigger: revision.trigger
+        ).map { max(0, $0.value) * multiplier(for: revision) }
+
+        if hasStoredValue, stored > 0 || fallback == nil {
+            return stored
+        }
+        return fallback
+    }
+
     private func adjustment(for revision: MealAnalysisRevision) -> PortionAdjustmentMetadata {
         if let cached = adjustmentsByRevisionID[revision.id] {
             return cached
@@ -67,6 +88,26 @@ final class PortionMultiplierSnapshot {
     }
 }
 
+enum RevisionNutritionRecovery {
+    static func needsRepair(_ revision: MealAnalysisRevision) -> Bool {
+        let storedIdentifiers = Set(revision.nutrients.compactMap(\.knownIdentifier))
+        let hasCompleteCoreNutrients = NutritionAnalysisValidator.coreNutrients.allSatisfy {
+            storedIdentifiers.contains($0)
+        }
+        let storedEnergy = revision.nutrients
+            .filter { $0.knownIdentifier == .energy }
+            .map(\.value)
+            .reduce(0, +)
+        let recordedEnergy = InitialAnalysisRunMetadata.selectedEnergyKilocalories(
+            from: revision.providerMetadata,
+            trigger: revision.trigger
+        )
+
+        guard let recordedEnergy, recordedEnergy > 0 else { return false }
+        return !hasCompleteCoreNutrients || abs(storedEnergy - recordedEnergy) > 0.5
+    }
+}
+
 @MainActor
 enum ComponentPortionScaling {
     static func nutrient(_ nutrient: NutrientValue, in revision: MealAnalysisRevision, multipliers: [String: Double]) -> Double {
@@ -78,6 +119,25 @@ enum ComponentPortionScaling {
             return total + value * (factor - 1)
         }
         return max(0, nutrient.value + delta)
+    }
+
+    static func nutrient(
+        _ identifier: NutrientIdentifier,
+        in revision: MealAnalysisRevision,
+        multipliers: [String: Double]
+    ) -> (value: Double, unit: NutrientUnit)? {
+        if let storedNutrient = revision.nutrients.first(where: { $0.knownIdentifier == identifier }) {
+            return (
+                nutrient(storedNutrient, in: revision, multipliers: multipliers),
+                storedNutrient.knownUnit ?? (identifier == .energy ? .kilocalorie : .gram)
+            )
+        }
+        guard let fallback = InitialAnalysisRunMetadata.selectedNutrient(
+            identifier,
+            from: revision.providerMetadata,
+            trigger: revision.trigger
+        ) else { return nil }
+        return (max(0, fallback.value), fallback.unit)
     }
 
     static func weight(in revision: MealAnalysisRevision, multipliers: [String: Double]) -> Double? {

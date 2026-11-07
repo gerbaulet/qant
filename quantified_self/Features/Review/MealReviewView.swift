@@ -613,9 +613,7 @@ struct MealReviewView: View {
         in revision: MealAnalysisRevision,
         portionMultipliers: PortionMultiplierSnapshot
     ) -> Double? {
-        revision.nutrients.first {
-            $0.knownIdentifier == .energy && $0.knownUnit == .kilocalorie
-        }.map { portionMultipliers.scaled($0, for: revision) }
+        portionMultipliers.scaledValue(for: .energy, in: revision)
     }
 
     private var sortedRevisions: [MealAnalysisRevision] {
@@ -1181,10 +1179,12 @@ private struct PortionNutritionSummary: View {
         _ identifier: NutrientIdentifier,
         multiplier: Double
     ) -> String {
-        guard let nutrient = revision.nutrients.first(where: {
-            $0.identifierRawValue == identifier.rawValue
-        }) else { return "–" }
-        return "~\(formattedValue(ComponentPortionScaling.nutrient(nutrient, in: revision, multipliers: adjustment.componentMultipliers) * multiplier)) \(nutrient.unitRawValue)"
+        guard let nutrient = ComponentPortionScaling.nutrient(
+            identifier,
+            in: revision,
+            multipliers: adjustment.componentMultipliers
+        ) else { return "–" }
+        return "~\(formattedValue(nutrient.value * multiplier)) \(nutrient.unit.rawValue)"
     }
 
     private func wholeNumber(_ value: Double) -> String {

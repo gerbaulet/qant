@@ -130,12 +130,8 @@ enum MealHistoryBuilder {
             }
         } ?? false
         let energy = includesNutrition
-            ? revision?.nutrients.first(where: {
-                $0.identifierRawValue == NutrientIdentifier.energy.rawValue &&
-                    $0.unitRawValue == NutrientUnit.kilocalorie.rawValue
-            }).map { nutrient in
-                guard let revision else { return nutrient.value }
-                return portionMultipliers.scaled(nutrient, for: revision)
+            ? revision.flatMap {
+                portionMultipliers.scaledValue(for: .energy, in: $0)
             }
             : nil
         return MealHistoryEntry(

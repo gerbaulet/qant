@@ -819,6 +819,49 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.receivedRequest?.allowsClarification == false)
     }
 
+    @Test("A correction keeps its nutrients after reopening a persistent store")
+    func correctionNutrientsSurvivePersistentStoreReopen() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "quant-correction-round-trip-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appending(path: "Nutrition.store")
+        let mealID = UUID()
+
+        do {
+            let container = try makeContainer(at: storeURL)
+            let context = container.mainContext
+            let previousRevision = makeRevision(status: .confirmed)
+            let meal = Meal(
+                id: mealID,
+                analysisState: .confirmed,
+                activeRevisionID: previousRevision.id,
+                analysisRevisions: [previousRevision]
+            )
+            context.insert(meal)
+            try context.save()
+            let provider = AnalysisProviderStub(result: NutritionAnalysisValidatorTests.validResult())
+            let coordinator = MealAnalysisCoordinator(
+                context: context,
+                provider: provider,
+                imageStorage: AnalysisImageStorage(dataByKey: [:])
+            )
+
+            await coordinator.correct("Neu berechnen", for: meal)
+
+            #expect(meal.activeRevision?.nutrients.count == 6)
+            #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
+        }
+
+        let reopened = try makeContainer(at: storeURL)
+        let meal = try #require(
+            reopened.mainContext.fetch(FetchDescriptor<Meal>()).first { $0.id == mealID }
+        )
+        #expect(meal.activeRevision?.trigger == .correction)
+        #expect(meal.activeRevision?.nutrients.count == 6)
+        #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
+    }
+
     @Test("Two calorie-neutral clarifications do not drift and retain both answers")
     func keepsCaloriesStableAcrossClarifications() async throws {
         let container = try makeContainer()
@@ -1016,6 +1059,21 @@ struct MealAnalysisCoordinatorTests {
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema(NutritionSchemaV2.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        return try ModelContainer(
+            for: schema,
+            migrationPlan: NutritionMigrationPlan.self,
+            configurations: [configuration]
+        )
+    }
+
+    private func makeContainer(at storeURL: URL) throws -> ModelContainer {
+        let schema = Schema(NutritionSchemaV2.models)
+        let configuration = ModelConfiguration(
+            "CorrectionRoundTrip",
+            schema: schema,
+            url: storeURL,
+            cloudKitDatabase: .none
+        )
         return try ModelContainer(
             for: schema,
             migrationPlan: NutritionMigrationPlan.self,

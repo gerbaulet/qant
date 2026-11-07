@@ -298,13 +298,16 @@ enum NutritionTrendsBuilder {
             let hour = localHour(for: meal.timestamp, calendar: calendar)
             guard hour > currentHour,
                   let revision = activeRevisions.revision(for: meal),
-                  let value = revision.nutrients.first(where: { $0.knownIdentifier == nutrient }) else {
+                  let value = portionMultipliers.scaledValue(
+                    for: nutrient,
+                    in: revision
+                  ) else {
                 continue
             }
             let day = calendar.startOfDay(for: meal.timestamp)
             guard let weight = weightsByDay[day] else { continue }
             weightedValuesByHour[hour, default: 0] +=
-                portionMultipliers.scaled(value, for: revision) * weight / totalWeight
+                value * weight / totalWeight
         }
 
         var forecastValue = actualValue
@@ -330,11 +333,14 @@ enum NutritionTrendsBuilder {
         var valuesByHour: [Double: Double] = [:]
         for meal in meals {
             guard let revision = activeRevisions.revision(for: meal),
-                  let value = revision.nutrients.first(where: { $0.knownIdentifier == nutrient }) else {
+                  let value = portionMultipliers.scaledValue(
+                    for: nutrient,
+                    in: revision
+                  ) else {
                 continue
             }
             valuesByHour[localHour(for: meal.timestamp, calendar: calendar), default: 0] +=
-                portionMultipliers.scaled(value, for: revision) / divisor
+                value / divisor
         }
 
         var cumulativeValue = 0.0

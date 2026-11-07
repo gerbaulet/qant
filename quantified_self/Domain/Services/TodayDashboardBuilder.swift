@@ -181,9 +181,12 @@ enum TodayDashboardBuilder {
     ) -> [NutrientIdentifier: Double] {
         var totals: [NutrientIdentifier: Double] = [:]
         for revision in revisions {
-            for nutrient in revision.nutrients {
-                guard let identifier = nutrient.knownIdentifier else { continue }
-                totals[identifier, default: 0] += portionMultipliers.scaled(nutrient, for: revision)
+            for identifier in NutritionAnalysisValidator.coreNutrients {
+                guard let value = portionMultipliers.scaledValue(
+                    for: identifier,
+                    in: revision
+                ) else { continue }
+                totals[identifier, default: 0] += value
             }
         }
         return totals
@@ -196,12 +199,12 @@ enum TodayDashboardBuilder {
         portionMultipliers: PortionMultiplierSnapshot
     ) -> Double {
         revisions.reduce(0) { total, revision in
-            total + revision.nutrients
-                .filter {
-                    $0.identifierRawValue == identifier.rawValue &&
-                        $0.unitRawValue == unit.rawValue
-                }
-                .reduce(0) { $0 + portionMultipliers.scaled($1, for: revision) }
+            guard let value = portionMultipliers.scaledValue(
+                for: identifier,
+                in: revision
+            ) else { return total }
+            let fallbackUnit: NutrientUnit = identifier == .energy ? .kilocalorie : .gram
+            return fallbackUnit == unit ? total + value : total
         }
     }
 

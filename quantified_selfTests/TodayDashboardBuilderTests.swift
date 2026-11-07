@@ -190,6 +190,47 @@ struct TodayDashboardBuilderTests {
         #expect(snapshot.meals.first?.energyKilocalories == 900)
     }
 
+    @Test("A validated call supplies calories while missing nutrient relationships are repaired")
+    func callMetadataFallback() {
+        let reference = date(2026, 8, 23, 12)
+        let revision = MealAnalysisRevision(
+            modelIdentifier: "test/model",
+            providerMetadata: InitialAnalysisRunMetadata.encodeCalls([
+                AnalysisCallSummary(
+                    callNumber: 1,
+                    sampleNumber: nil,
+                    attemptNumber: 1,
+                    status: .succeeded,
+                    modelIdentifier: "test/model",
+                    providerIdentifier: "Test",
+                    energyKilocalories: 483,
+                    errorMessage: nil
+                ),
+            ]),
+            trigger: .correction,
+            status: .confirmed,
+            mealName: "Kuchenstücke mit Schlagsahne",
+            confidence: .medium
+        )
+        let meal = Meal(
+            timestamp: reference,
+            analysisState: .confirmed,
+            activeRevisionID: revision.id,
+            analysisRevisions: [revision]
+        )
+
+        let snapshot = TodayDashboardBuilder.makeSnapshot(
+            for: reference,
+            meals: [meal],
+            goals: goals(starting: date(2026, 8, 1)),
+            calendar: calendar
+        )
+
+        #expect(snapshot.energy.consumed == 483)
+        #expect(snapshot.weeklyEnergy.consumed == 483)
+        #expect(snapshot.meals.first?.energyKilocalories == 483)
+    }
+
     private func meal(
         at timestamp: Date,
         state: AnalysisState,

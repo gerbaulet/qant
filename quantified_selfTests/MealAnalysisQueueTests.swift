@@ -104,6 +104,59 @@ struct MealAnalysisQueueTests {
         #expect(try context.fetch(FetchDescriptor<PendingMealAnalysis>()).isEmpty)
     }
 
+    @Test("App launch repairs today's confirmed analyses with missing nutrients once")
+    func repairsTodaysIncompleteAnalyses() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let reference = Date(timeIntervalSince1970: 1_799_323_200)
+        let todayRevision = incompleteRevision(energyKilocalories: 483)
+        let today = Meal(
+            timestamp: reference,
+            analysisState: .confirmed,
+            activeRevisionID: todayRevision.id,
+            analysisRevisions: [todayRevision]
+        )
+        let yesterdayRevision = incompleteRevision(energyKilocalories: 585)
+        let yesterday = Meal(
+            timestamp: calendar.date(byAdding: .day, value: -1, to: reference)!,
+            analysisState: .confirmed,
+            activeRevisionID: yesterdayRevision.id,
+            analysisRevisions: [yesterdayRevision]
+        )
+        context.insert(today)
+        context.insert(yesterday)
+        try context.save()
+        let provider = QueueRecordingProvider(
+            result: NutritionAnalysisValidatorTests.validResult()
+        )
+        let queue = MealAnalysisQueue()
+
+        await queue.repairIncompleteAnalyses(
+            for: reference,
+            calendar: calendar,
+            in: context,
+            provider: provider,
+            imageStorage: QueueImageStorage()
+        )
+        await queue.repairIncompleteAnalyses(
+            for: reference,
+            calendar: calendar,
+            in: context,
+            provider: provider,
+            imageStorage: QueueImageStorage()
+        )
+
+        #expect(provider.requestCount == 1)
+        #expect(provider.receivedRequest?.userCorrection == "Nährwerte vollständig neu berechnen")
+        #expect(today.activeRevision?.trigger == .correction)
+        #expect(today.activeRevision?.nutrients.count == 6)
+        #expect(today.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
+        #expect(yesterday.activeRevision?.id == yesterdayRevision.id)
+        #expect(try context.fetch(FetchDescriptor<PendingMealAnalysis>()).isEmpty)
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema(NutritionSchemaV2.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
@@ -132,6 +185,28 @@ struct MealAnalysisQueueTests {
                     provenance: nutrient.provenance
                 )
             }
+        )
+    }
+
+    private func incompleteRevision(energyKilocalories: Double) -> MealAnalysisRevision {
+        MealAnalysisRevision(
+            modelIdentifier: "example/vision-model",
+            providerMetadata: InitialAnalysisRunMetadata.encodeCalls([
+                AnalysisCallSummary(
+                    callNumber: 1,
+                    sampleNumber: nil,
+                    attemptNumber: 1,
+                    status: .succeeded,
+                    modelIdentifier: "example/vision-model",
+                    providerIdentifier: "Example",
+                    energyKilocalories: energyKilocalories,
+                    errorMessage: nil
+                ),
+            ]),
+            status: .confirmed,
+            mealName: "Unvollständige Schätzung",
+            estimatedTotalWeightGrams: 135,
+            confidence: .medium
         )
     }
 }

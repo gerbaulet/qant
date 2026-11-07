@@ -83,6 +83,7 @@ enum InitialAnalysisRunMetadata {
         let calls: [AnalysisCallSummary]
         let portionMultiplier: Double?
         var componentMultipliers: [String: Double]? = nil
+        var selectedNutrients: [AnalyzedNutrient]? = nil
     }
 
     static func encode(_ results: [NutritionAnalysisResult]) -> String? {
@@ -130,12 +131,16 @@ enum InitialAnalysisRunMetadata {
         return payload.runs.sorted { $0.runNumber < $1.runNumber }
     }
 
-    static func encodeCalls(_ calls: [AnalysisCallSummary]) -> String? {
+    static func encodeCalls(
+        _ calls: [AnalysisCallSummary],
+        selectedNutrients: [AnalyzedNutrient]? = nil
+    ) -> String? {
         guard !calls.isEmpty,
               let data = try? JSONEncoder().encode(PayloadV2(
                 version: 2,
                 calls: calls,
-                portionMultiplier: nil
+                portionMultiplier: nil,
+                selectedNutrients: selectedNutrients
               )) else { return nil }
         return String(data: data, encoding: .utf8)
     }
@@ -143,6 +148,61 @@ enum InitialAnalysisRunMetadata {
     static func decodeCalls(_ metadata: String?) -> [AnalysisCallSummary] {
         guard let payload = payloadV2(from: metadata), payload.version == 2 else { return [] }
         return payload.calls.sorted { $0.callNumber < $1.callNumber }
+    }
+
+    static func selectedNutrient(
+        _ identifier: NutrientIdentifier,
+        from metadata: String?,
+        trigger: AnalysisTrigger
+    ) -> AnalyzedNutrient? {
+        if let nutrient = payloadV2(from: metadata)?.selectedNutrients?.first(where: {
+            $0.identifier == identifier
+        }) {
+            return nutrient
+        }
+        guard identifier == .energy,
+              let energy = selectedEnergyKilocalories(from: metadata, trigger: trigger) else {
+            return nil
+        }
+        return AnalyzedNutrient(
+            identifier: .energy,
+            value: energy,
+            unit: .kilocalorie,
+            confidence: .medium,
+            provenance: .unknown
+        )
+    }
+
+    static func selectedEnergyKilocalories(
+        from metadata: String?,
+        trigger: AnalysisTrigger
+    ) -> Double? {
+        let calls = decodeCalls(metadata)
+        if !calls.isEmpty {
+            let successful = calls.filter {
+                $0.status == .succeeded && $0.energyKilocalories != nil
+            }
+            guard !successful.isEmpty else { return nil }
+            if trigger == .initial {
+                let resultsBySample = Dictionary(grouping: successful) {
+                    $0.sampleNumber ?? $0.callNumber
+                }.compactMapValues { calls in
+                    calls.max(by: { $0.attemptNumber < $1.attemptNumber })?.energyKilocalories
+                }
+                if resultsBySample.count == 3 {
+                    return resultsBySample.values.sorted()[1]
+                }
+                return resultsBySample[1] ?? successful.last?.energyKilocalories
+            }
+            return successful.last?.energyKilocalories
+        }
+
+        let runs = decodeLegacyRuns(metadata)
+        guard !runs.isEmpty else { return nil }
+        if trigger == .initial, runs.count == 3 {
+            return runs.map(\.energyKilocalories).sorted()[1]
+        }
+        return runs.first?.energyKilocalories
     }
 
     static func portionMultiplier(from metadata: String?) -> Double {
@@ -174,7 +234,8 @@ enum InitialAnalysisRunMetadata {
                 version: 2,
                 calls: existing.calls,
                 portionMultiplier: normalized,
-                componentMultipliers: componentMultipliers(from: metadata)
+                componentMultipliers: componentMultipliers(from: metadata),
+                selectedNutrients: existing.selectedNutrients
             ))
         } else {
             data = try? JSONEncoder().encode(PayloadV1(
@@ -214,5 +275,10 @@ enum InitialAnalysisRunMetadata {
     private static func payloadV2(from metadata: String?) -> PayloadV2? {
         guard let metadata, let data = metadata.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(PayloadV2.self, from: data)
+    }
+
+    private static func decodeLegacyRuns(_ metadata: String?) -> [InitialAnalysisRunSummary] {
+        guard let payload = payloadV1(from: metadata) else { return [] }
+        return payload.runs.sorted { $0.runNumber < $1.runNumber }
     }
 }

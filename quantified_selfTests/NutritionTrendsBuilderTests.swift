@@ -154,6 +154,44 @@ struct NutritionTrendsBuilderTests {
         #expect(trend.actualPoints.map(\.value) == [0, 500, 1_200, 1_200])
     }
 
+    @Test("Daily trend uses validated call calories when persisted nutrients are missing")
+    func dailyTrendCallMetadataFallback() {
+        let revision = MealAnalysisRevision(
+            modelIdentifier: "test/model",
+            providerMetadata: InitialAnalysisRunMetadata.encodeCalls([
+                AnalysisCallSummary(
+                    callNumber: 1,
+                    sampleNumber: nil,
+                    attemptNumber: 1,
+                    status: .succeeded,
+                    modelIdentifier: "test/model",
+                    providerIdentifier: "Test",
+                    energyKilocalories: 483,
+                    errorMessage: nil
+                ),
+            ]),
+            trigger: .correction,
+            status: .confirmed,
+            mealName: "Kuchenstücke mit Schlagsahne",
+            confidence: .medium
+        )
+        let meal = Meal(
+            timestamp: date(2026, 8, 23, 12),
+            analysisState: .confirmed,
+            activeRevisionID: revision.id,
+            analysisRevisions: [revision]
+        )
+
+        let trend = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 23, 14),
+            nutrient: .energy,
+            meals: [meal],
+            calendar: calendar
+        )
+
+        #expect(trend.actualPoints.map(\.value) == [0, 483, 483])
+    }
+
     @Test("Cumulative chart point identities are stable and unique")
     func cumulativePointIdentitiesAreStable() {
         let meals = [

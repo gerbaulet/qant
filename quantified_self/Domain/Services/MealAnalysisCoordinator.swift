@@ -490,7 +490,10 @@ final class MealAnalysisCoordinator {
             requestDate: requestDate,
             modelIdentifier: result.modelIdentifier,
             providerIdentifier: result.providerIdentifier,
-            providerMetadata: InitialAnalysisRunMetadata.encodeCalls(calls) ?? InitialAnalysisRunMetadata.encode(initialResults),
+            providerMetadata: InitialAnalysisRunMetadata.encodeCalls(
+                calls,
+                selectedNutrients: result.nutrients
+            ) ?? InitialAnalysisRunMetadata.encode(initialResults),
             promptVersion: NutritionAnalysisPrompt.currentVersion,
             trigger: trigger,
             status: status,
