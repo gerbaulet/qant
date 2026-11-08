@@ -49,6 +49,22 @@ struct PersistenceModelTests {
                 status: .confirmed,
                 mealName: "Test meal",
                 confidence: .medium,
+                components: [
+                    FoodComponent(
+                        sortIndex: 0,
+                        name: "Test component",
+                        estimatedWeightGrams: 250,
+                        nutrients: [
+                            NutrientValue(
+                                identifier: .energy,
+                                value: 640,
+                                unit: .kilocalorie,
+                                confidence: .medium,
+                                provenance: .visualEstimate
+                            ),
+                        ]
+                    ),
+                ],
                 nutrients: [
                     NutrientValue(
                         identifier: .energy,
@@ -82,6 +98,8 @@ struct PersistenceModelTests {
         )
 
         #expect(meal.activeRevision?.nutrients.first?.value == 640)
+        #expect(meal.activeRevision?.components.first?.name == "Test component")
+        #expect(meal.activeRevision?.components.first?.nutrients.first?.value == 640)
         #expect(meal.activeRevision?.normalizedPortionMultiplier == 1)
         #expect(InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata).first?.energyKilocalories == 640)
     }

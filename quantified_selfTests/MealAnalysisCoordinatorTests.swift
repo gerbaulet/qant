@@ -823,8 +823,8 @@ struct MealAnalysisCoordinatorTests {
         #expect(provider.receivedRequest?.allowsClarification == false)
     }
 
-    @Test("A correction keeps its nutrients after reopening a persistent store")
-    func correctionNutrientsSurvivePersistentStoreReopen() async throws {
+    @Test("A correction keeps its complete analysis graph after reopening a persistent store")
+    func correctionGraphSurvivesPersistentStoreReopen() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "quant-correction-round-trip-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -855,6 +855,8 @@ struct MealAnalysisCoordinatorTests {
 
             #expect(meal.activeRevision?.nutrients.count == 6)
             #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
+            #expect(meal.activeRevision?.components.count == 1)
+            #expect(meal.activeRevision?.components.first?.nutrients.count == 6)
         }
 
         let reopened = try makeContainer(at: storeURL)
@@ -864,6 +866,48 @@ struct MealAnalysisCoordinatorTests {
         #expect(meal.activeRevision?.trigger == .correction)
         #expect(meal.activeRevision?.nutrients.count == 6)
         #expect(meal.activeRevision?.nutrients.first { $0.knownIdentifier == .energy }?.value == 640)
+        #expect(meal.activeRevision?.components.count == 1)
+        #expect(meal.activeRevision?.components.first?.name == "Gemüsecurry mit Reis")
+        #expect(meal.activeRevision?.components.first?.nutrients.count == 6)
+    }
+
+    @Test("An initial analysis keeps its complete graph after reopening a persistent store")
+    func initialAnalysisGraphSurvivesPersistentStoreReopen() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "quant-initial-analysis-round-trip-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appending(path: "Nutrition.store")
+        let mealID = UUID()
+
+        do {
+            let container = try makeContainer(at: storeURL)
+            let context = container.mainContext
+            let meal = Meal(id: mealID)
+            context.insert(meal)
+            try context.save()
+            let provider = AnalysisProviderStub(result: NutritionAnalysisValidatorTests.validResult())
+            let coordinator = MealAnalysisCoordinator(
+                context: context,
+                provider: provider,
+                imageStorage: AnalysisImageStorage(dataByKey: [:])
+            )
+
+            await coordinator.analyze(meal)
+
+            #expect(meal.activeRevision?.nutrients.count == 6)
+            #expect(meal.activeRevision?.components.count == 1)
+            #expect(meal.activeRevision?.components.first?.nutrients.count == 6)
+        }
+
+        let reopened = try makeContainer(at: storeURL)
+        let meal = try #require(
+            reopened.mainContext.fetch(FetchDescriptor<Meal>()).first { $0.id == mealID }
+        )
+        #expect(meal.analysisState == .confirmed)
+        #expect(meal.activeRevision?.nutrients.count == 6)
+        #expect(meal.activeRevision?.components.first?.name == "Gemüsecurry mit Reis")
+        #expect(meal.activeRevision?.components.first?.nutrients.count == 6)
     }
 
     @Test("Two calorie-neutral clarifications do not drift and retain both answers")

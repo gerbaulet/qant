@@ -503,17 +503,36 @@ final class MealAnalysisCoordinator {
             uncertaintySummary: result.uncertaintySummary,
             clarificationQuestion: result.clarificationQuestion,
             clarificationAnswer: clarificationAnswer,
-            userCorrection: userCorrection,
-            components: result.components.enumerated().map { index, component in
-                FoodComponent(
-                    sortIndex: index,
-                    name: component.name,
-                    estimatedWeightGrams: component.estimatedWeightGrams,
-                    nutrients: component.nutrients.map(makeNutrient)
-                )
-            },
-            nutrients: result.nutrients.map(makeNutrient)
+            userCorrection: userCorrection
         )
+        context.insert(revision)
+
+        let revisionNutrients = result.nutrients.map(makeNutrient)
+        for nutrient in revisionNutrients {
+            context.insert(nutrient)
+            nutrient.analysisRevision = revision
+        }
+        revision.nutrients = revisionNutrients
+
+        let components = result.components.enumerated().map { index, component in
+            let storedComponent = FoodComponent(
+                sortIndex: index,
+                name: component.name,
+                estimatedWeightGrams: component.estimatedWeightGrams
+            )
+            context.insert(storedComponent)
+            storedComponent.analysisRevision = revision
+
+            let nutrients = component.nutrients.map(makeNutrient)
+            for nutrient in nutrients {
+                context.insert(nutrient)
+                nutrient.foodComponent = storedComponent
+            }
+            storedComponent.nutrients = nutrients
+            return storedComponent
+        }
+        revision.components = components
+
         if trigger != .initial {
             revision.portionMultiplier = portionMultiplier
         }
