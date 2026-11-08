@@ -140,6 +140,7 @@ private struct TodayDashboardContainer: View {
         if let meal = meals.first(where: { $0.id == mealID }) {
             MealReviewView(
                 meal: meal,
+                isActive: isActive,
                 showsDuplicateConfirmation: duplicateConfirmationMealID == meal.id,
                 onDelete: deleteMeal,
                 onDuplicate: duplicateMeal

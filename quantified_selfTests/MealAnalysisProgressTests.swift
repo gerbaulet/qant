@@ -4,6 +4,26 @@ import Testing
 
 @MainActor
 struct MealAnalysisProgressTests {
+    @Test("Streaming bursts are coalesced before they reach observable UI state")
+    func coalescesStreamingBursts() throws {
+        var coalescer = NutritionAnalysisStreamCoalescer(minimumEmissionInterval: 0.25)
+        let start = Date(timeIntervalSince1970: 1_000)
+        var emissions: [String] = []
+
+        for index in 0..<1_000 {
+            if let emission = coalescer.append("\(index),", at: start) {
+                emissions.append(emission)
+            }
+        }
+
+        #expect(emissions == ["0,"])
+        let finalEmission = coalescer.flush(at: start.addingTimeInterval(0.01))
+        emissions.append(try #require(finalEmission))
+        #expect(emissions.count == 2)
+        #expect(emissions.joined() == (0..<1_000).map { "\($0)," }.joined())
+        #expect(coalescer.flush(at: start.addingTimeInterval(1)) == nil)
+    }
+
     @Test("Concurrent responses keep request order and expose failures and retries immediately")
     func tracksConcurrentResponsesAndRetries() {
         let store = MealAnalysisProgressStore()

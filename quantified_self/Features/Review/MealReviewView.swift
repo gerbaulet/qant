@@ -14,6 +14,7 @@ struct MealReviewView: View {
 
     private let analysisProvider: any NutritionAnalysisProviding
     private let imageStorage: any ImageStorageProviding
+    private let isActive: Bool
     private let onDelete: ((Meal) -> Void)?
     private let onDuplicate: (@MainActor (Meal) async throws -> Void)?
 
@@ -41,6 +42,7 @@ struct MealReviewView: View {
         meal: Meal,
         analysisProvider: any NutritionAnalysisProviding = OpenRouterNutritionAnalysisService(),
         imageStorage: any ImageStorageProviding = FileImageStorage(),
+        isActive: Bool = true,
         showsDuplicateConfirmation: Bool = false,
         onDelete: ((Meal) -> Void)? = nil,
         onDuplicate: (@MainActor (Meal) async throws -> Void)? = nil
@@ -48,6 +50,7 @@ struct MealReviewView: View {
         self.meal = meal
         self.analysisProvider = analysisProvider
         self.imageStorage = imageStorage
+        self.isActive = isActive
         self.onDelete = onDelete
         self.onDuplicate = onDuplicate
         _editedTimestamp = State(initialValue: meal.timestamp)
@@ -486,7 +489,7 @@ struct MealReviewView: View {
 
     @ViewBuilder
     private var liveAnalysisSection: some View {
-        if meal.analysisState == .analyzing {
+        if isActive && meal.analysisState == .analyzing {
             let progress = MealAnalysisProgressStore.shared.analyses[meal.id] ?? MealAnalysisProgress()
             VStack(alignment: .leading, spacing: 12) {
                 Label("Laufende Analyse", systemImage: "sparkles")
@@ -1045,9 +1048,7 @@ private struct LiveJSONStreamView: View {
             .background(Color.black.opacity(0.06), in: .rect(cornerRadius: 8))
             .accessibilityIdentifier("meal.analysisProgress.stream.\(callID)")
             .onChange(of: text) {
-                withAnimation(.linear(duration: 0.1)) {
-                    proxy.scrollTo("stream-end-\(callID)", anchor: .bottom)
-                }
+                proxy.scrollTo("stream-end-\(callID)", anchor: .bottom)
             }
         }
     }

@@ -384,6 +384,33 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testSwitchesTabsWhileMealAnalysisIsVisible() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--ui-testing", "--ui-testing-review-progress"]
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+        XCTAssertTrue(app.staticTexts["meal.analysisProgress.counts"].waitForExistence(timeout: 3))
+
+        let settingsTab = app.tabBars.buttons["Einstellungen"]
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: 2))
+        settingsTab.tap()
+        XCTAssertTrue(app.navigationBars["Einstellungen"].waitForExistence(timeout: 2))
+        let trendsTab = app.tabBars.buttons["Trends"]
+        XCTAssertTrue(trendsTab.waitForExistence(timeout: 2))
+        trendsTab.tap()
+        XCTAssertTrue(app.navigationBars["Trends"].waitForExistence(timeout: 2))
+
+        let todayTab = app.tabBars.buttons["Heute"]
+        XCTAssertTrue(todayTab.waitForExistence(timeout: 2))
+        todayTab.tap()
+        XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["meal.analysisProgress.counts"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     func testReviewsAutomaticallyConfirmedNutritionEstimate() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [

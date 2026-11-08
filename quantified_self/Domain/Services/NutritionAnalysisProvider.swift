@@ -178,6 +178,38 @@ enum NutritionAnalysisStreamEvent: Sendable, Equatable {
     }
 }
 
+nonisolated struct NutritionAnalysisStreamCoalescer {
+    private let minimumEmissionInterval: TimeInterval
+    private var pendingContent: [String] = []
+    private var lastEmissionDate: Date?
+
+    init(minimumEmissionInterval: TimeInterval = 0.25) {
+        self.minimumEmissionInterval = minimumEmissionInterval
+    }
+
+    mutating func append(_ content: String, at date: Date) -> String? {
+        guard !content.isEmpty else { return nil }
+        pendingContent.append(content)
+        if let lastEmissionDate,
+           date.timeIntervalSince(lastEmissionDate) < minimumEmissionInterval {
+            return nil
+        }
+        return drain(at: date)
+    }
+
+    mutating func flush(at date: Date) -> String? {
+        guard !pendingContent.isEmpty else { return nil }
+        return drain(at: date)
+    }
+
+    private mutating func drain(at date: Date) -> String {
+        let content = pendingContent.joined()
+        pendingContent.removeAll(keepingCapacity: true)
+        lastEmissionDate = date
+        return content
+    }
+}
+
 protocol NutritionAnalysisProviding {
     func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult
     func analyze(

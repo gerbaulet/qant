@@ -90,10 +90,10 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
     }
 }
 
-struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCatalogProviding, OpenRouterChatCompleting {
+struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCatalogProviding, OpenRouterChatCompleting, Sendable {
     private static let chatCompletionTimeout: TimeInterval = 60
 
-    private struct ChatCompletionStreamChunk: Decodable {
+    private nonisolated struct ChatCompletionStreamChunk: Decodable {
         struct Choice: Decodable {
             struct Delta: Decodable {
                 let content: String?
@@ -343,7 +343,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         }
     }
 
-    private func performStreamingRequest(
+    @concurrent private nonisolated func performStreamingRequest(
         url: URL,
         apiKey: String,
         body: Data,
@@ -369,12 +369,12 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         )
 
         do {
-            onStreamEvent(.requestStarted)
+            await onStreamEvent(.requestStarted)
             let (bytes, response) = try await session.bytes(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw OpenRouterClientError.invalidResponse
             }
-            onStreamEvent(.responseStarted)
+            await onStreamEvent(.responseStarted)
             let responseHeaders = httpResponse.allHeaderFields.reduce(into: [String: String]()) { result, item in
                 result[String(describing: item.key)] = String(describing: item.value)
             }
@@ -396,7 +396,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
                 from: bytes,
                 onStreamEvent: onStreamEvent
             )
-            onStreamEvent(.responseCompleted)
+            await onStreamEvent(.responseCompleted)
             await trafficLog.recordResponse(
                 id: requestID,
                 statusCode: httpResponse.statusCode,
@@ -436,7 +436,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         }
     }
 
-    private func assembledChatCompletion(
+    private nonisolated func assembledChatCompletion(
         from bytes: URLSession.AsyncBytes,
         onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data {
@@ -445,6 +445,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         var provider: String?
         var usage: ChatCompletionStreamChunk.Usage?
         let decoder = JSONDecoder()
+        var streamCoalescer = NutritionAnalysisStreamCoalescer()
 
         for try await line in bytes.lines {
             guard line.hasPrefix("data:") else { continue }
@@ -461,11 +462,17 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
             let contentDelta = chunk.choices?.compactMap(\.delta.content).joined() ?? ""
             if !contentDelta.isEmpty {
                 content += contentDelta
-                onStreamEvent(.contentDelta(contentDelta))
+                if let emittedContent = streamCoalescer.append(contentDelta, at: .now) {
+                    await onStreamEvent(.contentDelta(emittedContent))
+                }
             }
             model = chunk.model ?? model
             provider = chunk.provider ?? provider
             usage = chunk.usage ?? usage
+        }
+
+        if let emittedContent = streamCoalescer.flush(at: .now) {
+            await onStreamEvent(.contentDelta(emittedContent))
         }
 
         guard !content.isEmpty else { throw OpenRouterClientError.invalidResponse }
@@ -484,7 +491,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         return try JSONSerialization.data(withJSONObject: response)
     }
 
-    private func validatedResponseData(_ data: Data, statusCode: Int) throws -> Data {
+    private nonisolated func validatedResponseData(_ data: Data, statusCode: Int) throws -> Data {
         switch statusCode {
         case 200..<300:
             return data
@@ -511,7 +518,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         }
     }
 
-    private func apiError(from data: Data, statusCode: Int) -> OpenRouterClientError? {
+    private nonisolated func apiError(from data: Data, statusCode: Int) -> OpenRouterClientError? {
         struct ErrorEnvelope: Decodable {
             struct APIError: Decodable { let message: String }
             let error: APIError
