@@ -6,7 +6,6 @@ import SwiftData
 @Observable
 final class MealAnalysisQueue {
     static let shared = MealAnalysisQueue()
-    private static let recoveryCorrection = "Nährwerte vollständig neu berechnen"
 
     private var tasks: [UUID: Task<Void, Never>] = [:]
 
@@ -129,47 +128,6 @@ final class MealAnalysisQueue {
         )
         guard persist(pendingAnalysis, in: context) else { return }
         await start(pendingAnalysis, in: context, provider: resolvedProvider, imageStorage: resolvedImageStorage).value
-    }
-
-    func repairIncompleteAnalyses(
-        for date: Date = .now,
-        calendar: Calendar = .autoupdatingCurrent,
-        in context: ModelContext,
-        provider: (any NutritionAnalysisProviding)? = nil,
-        imageStorage: (any ImageStorageProviding)? = nil
-    ) async {
-        guard let day = calendar.dateInterval(of: .day, for: date) else { return }
-        let resolvedProvider = provider ?? OpenRouterNutritionAnalysisService()
-        let resolvedImageStorage = imageStorage ?? FileImageStorage()
-        let meals = ((try? context.fetch(FetchDescriptor<Meal>())) ?? [])
-            .filter { meal in
-                guard
-                    meal.mealState != .archived,
-                    meal.timestamp >= day.start,
-                    meal.timestamp < day.end,
-                    meal.analysisState == .confirmed,
-                    let revision = meal.activeRevision,
-                    revision.status == .confirmed
-                else { return false }
-                return RevisionNutritionRecovery.needsRepair(revision)
-            }
-            .sorted { $0.timestamp < $1.timestamp }
-
-        for meal in meals {
-            guard pendingAnalysis(for: meal.id, in: context) == nil else { continue }
-            let pendingAnalysis = PendingMealAnalysis(
-                mealID: meal.id,
-                trigger: .correction,
-                userCorrection: Self.recoveryCorrection
-            )
-            guard persist(pendingAnalysis, in: context) else { continue }
-            await start(
-                pendingAnalysis,
-                in: context,
-                provider: resolvedProvider,
-                imageStorage: resolvedImageStorage
-            ).value
-        }
     }
 
     func cancel(for mealID: UUID, in context: ModelContext) {

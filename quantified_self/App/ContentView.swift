@@ -59,11 +59,9 @@ struct ContentView: View {
 #if DEBUG
             if !ProcessInfo.processInfo.arguments.contains("--ui-testing-review-progress") {
                 try? MealAnalysisQueue.shared.resumePendingAnalyses(in: modelContext)
-                await MealAnalysisQueue.shared.repairIncompleteAnalyses(in: modelContext)
             }
 #else
             try? MealAnalysisQueue.shared.resumePendingAnalyses(in: modelContext)
-            await MealAnalysisQueue.shared.repairIncompleteAnalyses(in: modelContext)
 #endif
             if weeklyReminderEnabled {
                 _ = await weeklyReminderScheduler.enable()

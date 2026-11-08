@@ -88,34 +88,6 @@ final class PortionMultiplierSnapshot {
     }
 }
 
-enum RevisionNutritionRecovery {
-    static func needsRepair(_ revision: MealAnalysisRevision) -> Bool {
-        let hasCompleteComponents = !revision.components.isEmpty && revision.components.allSatisfy { component in
-            let componentIdentifiers = Set(component.nutrients.compactMap(\.knownIdentifier))
-            return component.estimatedWeightGrams != nil && NutritionAnalysisValidator.coreNutrients.allSatisfy {
-                componentIdentifiers.contains($0)
-            }
-        }
-        if !hasCompleteComponents { return true }
-
-        let storedIdentifiers = Set(revision.nutrients.compactMap(\.knownIdentifier))
-        let hasCompleteCoreNutrients = NutritionAnalysisValidator.coreNutrients.allSatisfy {
-            storedIdentifiers.contains($0)
-        }
-        let storedEnergy = revision.nutrients
-            .filter { $0.knownIdentifier == .energy }
-            .map(\.value)
-            .reduce(0, +)
-        let recordedEnergy = InitialAnalysisRunMetadata.selectedEnergyKilocalories(
-            from: revision.providerMetadata,
-            trigger: revision.trigger
-        )
-
-        guard let recordedEnergy, recordedEnergy > 0 else { return false }
-        return !hasCompleteCoreNutrients || abs(storedEnergy - recordedEnergy) > 0.5
-    }
-}
-
 @MainActor
 enum ComponentPortionScaling {
     static func nutrient(_ nutrient: NutrientValue, in revision: MealAnalysisRevision, multipliers: [String: Double]) -> Double {

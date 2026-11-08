@@ -57,7 +57,7 @@ struct PortionMultiplierSnapshotTests {
         #expect(snapshot.scaled(protein, for: revision) == 30)
     }
 
-    @Test("A positive validated call replaces a broken persisted zero and requests repair")
+    @Test("A positive validated call replaces a broken persisted zero")
     func recoversPersistedZero() {
         let calls = InitialAnalysisRunMetadata.encodeCalls([
             AnalysisCallSummary(
@@ -90,7 +90,6 @@ struct PortionMultiplierSnapshotTests {
         )
 
         #expect(PortionMultiplierSnapshot().scaledValue(for: .energy, in: revision) == 483)
-        #expect(RevisionNutritionRecovery.needsRepair(revision))
     }
 
     @Test("Fallback selection keeps the median rule for three initial estimates")
