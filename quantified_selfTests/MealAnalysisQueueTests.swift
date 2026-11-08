@@ -157,6 +157,42 @@ struct MealAnalysisQueueTests {
         #expect(try context.fetch(FetchDescriptor<PendingMealAnalysis>()).isEmpty)
     }
 
+    @Test("App launch restores missing components for today's confirmed analyses")
+    func repairsTodaysAnalysisWithoutComponents() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let reference = Date(timeIntervalSince1970: 1_799_323_200)
+        let revision = completeRevisionWithoutComponents()
+        let meal = Meal(
+            timestamp: reference,
+            analysisState: .confirmed,
+            activeRevisionID: revision.id,
+            analysisRevisions: [revision]
+        )
+        context.insert(meal)
+        try context.save()
+        let provider = QueueRecordingProvider(
+            result: NutritionAnalysisValidatorTests.validResult()
+        )
+        let queue = MealAnalysisQueue()
+
+        await queue.repairIncompleteAnalyses(
+            for: reference,
+            calendar: calendar,
+            in: context,
+            provider: provider,
+            imageStorage: QueueImageStorage()
+        )
+
+        #expect(provider.requestCount == 1)
+        #expect(meal.activeRevision?.trigger == .correction)
+        #expect(meal.activeRevision?.components.count == 1)
+        #expect(meal.activeRevision?.components.first?.nutrients.count == 6)
+        #expect(try context.fetch(FetchDescriptor<PendingMealAnalysis>()).isEmpty)
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema(NutritionSchemaV2.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
@@ -207,6 +243,26 @@ struct MealAnalysisQueueTests {
             mealName: "Unvollständige Schätzung",
             estimatedTotalWeightGrams: 135,
             confidence: .medium
+        )
+    }
+
+    private func completeRevisionWithoutComponents() -> MealAnalysisRevision {
+        let result = NutritionAnalysisValidatorTests.validResult()
+        return MealAnalysisRevision(
+            modelIdentifier: result.modelIdentifier,
+            status: .confirmed,
+            mealName: result.mealName,
+            estimatedTotalWeightGrams: result.estimatedTotalWeightGrams,
+            confidence: result.confidence,
+            nutrients: result.nutrients.map { nutrient in
+                NutrientValue(
+                    identifier: nutrient.identifier,
+                    value: nutrient.value,
+                    unit: nutrient.unit,
+                    confidence: nutrient.confidence,
+                    provenance: nutrient.provenance
+                )
+            }
         )
     }
 }

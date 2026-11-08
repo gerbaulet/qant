@@ -64,6 +64,7 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(nutrients["minItems"] as? Int == 6)
         #expect(nutrients["maxItems"] as? Int == 6)
         let components = try #require(properties["components"] as? [String: Any])
+        #expect(components["minItems"] as? Int == 1)
         let componentItems = try #require(components["items"] as? [String: Any])
         let componentProperties = try #require(componentItems["properties"] as? [String: Any])
         let nutrientBasis = try #require(componentProperties["nutrientBasis"] as? [String: Any])

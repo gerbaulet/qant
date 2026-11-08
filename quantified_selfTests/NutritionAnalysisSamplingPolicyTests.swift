@@ -111,7 +111,11 @@ struct NutritionAnalysisSamplingPolicyTests {
             uncertaintySummary: confidence == .low ? "Die Portionsgröße ist schwer erkennbar." : nil,
             clarificationQuestion: clarificationQuestion,
             nutrients: nutrients,
-            components: [],
+            components: [AnalyzedFoodComponent(
+                name: "Pasta mit Sauce",
+                estimatedWeightGrams: 480,
+                nutrients: nutrients
+            )],
             modelIdentifier: "example/vision-model",
             providerIdentifier: "Example"
         )

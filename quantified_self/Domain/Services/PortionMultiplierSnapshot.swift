@@ -90,6 +90,14 @@ final class PortionMultiplierSnapshot {
 
 enum RevisionNutritionRecovery {
     static func needsRepair(_ revision: MealAnalysisRevision) -> Bool {
+        let hasCompleteComponents = !revision.components.isEmpty && revision.components.allSatisfy { component in
+            let componentIdentifiers = Set(component.nutrients.compactMap(\.knownIdentifier))
+            return component.estimatedWeightGrams != nil && NutritionAnalysisValidator.coreNutrients.allSatisfy {
+                componentIdentifiers.contains($0)
+            }
+        }
+        if !hasCompleteComponents { return true }
+
         let storedIdentifiers = Set(revision.nutrients.compactMap(\.knownIdentifier))
         let hasCompleteCoreNutrients = NutritionAnalysisValidator.coreNutrients.allSatisfy {
             storedIdentifiers.contains($0)

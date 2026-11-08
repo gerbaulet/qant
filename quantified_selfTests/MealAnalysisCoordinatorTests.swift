@@ -60,6 +60,10 @@ struct MealAnalysisCoordinatorTests {
         #expect(persistedMeal.activeRevision?.nutrients.first {
             $0.knownIdentifier == .energy && $0.knownUnit == .kilocalorie
         }?.value == 640)
+        let persistedComponent = try #require(persistedMeal.activeRevision?.components.first)
+        #expect(persistedComponent.name == "Gemüsecurry mit Reis")
+        #expect(persistedComponent.estimatedWeightGrams == 480)
+        #expect(persistedComponent.nutrients.count == 6)
         let dashboard = TodayDashboardBuilder.makeSnapshot(
             for: persistedMeal.timestamp,
             meals: [persistedMeal],
@@ -1134,23 +1138,28 @@ struct MealAnalysisCoordinatorTests {
         clarificationQuestion: String? = nil
     ) -> NutritionAnalysisResult {
         let valid = NutritionAnalysisValidatorTests.validResult()
+        let nutrients = valid.nutrients.map { nutrient in
+            guard nutrient.identifier == .energy else { return nutrient }
+            return AnalyzedNutrient(
+                identifier: nutrient.identifier,
+                value: energy,
+                unit: nutrient.unit,
+                confidence: nutrient.confidence,
+                provenance: nutrient.provenance
+            )
+        }
         return NutritionAnalysisResult(
             mealName: valid.mealName,
             estimatedTotalWeightGrams: valid.estimatedTotalWeightGrams,
             confidence: valid.confidence,
             uncertaintySummary: uncertaintySummary,
             clarificationQuestion: clarificationQuestion,
-            nutrients: valid.nutrients.map { nutrient in
-                guard nutrient.identifier == .energy else { return nutrient }
-                return AnalyzedNutrient(
-                    identifier: nutrient.identifier,
-                    value: energy,
-                    unit: nutrient.unit,
-                    confidence: nutrient.confidence,
-                    provenance: nutrient.provenance
-                )
-            },
-            components: valid.components,
+            nutrients: nutrients,
+            components: [AnalyzedFoodComponent(
+                name: valid.mealName,
+                estimatedWeightGrams: valid.estimatedTotalWeightGrams,
+                nutrients: nutrients
+            )],
             modelIdentifier: valid.modelIdentifier,
             providerIdentifier: valid.providerIdentifier
         )
@@ -1205,7 +1214,11 @@ struct MealAnalysisCoordinatorTests {
             uncertaintySummary: "Die Portionsgröße ist schwer erkennbar.",
             clarificationQuestion: nil,
             nutrients: nutrients,
-            components: [],
+            components: [AnalyzedFoodComponent(
+                name: "Pasta mit Sauce",
+                estimatedWeightGrams: 480,
+                nutrients: nutrients
+            )],
             modelIdentifier: "example/vision-model",
             providerIdentifier: "Example"
         )

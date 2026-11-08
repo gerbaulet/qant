@@ -473,6 +473,7 @@ final class QuantUITests: XCTestCase {
         for _ in 0..<4 where !rice.isHittable || rice.frame.maxY > app.frame.height * 0.65 {
             app.swipeUp()
         }
+        XCTAssertTrue(app.staticTexts["Bestandteile"].waitForExistence(timeout: 2))
         XCTAssertTrue(rice.waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["~160 g"].exists)
         XCTAssertFalse(app.sliders["meal.componentMultiplier.1"].exists)

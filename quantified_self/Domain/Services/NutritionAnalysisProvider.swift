@@ -265,6 +265,9 @@ enum NutritionAnalysisValidator {
         }
         try validateOptionalNonnegative(result.estimatedTotalWeightGrams, field: "Das Gesamtgewicht")
         try validateNutrients(result.nutrients, requireCoreNutrients: true)
+        guard !result.components.isEmpty else {
+            throw NutritionAnalysisError.invalidResult("Mindestens ein Bestandteil fehlt.")
+        }
 
         for component in result.components {
             guard !component.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

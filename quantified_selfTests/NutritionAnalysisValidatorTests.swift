@@ -17,6 +17,15 @@ struct NutritionAnalysisValidatorTests {
         }
     }
 
+    @Test("An analysis without components is rejected")
+    func rejectsMissingComponents() {
+        let result = Self.validResult(components: [])
+
+        #expect(throws: NutritionAnalysisError.self) {
+            try NutritionAnalysisValidator.validate(result)
+        }
+    }
+
     @Test("Negative and non-finite values are rejected")
     func rejectsInvalidNumbers() {
         var nutrients = Self.coreNutrients
@@ -60,6 +69,7 @@ struct NutritionAnalysisValidatorTests {
 
     static func validResult(
         nutrients: [AnalyzedNutrient] = coreNutrients,
+        components: [AnalyzedFoodComponent]? = nil,
         clarificationQuestion: String? = nil
     ) -> NutritionAnalysisResult {
         NutritionAnalysisResult(
@@ -69,7 +79,11 @@ struct NutritionAnalysisValidatorTests {
             uncertaintySummary: "Menge des verwendeten Öls",
             clarificationQuestion: clarificationQuestion,
             nutrients: nutrients,
-            components: [],
+            components: components ?? [AnalyzedFoodComponent(
+                name: "Gemüsecurry mit Reis",
+                estimatedWeightGrams: 480,
+                nutrients: nutrients
+            )],
             modelIdentifier: "example/vision-model",
             providerIdentifier: "Example"
         )
