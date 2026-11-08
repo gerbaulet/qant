@@ -33,6 +33,50 @@ struct NutritionTrendsBuilderTests {
         #expect(snapshot.points.last?.isProvisional == true)
     }
 
+    @Test("Period trends use validated call calories when persisted nutrients are missing")
+    func periodTrendCallMetadataFallback() {
+        let revision = MealAnalysisRevision(
+            modelIdentifier: "test/model",
+            providerMetadata: InitialAnalysisRunMetadata.encodeCalls([
+                AnalysisCallSummary(
+                    callNumber: 1,
+                    sampleNumber: nil,
+                    attemptNumber: 1,
+                    status: .succeeded,
+                    modelIdentifier: "test/model",
+                    providerIdentifier: "Test",
+                    energyKilocalories: 483,
+                    errorMessage: nil
+                ),
+            ]),
+            trigger: .initial,
+            status: .confirmed,
+            mealName: "Testmahlzeit",
+            confidence: .medium
+        )
+        let meal = Meal(
+            timestamp: date(2026, 8, 22, 12),
+            analysisState: .confirmed,
+            activeRevisionID: revision.id,
+            analysisRevisions: [revision]
+        )
+
+        let snapshot = NutritionTrendsBuilder.makeSnapshot(
+            for: date(2026, 8, 23, 12),
+            range: .week,
+            nutrient: .energy,
+            meals: [meal],
+            goals: [],
+            calendar: calendar
+        )
+
+        #expect(snapshot.points.count == 1)
+        #expect(snapshot.points.first?.date == date(2026, 8, 22))
+        #expect(snapshot.points.first?.value == 483)
+        #expect(snapshot.periodComparison.current.trackedDayCount == 1)
+        #expect(snapshot.periodComparison.current.average(for: .energy) == 483)
+    }
+
     @Test("Week, month, and year use rolling calendar-day windows")
     func rollingRangeIntervals() {
         let reference = date(2026, 8, 23, 12)

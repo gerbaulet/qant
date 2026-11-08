@@ -469,13 +469,12 @@ enum NutritionTrendsBuilder {
             var values: [NutrientIdentifier: Double] = [:]
             for meal in meals {
                 guard let revision = activeRevisions.revision(for: meal) else { continue }
-                for nutrient in revision.nutrients {
-                    guard let identifier = nutrient.knownIdentifier,
-                          comparedNutrients.contains(identifier) else { continue }
-                    values[identifier, default: 0] += portionMultipliers.scaled(
-                        nutrient,
-                        for: revision
-                    )
+                for identifier in comparedNutrients {
+                    guard let value = portionMultipliers.scaledValue(
+                        for: identifier,
+                        in: revision
+                    ) else { continue }
+                    values[identifier, default: 0] += value
                 }
             }
             return DailyTotal(
