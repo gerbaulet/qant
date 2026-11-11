@@ -17,19 +17,24 @@ struct OpenRouterSettingsView: View {
     @State private var hasLoadedInitialSettings = false
     @State private var showsAdvancedModelOptions = false
     private let isActive: Bool
+    private let onClose: (() -> Void)?
     private let weeklyReminderScheduler = WeeklySummaryNotificationScheduler()
 
     init(
         isActive: Bool = true,
-        viewModel: OpenRouterSettingsViewModel = OpenRouterSettingsViewModel()
+        viewModel: OpenRouterSettingsViewModel = OpenRouterSettingsViewModel(),
+        onClose: (() -> Void)? = nil
     ) {
         self.isActive = isActive
+        self.onClose = onClose
         _viewModel = State(initialValue: viewModel)
     }
 
     var body: some View {
         NavigationStack {
             Form {
+                AppleHealthSettingsSection()
+
                 NutritionGoalSettingsSection(goals: goals)
 
                 Section {
@@ -240,6 +245,14 @@ struct OpenRouterSettingsView: View {
                 }
             }
             .navigationTitle("Einstellungen")
+            .toolbar {
+                if let onClose {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Fertig", action: onClose)
+                            .accessibilityIdentifier("settings.close")
+                    }
+                }
+            }
             .task(id: isActive) {
                 guard isActive else { return }
                 if !hasLoadedInitialSettings {

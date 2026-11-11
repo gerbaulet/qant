@@ -37,6 +37,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Nimm Fotos deiner Mahlzeiten für die Nährwertanalyse auf.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Quant liest Aktivitäts- und Ruheenergie aus Apple Health, um deine Energiebilanz lokal zu berechnen. Diese Daten werden nicht an OpenRouter gesendet.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

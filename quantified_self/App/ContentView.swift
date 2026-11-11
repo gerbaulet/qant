@@ -6,8 +6,7 @@ struct ContentView: View {
     private enum AppSection: Hashable {
         case today
         case meals
-        case trends
-        case settings
+        case insights
     }
 
     private enum MealCaptureMode: Identifiable, Hashable {
@@ -19,7 +18,9 @@ struct ContentView: View {
 
     @State private var selectedSection: AppSection = .today
     @State private var mealCaptureMode: MealCaptureMode?
+    @State private var showsSettings = false
     @State private var activeQuickCaptureRequestID: UUID?
+    @State private var healthMetrics = HealthMetricsModel()
     @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
@@ -29,23 +30,28 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedSection) {
             Tab("Heute", systemImage: "sun.max.fill", value: .today) {
-                TodayDashboardContainer(isActive: selectedSection == .today) {
-                    mealCaptureMode = .standard
-                }
+                TodayDashboardContainer(
+                    isActive: selectedSection == .today,
+                    onAddFood: { mealCaptureMode = .standard },
+                    onOpenSettings: { showsSettings = true }
+                )
             }
 
             Tab("Mahlzeiten", systemImage: "fork.knife", value: .meals) {
-                MealsHistoryContainer(isActive: selectedSection == .meals)
+                MealsHistoryContainer(
+                    isActive: selectedSection == .meals,
+                    onOpenSettings: { showsSettings = true }
+                )
             }
 
-            Tab("Trends", systemImage: "chart.xyaxis.line", value: .trends) {
-                NutritionTrendsContainer(isActive: selectedSection == .trends)
-            }
-
-            Tab("Einstellungen", systemImage: "gearshape", value: .settings) {
-                OpenRouterSettingsView(isActive: selectedSection == .settings)
+            Tab("Auswertung", systemImage: "chart.xyaxis.line", value: .insights) {
+                NutritionTrendsContainer(
+                    isActive: selectedSection == .insights,
+                    onOpenSettings: { showsSettings = true }
+                )
             }
         }
+        .environment(healthMetrics)
         .sheet(item: $mealCaptureMode) { mode in
             MealCaptureView(
                 opensCameraOnAppear: true,
@@ -53,6 +59,13 @@ struct ContentView: View {
             )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showsSettings) {
+            OpenRouterSettingsView(
+                isActive: showsSettings,
+                onClose: { showsSettings = false }
+            )
+            .environment(healthMetrics)
         }
         .onAppear(perform: presentRequestedQuickCapture)
         .task {
@@ -87,6 +100,7 @@ struct ContentView: View {
         activeQuickCaptureRequestID = requestID
         selectedSection = .today
         mealCaptureMode = nil
+        showsSettings = false
         Task {
             // Let the active detail route and any nested editor finish
             // dismissing before presenting the camera sheet.
@@ -102,21 +116,25 @@ private struct TodayDashboardContainer: View {
     private struct RefreshID: Hashable {
         let presentationVersion: NutritionPresentationVersion
         let hour: Date
+        let healthDataVersion: Int
     }
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(HealthMetricsModel.self) private var healthMetrics
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var navigationPath: [UUID] = []
     @State private var duplicateConfirmationMealID: UUID?
     @State private var snapshot: TodayDashboardSnapshot?
     @State private var weeklySummary: WeeklyNutritionSummary?
+    @State private var energyBalance: DailyEnergyBalance?
     @State private var lastRefreshID: RefreshID?
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
     private let widgetSynchronizer = WidgetCalorieSnapshotSynchronizer()
 
     let isActive: Bool
     let onAddFood: () -> Void
+    let onOpenSettings: () -> Void
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -154,9 +172,12 @@ private struct TodayDashboardContainer: View {
             TodayDashboardView(
                 snapshot: snapshot,
                 weeklySummary: weeklySummary,
+                energyBalance: energyBalance,
+                healthStatus: healthMetrics.energyStatus,
                 onAddFood: onAddFood,
                 onRetryMeal: retryAnalysis,
-                onOpenMeal: openMeal
+                onOpenMeal: openMeal,
+                onOpenSettings: onOpenSettings
             )
             .task(id: widgetSnapshot(for: snapshot)) {
                 widgetSynchronizer.synchronize(widgetSnapshot(for: snapshot))
@@ -172,22 +193,39 @@ private struct TodayDashboardContainer: View {
         let calendar = Calendar.autoupdatingCurrent
         return RefreshID(
             presentationVersion: NutritionPresentationVersion(meals: meals, goals: goals),
-            hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date
+            hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date,
+            healthDataVersion: healthMetrics.dataVersion
         )
     }
 
     private func refresh(for date: Date) async {
         guard let refreshID = refreshID(for: date), refreshID != lastRefreshID else { return }
         await Task.yield()
+        let calendar = Calendar.autoupdatingCurrent
+        if healthMetrics.hasRequestedEnergyAccess,
+           let dayInterval = calendar.dateInterval(of: .day, for: date) {
+            await healthMetrics.loadEnergy(
+                from: dayInterval.start,
+                to: dayInterval.end,
+                calendar: calendar
+            )
+        }
         let presentation = TodayDashboardPresentationBuilder.makePresentation(
             for: date,
             meals: meals,
             goals: goals,
-            calendar: .autoupdatingCurrent
+            calendar: calendar
         )
         guard !Task.isCancelled else { return }
         snapshot = presentation.snapshot
         weeklySummary = presentation.weeklySummary
+        energyBalance = EnergyBalanceBuilder.makeBalance(
+            for: date,
+            meals: meals,
+            expenditure: healthMetrics.expenditure(for: date, calendar: calendar),
+            now: date,
+            calendar: calendar
+        )
         lastRefreshID = refreshID
     }
 

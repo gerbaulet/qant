@@ -2,6 +2,20 @@ import Charts
 import SwiftData
 import SwiftUI
 
+private enum InsightsSection: String, CaseIterable, Identifiable {
+    case balance
+    case nutrients
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .balance: "Bilanz"
+        case .nutrients: "Nährwerte"
+        }
+    }
+}
+
 struct NutritionTrendsContainer: View {
     private struct RefreshID: Hashable {
         let presentationVersion: NutritionPresentationVersion
@@ -10,47 +24,103 @@ struct NutritionTrendsContainer: View {
         let nutrient: NutrientIdentifier
     }
 
+    private struct BalanceRefreshID: Hashable {
+        let presentationVersion: NutritionPresentationVersion
+        let hour: Date
+        let range: NutritionTrendRange
+        let healthDataVersion: Int
+    }
+
+    @Environment(HealthMetricsModel.self) private var healthMetrics
     @Query(sort: \Meal.timestamp) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
+    @State private var section = InsightsSection.balance
     @State private var range = NutritionTrendRange.month
+    @State private var balanceRange = NutritionTrendRange.month
     @State private var nutrient = NutrientIdentifier.energy
     @State private var snapshot: NutritionTrendsSnapshot?
+    @State private var balances: [DailyEnergyBalance] = []
     @State private var lastRefreshID: RefreshID?
+    @State private var lastBalanceRefreshID: BalanceRefreshID?
     let isActive: Bool
+    let onOpenSettings: () -> Void
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
-            trendsContent
+        NavigationStack {
+            TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
+                VStack(spacing: 0) {
+                    Picker("Auswertung", selection: $section) {
+                        ForEach(InsightsSection.allCases) { section in
+                            Text(section.title).tag(section)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, QuantLayout.pageInset)
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("insights.section")
+
+                    insightsContent
+                }
                 .task(id: refreshID(for: context.date)) {
                     await refresh(for: context.date)
                 }
+                .task(id: balanceRefreshID(for: context.date)) {
+                    await refreshBalances(for: context.date)
+                }
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Auswertung")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: onOpenSettings) {
+                        Label("Einstellungen", systemImage: "gearshape")
+                    }
+                    .accessibilityIdentifier("settings.open")
+                }
+            }
         }
     }
 
     @ViewBuilder
-    private var trendsContent: some View {
-        if let snapshot, snapshot.range == range, snapshot.nutrient == nutrient {
+    private var insightsContent: some View {
+        if section == .balance {
+            EnergyBalanceTrendsView(
+                balances: balances,
+                range: $balanceRange,
+                healthStatus: healthMetrics.energyStatus,
+                onOpenSettings: onOpenSettings
+            )
+        } else if let snapshot, snapshot.range == range, snapshot.nutrient == nutrient {
             NutritionTrendsView(
                 snapshot: snapshot,
                 range: $range,
                 nutrient: $nutrient
             )
         } else {
-            NavigationStack {
-                ProgressView("Trends werden geladen …")
-                    .navigationTitle("Trends")
-            }
+            ProgressView("Auswertung wird geladen …")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     private func refreshID(for date: Date) -> RefreshID? {
-        guard isActive else { return nil }
+        guard isActive, section == .nutrients else { return nil }
         let calendar = Calendar.autoupdatingCurrent
         return RefreshID(
             presentationVersion: NutritionPresentationVersion(meals: meals, goals: goals),
             hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date,
             range: range,
             nutrient: nutrient
+        )
+    }
+
+    private func balanceRefreshID(for date: Date) -> BalanceRefreshID? {
+        guard isActive, section == .balance else { return nil }
+        let calendar = Calendar.autoupdatingCurrent
+        return BalanceRefreshID(
+            presentationVersion: NutritionPresentationVersion(meals: meals, goals: []),
+            hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date,
+            range: balanceRange,
+            healthDataVersion: healthMetrics.dataVersion
         )
     }
 
@@ -69,6 +139,45 @@ struct NutritionTrendsContainer: View {
         snapshot = nextSnapshot
         lastRefreshID = refreshID
     }
+
+    private func refreshBalances(for date: Date) async {
+        guard let refreshID = balanceRefreshID(for: date),
+              refreshID != lastBalanceRefreshID,
+              let interval = balanceInterval(for: date) else { return }
+        if healthMetrics.hasRequestedEnergyAccess {
+            await healthMetrics.loadEnergy(
+                from: interval.start,
+                to: interval.end,
+                calendar: .autoupdatingCurrent
+            )
+        }
+        guard !Task.isCancelled else { return }
+        balances = EnergyBalanceBuilder.makeBalances(
+            within: interval,
+            meals: meals,
+            expenditures: healthMetrics.expenditures(within: interval),
+            now: date,
+            calendar: .autoupdatingCurrent
+        )
+        lastBalanceRefreshID = refreshID
+    }
+
+    private func balanceInterval(for date: Date) -> DateInterval? {
+        let calendar = Calendar.autoupdatingCurrent
+        let period: Calendar.Component
+        switch balanceRange {
+        case .day, .week: period = .weekOfYear
+        case .month: period = .month
+        case .year: period = .year
+        }
+        guard let interval = calendar.dateInterval(of: period, for: date),
+              let tomorrow = calendar.date(
+                byAdding: .day,
+                value: 1,
+                to: calendar.startOfDay(for: date)
+              ) else { return nil }
+        return DateInterval(start: interval.start, end: min(interval.end, tomorrow))
+    }
 }
 
 struct NutritionTrendsView: View {
@@ -81,19 +190,16 @@ struct NutritionTrendsView: View {
     ]
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
-                    controls
-                    chartCard
-                    periodComparisonCard
-                }
-                .padding(.horizontal, QuantLayout.pageInset)
-                .padding(.vertical, QuantLayout.sectionSpacing)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
+                controls
+                chartCard
+                periodComparisonCard
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Trends")
+            .padding(.horizontal, QuantLayout.pageInset)
+            .padding(.vertical, QuantLayout.sectionSpacing)
         }
+        .background(Color(.systemGroupedBackground))
     }
 
     private var controls: some View {

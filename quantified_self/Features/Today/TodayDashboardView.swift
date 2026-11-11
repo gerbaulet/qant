@@ -3,22 +3,31 @@ import SwiftUI
 struct TodayDashboardView: View {
     let snapshot: TodayDashboardSnapshot
     let weeklySummary: WeeklyNutritionSummary?
+    let energyBalance: DailyEnergyBalance?
+    let healthStatus: HealthDataStatus
     let onAddFood: () -> Void
     let onRetryMeal: (UUID) -> Void
     let onOpenMeal: (UUID) -> Void
+    let onOpenSettings: () -> Void
 
     init(
         snapshot: TodayDashboardSnapshot,
         weeklySummary: WeeklyNutritionSummary? = nil,
+        energyBalance: DailyEnergyBalance? = nil,
+        healthStatus: HealthDataStatus = .notRequested,
         onAddFood: @escaping () -> Void,
         onRetryMeal: @escaping (UUID) -> Void = { _ in },
-        onOpenMeal: @escaping (UUID) -> Void = { _ in }
+        onOpenMeal: @escaping (UUID) -> Void = { _ in },
+        onOpenSettings: @escaping () -> Void = {}
     ) {
         self.snapshot = snapshot
         self.weeklySummary = weeklySummary
+        self.energyBalance = energyBalance
+        self.healthStatus = healthStatus
         self.onAddFood = onAddFood
         self.onRetryMeal = onRetryMeal
         self.onOpenMeal = onOpenMeal
+        self.onOpenSettings = onOpenSettings
     }
 
     var body: some View {
@@ -26,6 +35,8 @@ struct TodayDashboardView: View {
             LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
                 dateHeader
                 calorieCard
+                healthStatusCard
+                balanceHintCard
                 hintsSection
                 weeklyCalorieCard
                 macroCard
@@ -36,6 +47,14 @@ struct TodayDashboardView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Heute")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: onOpenSettings) {
+                    Label("Einstellungen", systemImage: "gearshape")
+                }
+                .accessibilityIdentifier("settings.open")
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             addFoodButton
         }
@@ -58,11 +77,85 @@ struct TodayDashboardView: View {
             ))
     }
 
+    @ViewBuilder
     private var calorieCard: some View {
+        if let energyBalance, energyBalance.canDescribeBalance {
+            energyBalanceCard(energyBalance)
+        } else {
+            intakeCard
+        }
+    }
+
+    private func energyBalanceCard(_ balance: DailyEnergyBalance) -> some View {
         QuantCard(style: .hero) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Kalorien")
+                    Text("Energiebilanz")
+                        .font(.headline)
+                    Spacer()
+                    if balance.isCurrentDay || balance.completeness == .provisionalIntake {
+                        Text(balance.isCurrentDay ? "ZWISCHENSTAND" : "VORLÄUFIG")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.orange.opacity(0.12), in: .capsule)
+                    }
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(balanceHeadline(balance.balanceKilocalories ?? 0))
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                        .foregroundStyle(balanceColor(balance.balanceKilocalories ?? 0))
+                    Text((balance.balanceKilocalories ?? 0) <= 0 ? "Defizit" : "Überschuss")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Divider()
+                LabeledContent("Aufnahme") {
+                    Text("~\(wholeNumber(balance.intakeKilocalories ?? 0)) kcal")
+                        .monospacedDigit()
+                }
+                LabeledContent("Verbrauch") {
+                    Text("~\(wholeNumber(balance.expenditureKilocalories ?? 0)) kcal")
+                        .monospacedDigit()
+                }
+                HStack(spacing: 16) {
+                    Label("Ruhe ~\(wholeNumber(balance.restingKilocalories ?? 0))", systemImage: "bed.double")
+                    Label("Aktiv ~\(wholeNumber(balance.activeKilocalories ?? 0))", systemImage: "figure.walk")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                if let target = snapshot.energy.target {
+                    Divider()
+                    HStack {
+                        Text("Aufnahmeziel")
+                        Spacer()
+                        Text("~\(wholeNumber(snapshot.energy.consumed)) / \(wholeNumber(target)) kcal")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    ProgressView(
+                        value: min(snapshot.energy.consumed, target),
+                        total: target
+                    )
+                    .tint(remainingColor)
+                    .accessibilityLabel("Fortschritt zum Aufnahmeziel")
+                    .accessibilityValue(progressAccessibilityValue)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("today.energyBalance")
+    }
+
+    private var intakeCard: some View {
+        QuantCard(style: .hero) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Aufnahme")
                         .font(.headline)
                     Spacer()
                     if snapshot.hasProvisionalValues {
@@ -90,13 +183,10 @@ struct TodayDashboardView: View {
                 }
 
                 if let target = snapshot.energy.target {
-                    ProgressView(
-                        value: min(snapshot.energy.consumed, target),
-                        total: target
-                    )
-                    .tint(remainingColor)
-                    .accessibilityLabel("Kalorienfortschritt")
-                    .accessibilityValue(progressAccessibilityValue)
+                    ProgressView(value: min(snapshot.energy.consumed, target), total: target)
+                        .tint(remainingColor)
+                        .accessibilityLabel("Fortschritt zum Aufnahmeziel")
+                        .accessibilityValue(progressAccessibilityValue)
                 }
 
                 Text(remainingEnergyText)
@@ -105,6 +195,54 @@ struct TodayDashboardView: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var healthStatusCard: some View {
+        switch healthStatus {
+        case .notRequested:
+            QuantCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Energiebilanz einrichten", systemImage: "heart.text.square")
+                        .font(.headline)
+                    Text("Verbinde Apple Health, damit Quant Aktivitäts- und Ruheenergie mit deiner Aufnahme verrechnet.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button("Apple Health einrichten", action: onOpenSettings)
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("today.setupHealth")
+                }
+            }
+        case .noData:
+            Label(
+                "Für heute sind noch keine vollständigen Verbrauchsdaten in Apple Health verfügbar.",
+                systemImage: "heart.slash"
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        case .failed:
+            Label("Apple-Health-Daten konnten nicht geladen werden.", systemImage: "exclamationmark.triangle")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+        default:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var balanceHintCard: some View {
+        if let energyBalance, energyBalance.canDescribeBalance {
+            let value = energyBalance.balanceKilocalories ?? 0
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Einordnung")
+                    .font(.headline)
+                Text(balanceHint(value))
+                    .font(.subheadline)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(QuantLayout.cardPadding)
+            .background(.blue.opacity(0.08), in: .rect(cornerRadius: QuantLayout.cardCornerRadius))
+        }
     }
 
     private var macroCard: some View {
@@ -120,7 +258,7 @@ struct TodayDashboardView: View {
     private var weeklyCalorieCard: some View {
         QuantCard {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Diese Woche")
+                Text("Aufnahme diese Woche")
                     .font(.headline)
                 if snapshot.hasProvisionalWeeklyValues {
                     Text("~ Enthält vorläufige Schätzwerte aus offenen Rückfragen.")
@@ -145,7 +283,7 @@ struct TodayDashboardView: View {
                         .font(.subheadline)
                         .foregroundStyle(snapshot.weeklyEnergy.consumed <= target ? .green : .orange)
                 } else {
-                    Text("Für diese Woche ist kein vollständiges Kalorienziel verfügbar.")
+                    Text("Für diese Woche ist kein vollständiges Aufnahmeziel verfügbar.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -285,7 +423,7 @@ struct TodayDashboardView: View {
 
     private var remainingEnergyText: String {
         guard let remaining = snapshot.energy.remaining else {
-            return "Noch kein Kalorienziel festgelegt"
+            return "Noch kein Aufnahmeziel festgelegt"
         }
         if remaining >= 0 {
             return "\(wholeNumber(remaining)) kcal verbleibend"
@@ -303,6 +441,24 @@ struct TodayDashboardView: View {
             return "\(wholeNumber(snapshot.energy.consumed)) Kilokalorien"
         }
         return "\(wholeNumber(snapshot.energy.consumed)) von \(wholeNumber(target)) Kilokalorien"
+    }
+
+    private func balanceHeadline(_ value: Double) -> String {
+        "≈ \(wholeNumber(abs(value))) kcal"
+    }
+
+    private func balanceColor(_ value: Double) -> Color {
+        abs(value) < 100 ? .secondary : (value < 0 ? .blue : .orange)
+    }
+
+    private func balanceHint(_ value: Double) -> String {
+        if abs(value) < 100 {
+            return "Aufnahme und Verbrauch liegen heute ungefähr auf demselben Niveau. Der Tageswert bleibt eine Schätzung."
+        }
+        if value < 0 {
+            return "Aktuell liegt ein geschätztes Defizit vor. Aussagekräftiger als ein einzelner Tag ist der Verlauf über mehrere Wochen."
+        }
+        return "Aktuell liegt ein geschätzter Überschuss vor. Einzelne Tage sind normal; entscheidend ist der längerfristige Verlauf."
     }
 
     private func progressText(_ progress: NutrientProgress) -> String {

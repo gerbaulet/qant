@@ -21,6 +21,7 @@ struct MealsHistoryContainer: View {
     @State private var alertMessage: String?
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
     let isActive: Bool
+    let onOpenSettings: () -> Void
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -77,7 +78,8 @@ struct MealsHistoryContainer: View {
                 onOpenMeal: openMeal,
                 onRetryMeal: retryAnalysis,
                 onDuplicateMeal: duplicateMealFromHistory,
-                onDeleteMeal: requestDeletion
+                onDeleteMeal: requestDeletion,
+                onOpenSettings: onOpenSettings
             )
         } else {
             ProgressView("Mahlzeiten werden geladen …")
@@ -193,6 +195,7 @@ struct MealsHistoryView: View {
     let onRetryMeal: (UUID) -> Void
     let onDuplicateMeal: (UUID) -> Void
     let onDeleteMeal: (UUID) -> Void
+    let onOpenSettings: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -263,6 +266,14 @@ struct MealsHistoryView: View {
             }
         }
         .navigationTitle("Mahlzeiten")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: onOpenSettings) {
+                    Label("Einstellungen", systemImage: "gearshape")
+                }
+                .accessibilityIdentifier("settings.open")
+            }
+        }
         .searchable(
             text: $searchText,
             placement: .navigationBarDrawer(displayMode: .always),

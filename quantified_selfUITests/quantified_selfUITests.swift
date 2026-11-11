@@ -115,11 +115,14 @@ final class QuantUITests: XCTestCase {
         app.launchArguments.append("--ui-testing")
         app.launch()
 
-        let trendsTab = app.tabBars.buttons["Trends"]
+        let trendsTab = app.tabBars.buttons["Auswertung"]
         XCTAssertTrue(trendsTab.waitForExistence(timeout: 3))
         trendsTab.tap()
 
-        XCTAssertTrue(app.navigationBars["Trends"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["Auswertung"].waitForExistence(timeout: 3))
+        let nutrientsSection = app.buttons["Nährwerte"]
+        XCTAssertTrue(nutrientsSection.waitForExistence(timeout: 2))
+        nutrientsSection.tap()
         XCTAssertTrue(app.descendants(matching: .any)["trends.chartCard"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.descendants(matching: .any)["trends.comparisonCard"].exists)
     }
@@ -149,20 +152,39 @@ final class QuantUITests: XCTestCase {
         app.launchArguments.append("--ui-testing")
         app.launch()
 
-        let settingsTab = app.tabBars.buttons["Einstellungen"]
-        XCTAssertTrue(settingsTab.waitForExistence(timeout: 3))
-        settingsTab.tap()
+        let settingsButton = app.buttons["settings.open"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 3))
+        settingsButton.tap()
 
         XCTAssertTrue(app.navigationBars["Einstellungen"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["settings.createWeeklySummaryTestReminder"].waitForExistence(timeout: 2))
-        app.swipeUp()
-        XCTAssertTrue(app.secureTextFields["settings.openRouterAPIKey"].waitForExistence(timeout: 2))
+        let reminderButton = app.buttons["settings.createWeeklySummaryTestReminder"]
+        for _ in 0..<4 where !reminderButton.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(reminderButton.waitForExistence(timeout: 2))
+
+        let apiKeyField = app.secureTextFields["settings.openRouterAPIKey"]
+        for _ in 0..<4 where !apiKeyField.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(apiKeyField.waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["settings.openRouterModelPicker"].waitForExistence(timeout: 2))
         let advancedModelOptions = app.buttons["settings.openRouterAdvancedModelOptions"]
-        XCTAssertTrue(advancedModelOptions.waitForExistence(timeout: 2))
+        for _ in 0..<3 where !advancedModelOptions.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(advancedModelOptions.isHittable)
         advancedModelOptions.tap()
-        XCTAssertTrue(app.textFields["settings.openRouterManualModelIdentifier"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["settings.openRouterProviderPreference"].waitForExistence(timeout: 2))
+        let manualModelField = app.textFields["settings.openRouterManualModelIdentifier"]
+        for _ in 0..<3 where !manualModelField.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(manualModelField.waitForExistence(timeout: 2))
+        let providerPicker = app.buttons["settings.openRouterProviderPreference"]
+        for _ in 0..<3 where !providerPicker.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(providerPicker.waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["settings.loadOpenRouterModels"].waitForExistence(timeout: 2))
         let testConnectionButton = app.buttons["settings.testOpenRouter"]
         for _ in 0..<3 where !testConnectionButton.exists {
@@ -221,9 +243,9 @@ final class QuantUITests: XCTestCase {
         app.launchArguments.append("--ui-testing-openrouter-log-entry")
         app.launch()
 
-        let settingsTab = app.tabBars.buttons["Einstellungen"]
-        XCTAssertTrue(settingsTab.waitForExistence(timeout: 3))
-        settingsTab.tap()
+        let settingsButton = app.buttons["settings.open"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 3))
+        settingsButton.tap()
 
         let logLink = app.buttons["settings.openRouterTrafficLog"]
         for _ in 0..<8 where !logLink.isHittable {
@@ -256,6 +278,7 @@ final class QuantUITests: XCTestCase {
         closeButton.tap()
         XCTAssertTrue(app.navigationBars["Einstellungen"].waitForExistence(timeout: 2))
 
+        app.buttons["settings.close"].tap()
         let todayTab = app.tabBars.buttons["Heute"]
         XCTAssertTrue(todayTab.isHittable)
         todayTab.tap()
@@ -267,9 +290,9 @@ final class QuantUITests: XCTestCase {
         app.launchArguments.append("--ui-testing")
         app.launch()
 
-        let settingsTab = app.tabBars.buttons["Einstellungen"]
-        XCTAssertTrue(settingsTab.waitForExistence(timeout: 3))
-        settingsTab.tap()
+        let settingsButton = app.buttons["settings.open"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 3))
+        settingsButton.tap()
 
         let storageSection = app.otherElements["settings.storageSection"]
         for _ in 0..<5 where !storageSection.isHittable {
@@ -394,14 +417,10 @@ final class QuantUITests: XCTestCase {
         mealName.tap()
         XCTAssertTrue(app.staticTexts["meal.analysisProgress.counts"].waitForExistence(timeout: 3))
 
-        let settingsTab = app.tabBars.buttons["Einstellungen"]
-        XCTAssertTrue(settingsTab.waitForExistence(timeout: 2))
-        settingsTab.tap()
-        XCTAssertTrue(app.navigationBars["Einstellungen"].waitForExistence(timeout: 2))
-        let trendsTab = app.tabBars.buttons["Trends"]
+        let trendsTab = app.tabBars.buttons["Auswertung"]
         XCTAssertTrue(trendsTab.waitForExistence(timeout: 2))
         trendsTab.tap()
-        XCTAssertTrue(app.navigationBars["Trends"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.navigationBars["Auswertung"].waitForExistence(timeout: 2))
 
         let todayTab = app.tabBars.buttons["Heute"]
         XCTAssertTrue(todayTab.waitForExistence(timeout: 2))
