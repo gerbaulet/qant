@@ -6,25 +6,50 @@ import Observation
 final class HealthMetricsModel {
     private(set) var energyStatus: HealthDataStatus
     private(set) var energyExpenditures: [DailyEnergyExpenditure] = []
+    private(set) var weightStatus: HealthDataStatus
+    private(set) var weightMeasurements: [WeightMeasurement] = []
     private(set) var dataVersion = 0
     private(set) var isLoadingEnergy = false
+    private(set) var isLoadingWeight = false
     private var loadedEnergyInterval: DateInterval?
+    private var loadedWeightInterval: DateInterval?
 
     var hasRequestedEnergyAccess: Bool {
         preferences.hasRequestedEnergyAccess
     }
 
+    var hasRequestedWeightAccess: Bool {
+        weightPreferences.hasRequestedWeightAccess
+    }
+
+    var personalCalibrationEnabled: Bool {
+        get { weightPreferences.personalCalibrationEnabled }
+        set {
+            guard weightPreferences.personalCalibrationEnabled != newValue else { return }
+            weightPreferences.personalCalibrationEnabled = newValue
+            dataVersion += 1
+        }
+    }
+
     private let energyProvider: any HealthEnergyProviding
+    private let weightProvider: any HealthWeightProviding
     private let preferences: any HealthAccessPreferenceStoring
+    private let weightPreferences: any HealthWeightPreferenceStoring
 
     init(
         energyProvider: (any HealthEnergyProviding)? = nil,
-        preferences: (any HealthAccessPreferenceStoring)? = nil
+        preferences: (any HealthAccessPreferenceStoring)? = nil,
+        weightProvider: (any HealthWeightProviding)? = nil,
+        weightPreferences: (any HealthWeightPreferenceStoring)? = nil
     ) {
         let resolvedPreferences = preferences ?? UserDefaultsHealthAccessPreferenceStore()
+        let resolvedWeightPreferences = weightPreferences ?? UserDefaultsHealthAccessPreferenceStore()
         self.energyProvider = energyProvider ?? HealthKitEnergyProvider()
+        self.weightProvider = weightProvider ?? HealthKitWeightProvider()
         self.preferences = resolvedPreferences
+        self.weightPreferences = resolvedWeightPreferences
         energyStatus = resolvedPreferences.hasRequestedEnergyAccess ? .noData : .notRequested
+        weightStatus = resolvedWeightPreferences.hasRequestedWeightAccess ? .noData : .notRequested
     }
 
     func requestEnergyAccess(
@@ -123,6 +148,76 @@ final class HealthMetricsModel {
         }
     }
 
+    func requestWeightAccess(from startDate: Date, to endDate: Date) async {
+        guard weightProvider.isHealthDataAvailable() else {
+            weightStatus = .unavailable
+            return
+        }
+
+        weightStatus = .loading
+        do {
+            try await weightProvider.requestWeightAuthorization()
+            weightPreferences.hasRequestedWeightAccess = true
+            await loadWeights(from: startDate, to: endDate, force: true)
+        } catch {
+            weightStatus = .failed
+        }
+    }
+
+    func loadWeights(
+        from startDate: Date,
+        to endDate: Date,
+        force: Bool = false
+    ) async {
+        guard weightPreferences.hasRequestedWeightAccess else {
+            weightStatus = .notRequested
+            return
+        }
+        guard weightProvider.isHealthDataAvailable() else {
+            weightStatus = .unavailable
+            return
+        }
+        guard !isLoadingWeight else { return }
+        if !force,
+           let loadedWeightInterval,
+           loadedWeightInterval.start <= startDate,
+           loadedWeightInterval.end >= endDate {
+            return
+        }
+
+        isLoadingWeight = true
+        if weightMeasurements.isEmpty {
+            weightStatus = .loading
+        }
+        defer { isLoadingWeight = false }
+
+        do {
+            let next = try await weightProvider.weightMeasurements(
+                from: startDate,
+                to: endDate
+            )
+            mergeWeights(next, replacing: DateInterval(start: startDate, end: endDate))
+            if let loadedWeightInterval {
+                self.loadedWeightInterval = DateInterval(
+                    start: min(loadedWeightInterval.start, startDate),
+                    end: max(loadedWeightInterval.end, endDate)
+                )
+            } else {
+                loadedWeightInterval = DateInterval(start: startDate, end: endDate)
+            }
+            weightStatus = weightMeasurements.isEmpty ? .noData : .available
+            dataVersion += 1
+        } catch {
+            weightStatus = .failed
+        }
+    }
+
+    func weights(within interval: DateInterval) -> [WeightMeasurement] {
+        weightMeasurements.filter {
+            $0.date >= interval.start && $0.date < interval.end
+        }
+    }
+
     private func cachedRangeContains(startDate: Date, endDate: Date) -> Bool {
         guard let loadedEnergyInterval else { return false }
         return loadedEnergyInterval.start <= startDate && loadedEnergyInterval.end >= endDate
@@ -143,5 +238,13 @@ final class HealthMetricsModel {
             byDay[calendar.startOfDay(for: expenditure.date)] = expenditure
         }
         energyExpenditures = byDay.values.sorted { $0.date < $1.date }
+    }
+
+    private func mergeWeights(
+        _ next: [WeightMeasurement],
+        replacing interval: DateInterval
+    ) {
+        let retained = weightMeasurements.filter { !interval.contains($0.date) }
+        weightMeasurements = (retained + next).sorted { $0.date < $1.date }
     }
 }

@@ -185,7 +185,11 @@ final class QuantUITests: XCTestCase {
             app.swipeUp()
         }
         XCTAssertTrue(providerPicker.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["settings.loadOpenRouterModels"].waitForExistence(timeout: 2))
+        let loadModelsButton = app.buttons["settings.loadOpenRouterModels"]
+        for _ in 0..<3 where !loadModelsButton.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(loadModelsButton.waitForExistence(timeout: 2))
         let testConnectionButton = app.buttons["settings.testOpenRouter"]
         for _ in 0..<3 where !testConnectionButton.exists {
             app.swipeUp()

@@ -40,6 +40,7 @@ struct NutritionTrendsContainer: View {
     @State private var nutrient = NutrientIdentifier.energy
     @State private var snapshot: NutritionTrendsSnapshot?
     @State private var balances: [DailyEnergyBalance] = []
+    @State private var weightComparison: WeightBalanceComparison?
     @State private var lastRefreshID: RefreshID?
     @State private var lastBalanceRefreshID: BalanceRefreshID?
     let isActive: Bool
@@ -88,6 +89,8 @@ struct NutritionTrendsContainer: View {
                 balances: balances,
                 range: $balanceRange,
                 healthStatus: healthMetrics.energyStatus,
+                weightStatus: healthMetrics.weightStatus,
+                weightComparison: weightComparison,
                 onOpenSettings: onOpenSettings
             )
         } else if let snapshot, snapshot.range == range, snapshot.nutrient == nutrient {
@@ -144,12 +147,19 @@ struct NutritionTrendsContainer: View {
         guard let refreshID = balanceRefreshID(for: date),
               refreshID != lastBalanceRefreshID,
               let interval = balanceInterval(for: date) else { return }
+        let calendar = Calendar.autoupdatingCurrent
+        let today = calendar.startOfDay(for: date)
+        let historyStart = calendar.date(byAdding: .day, value: -120, to: today) ?? interval.start
+        let queryStart = min(interval.start, historyStart)
         if healthMetrics.hasRequestedEnergyAccess {
             await healthMetrics.loadEnergy(
-                from: interval.start,
+                from: queryStart,
                 to: interval.end,
-                calendar: .autoupdatingCurrent
+                calendar: calendar
             )
+        }
+        if healthMetrics.hasRequestedWeightAccess {
+            await healthMetrics.loadWeights(from: historyStart, to: interval.end)
         }
         guard !Task.isCancelled else { return }
         balances = EnergyBalanceBuilder.makeBalances(
@@ -157,7 +167,22 @@ struct NutritionTrendsContainer: View {
             meals: meals,
             expenditures: healthMetrics.expenditures(within: interval),
             now: date,
-            calendar: .autoupdatingCurrent
+            calendar: calendar
+        )
+        let historyInterval = DateInterval(start: historyStart, end: interval.end)
+        let historicalBalances = EnergyBalanceBuilder.makeBalances(
+            within: historyInterval,
+            meals: meals,
+            expenditures: healthMetrics.expenditures(within: historyInterval),
+            now: date,
+            calendar: calendar
+        )
+        weightComparison = WeightBalanceComparisonBuilder.makeComparison(
+            measurements: healthMetrics.weights(within: historyInterval),
+            balances: historicalBalances,
+            now: date,
+            calendar: calendar,
+            calibrationEnabled: healthMetrics.personalCalibrationEnabled
         )
         lastBalanceRefreshID = refreshID
     }

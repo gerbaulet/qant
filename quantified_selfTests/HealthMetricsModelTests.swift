@@ -64,6 +64,35 @@ struct HealthMetricsModelTests {
         #expect(model.energyExpenditures.isEmpty)
         #expect(provider.queryCount == 2)
     }
+
+    @Test("Weight queries are cached and personal calibration can be toggled")
+    func cachesWeightsAndUpdatesCalibrationPreference() async {
+        let energyProvider = StubHealthEnergyProvider(results: [])
+        let weightProvider = StubHealthWeightProvider(results: [[]])
+        let energyPreferences = StubHealthAccessPreferences(hasRequestedEnergyAccess: false)
+        let weightPreferences = StubHealthWeightPreferences(
+            hasRequestedWeightAccess: true,
+            personalCalibrationEnabled: true
+        )
+        let model = HealthMetricsModel(
+            energyProvider: energyProvider,
+            preferences: energyPreferences,
+            weightProvider: weightProvider,
+            weightPreferences: weightPreferences
+        )
+        let interval = DateInterval(
+            start: Date(timeIntervalSince1970: 1_000),
+            end: Date(timeIntervalSince1970: 2_000)
+        )
+
+        await model.loadWeights(from: interval.start, to: interval.end)
+        await model.loadWeights(from: interval.start, to: interval.end)
+        model.personalCalibrationEnabled = false
+
+        #expect(weightProvider.queryCount == 1)
+        #expect(model.weightStatus == .noData)
+        #expect(!weightPreferences.personalCalibrationEnabled)
+    }
 }
 
 @MainActor
@@ -97,5 +126,38 @@ private final class StubHealthAccessPreferences: HealthAccessPreferenceStoring {
 
     init(hasRequestedEnergyAccess: Bool) {
         self.hasRequestedEnergyAccess = hasRequestedEnergyAccess
+    }
+}
+
+@MainActor
+private final class StubHealthWeightProvider: HealthWeightProviding {
+    private var results: [[WeightMeasurement]]
+    private(set) var queryCount = 0
+
+    init(results: [[WeightMeasurement]]) {
+        self.results = results
+    }
+
+    func isHealthDataAvailable() -> Bool { true }
+
+    func requestWeightAuthorization() async throws {}
+
+    func weightMeasurements(
+        from startDate: Date,
+        to endDate: Date
+    ) async throws -> [WeightMeasurement] {
+        queryCount += 1
+        return results.isEmpty ? [] : results.removeFirst()
+    }
+}
+
+@MainActor
+private final class StubHealthWeightPreferences: HealthWeightPreferenceStoring {
+    var hasRequestedWeightAccess: Bool
+    var personalCalibrationEnabled: Bool
+
+    init(hasRequestedWeightAccess: Bool, personalCalibrationEnabled: Bool) {
+        self.hasRequestedWeightAccess = hasRequestedWeightAccess
+        self.personalCalibrationEnabled = personalCalibrationEnabled
     }
 }

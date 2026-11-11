@@ -14,6 +14,13 @@ protocol HealthEnergyProviding {
 }
 
 @MainActor
+protocol HealthWeightProviding {
+    func isHealthDataAvailable() -> Bool
+    func requestWeightAuthorization() async throws
+    func weightMeasurements(from startDate: Date, to endDate: Date) async throws -> [WeightMeasurement]
+}
+
+@MainActor
 final class HealthKitEnergyProvider: HealthEnergyProviding {
     private let store: HKHealthStore
 
@@ -124,13 +131,81 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
 }
 
 @MainActor
+final class HealthKitWeightProvider: HealthWeightProviding {
+    private let store: HKHealthStore
+
+    init(store: HKHealthStore = HKHealthStore()) {
+        self.store = store
+    }
+
+    func isHealthDataAvailable() -> Bool {
+        HKHealthStore.isHealthDataAvailable()
+    }
+
+    func requestWeightAuthorization() async throws {
+        try await store.requestAuthorization(
+            toShare: [],
+            read: [HKQuantityType(.bodyMass)]
+        )
+    }
+
+    func weightMeasurements(
+        from startDate: Date,
+        to endDate: Date
+    ) async throws -> [WeightMeasurement] {
+        guard startDate < endDate else { return [] }
+        let type = HKQuantityType(.bodyMass)
+        let predicate = HKQuery.predicateForSamples(
+            withStart: startDate,
+            end: endDate,
+            options: [.strictStartDate]
+        )
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: type,
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [sort]
+            ) { _, samples, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                let measurements = (samples as? [HKQuantitySample] ?? []).map {
+                    WeightMeasurement(
+                        id: $0.uuid,
+                        date: $0.startDate,
+                        kilograms: $0.quantity.doubleValue(for: .gramUnit(with: .kilo))
+                    )
+                }
+                continuation.resume(returning: measurements)
+            }
+            store.execute(query)
+        }
+    }
+}
+
+@MainActor
 protocol HealthAccessPreferenceStoring: AnyObject {
     var hasRequestedEnergyAccess: Bool { get set }
 }
 
 @MainActor
-final class UserDefaultsHealthAccessPreferenceStore: HealthAccessPreferenceStoring {
+protocol HealthWeightPreferenceStoring: AnyObject {
+    var hasRequestedWeightAccess: Bool { get set }
+    var personalCalibrationEnabled: Bool { get set }
+}
+
+@MainActor
+final class UserDefaultsHealthAccessPreferenceStore:
+    HealthAccessPreferenceStoring,
+    HealthWeightPreferenceStoring
+{
     private static let energyAccessRequestedKey = "health.energyAccessRequested"
+    private static let weightAccessRequestedKey = "health.weightAccessRequested"
+    private static let personalCalibrationEnabledKey = "health.personalCalibrationEnabled"
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -140,5 +215,20 @@ final class UserDefaultsHealthAccessPreferenceStore: HealthAccessPreferenceStori
     var hasRequestedEnergyAccess: Bool {
         get { defaults.bool(forKey: Self.energyAccessRequestedKey) }
         set { defaults.set(newValue, forKey: Self.energyAccessRequestedKey) }
+    }
+
+    var hasRequestedWeightAccess: Bool {
+        get { defaults.bool(forKey: Self.weightAccessRequestedKey) }
+        set { defaults.set(newValue, forKey: Self.weightAccessRequestedKey) }
+    }
+
+    var personalCalibrationEnabled: Bool {
+        get {
+            guard defaults.object(forKey: Self.personalCalibrationEnabledKey) != nil else {
+                return true
+            }
+            return defaults.bool(forKey: Self.personalCalibrationEnabledKey)
+        }
+        set { defaults.set(newValue, forKey: Self.personalCalibrationEnabledKey) }
     }
 }

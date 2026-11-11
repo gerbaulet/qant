@@ -5,6 +5,8 @@ struct EnergyBalanceTrendsView: View {
     let balances: [DailyEnergyBalance]
     @Binding var range: NutritionTrendRange
     let healthStatus: HealthDataStatus
+    let weightStatus: HealthDataStatus
+    let weightComparison: WeightBalanceComparison?
     let onOpenSettings: () -> Void
 
     private var displayedBalances: [DailyEnergyBalance] {
@@ -71,6 +73,7 @@ struct EnergyBalanceTrendsView: View {
                 summaryCard
                 chartCard
                 interpretationCard
+                weightComparisonCard
                 completenessCard
             }
         }
@@ -189,6 +192,250 @@ struct EnergyBalanceTrendsView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    @ViewBuilder
+    private var weightComparisonCard: some View {
+        switch weightStatus {
+        case .notRequested:
+            QuantCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Bilanz mit Gewichtstrend prüfen", systemImage: "scalemass")
+                        .font(.headline)
+                    Text("Mit Gewichtsdaten aus Apple Health kann Quant vergleichen, ob die längerfristige Veränderung ungefähr zur berechneten Energiebilanz passt.")
+                        .foregroundStyle(.secondary)
+                    Button("Gewichtsdaten verbinden", action: onOpenSettings)
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("balance.setupWeight")
+                }
+            }
+        case .loading:
+            QuantCard {
+                ProgressView("Gewichtsdaten werden geladen …")
+                    .frame(maxWidth: .infinity, minHeight: 120)
+            }
+        case .noData:
+            weightUnavailableCard(
+                title: "Keine Gewichtsdaten verfügbar",
+                description: "Prüfe den Zugriff und deine Gewichtseinträge in Apple Health."
+            )
+        case .unavailable:
+            weightUnavailableCard(
+                title: "Gewichtsdaten nicht verfügbar",
+                description: "Apple Health ist auf diesem Gerät nicht verfügbar."
+            )
+        case .failed:
+            weightUnavailableCard(
+                title: "Gewichtsdaten konnten nicht geladen werden",
+                description: "Versuche es später erneut oder aktualisiere die Daten in den Einstellungen."
+            )
+        default:
+            if let weightComparison {
+                switch weightComparison.readiness {
+                case .ready:
+                    readyWeightComparisonCard(weightComparison)
+                case let .needsWeights(current, required, spanDays, requiredSpanDays):
+                    weightCollectingCard(
+                        title: "Gewichtstrend wird aufgebaut",
+                        description: "\(current) von \(required) Gewichtstagen · \(spanDays) von \(requiredSpanDays) Tagen abgedeckt"
+                    )
+                case let .needsBalanceDays(current, required):
+                    weightCollectingCard(
+                        title: "Bilanzvergleich wird aufgebaut",
+                        description: "\(current) von \(required) vollständigen Bilanztagen im 28-Tage-Fenster"
+                    )
+                }
+            } else {
+                weightCollectingCard(
+                    title: "Gewichtstrend wird vorbereitet",
+                    description: "Quant lädt die Daten für den 28-Tage-Vergleich."
+                )
+            }
+        }
+    }
+
+    private func readyWeightComparisonCard(
+        _ comparison: WeightBalanceComparison
+    ) -> some View {
+        QuantCard(style: .hero) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Label("Bilanz und Gewicht", systemImage: "scalemass")
+                        .font(.headline)
+                    Spacer()
+                    Text(comparison.usesPersonalCalibration ? "PERSÖNLICH" : "STANDARD")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(comparison.usesPersonalCalibration ? .blue : .secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.secondary.opacity(0.12), in: .capsule)
+                }
+
+                HStack(spacing: 18) {
+                    chartLegend(title: "Gewichtstrend", color: .primary, dashed: false)
+                    chartLegend(
+                        title: comparison.usesPersonalCalibration ? "Persönlich erwartet" : "Aus Bilanz erwartet",
+                        color: .blue,
+                        dashed: true
+                    )
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                Chart {
+                    ForEach(comparison.dailyWeights) { measurement in
+                        PointMark(
+                            x: .value("Tag", measurement.date),
+                            y: .value("Gewicht", measurement.kilograms)
+                        )
+                        .foregroundStyle(.secondary.opacity(0.55))
+                    }
+                    ForEach(comparison.observedTrend) { point in
+                        LineMark(
+                            x: .value("Tag", point.date),
+                            y: .value("Gewicht", point.kilograms),
+                            series: .value("Reihe", "Gewichtstrend")
+                        )
+                        .foregroundStyle(.primary)
+                        .lineStyle(StrokeStyle(lineWidth: 3))
+                    }
+                    ForEach(comparison.expectedTrend) { point in
+                        LineMark(
+                            x: .value("Tag", point.date),
+                            y: .value("Gewicht", point.kilograms),
+                            series: .value("Reihe", "Erwartung")
+                        )
+                        .foregroundStyle(.blue)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [7, 5]))
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading) { value in
+                        AxisGridLine()
+                        AxisValueLabel {
+                            if let number = value.as(Double.self) {
+                                Text(number.formatted(.number.precision(.fractionLength(1))))
+                            }
+                        }
+                    }
+                }
+                .frame(height: 250)
+                .accessibilityLabel("Gewichtstrend im Vergleich zur Energiebilanz")
+                .accessibilityValue(weightComparisonAccessibilityValue(comparison))
+
+                HStack(spacing: 20) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Beobachtet")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(signedKilograms(comparison.observedChangeKilograms))
+                            .font(.title3.bold().monospacedDigit())
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Erwartet")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(signedKilograms(comparison.expectedChangeKilograms))
+                            .font(.title3.bold().monospacedDigit())
+                    }
+                }
+
+                Text(weightInterpretation(comparison))
+                    .font(.subheadline)
+
+                calibrationStatusView(comparison.calibrationStatus)
+
+                Text("Kurzfristige Wasser- und Verdauungsschwankungen können den Gewichtstrend deutlich verschieben. Quant bewertet deshalb keine einzelnen Messungen.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityIdentifier("balance.weightComparison")
+    }
+
+    private func weightUnavailableCard(title: String, description: String) -> some View {
+        QuantCard {
+            ContentUnavailableView(
+                title,
+                systemImage: "scalemass",
+                description: Text(description)
+            )
+            .frame(minHeight: 150)
+        }
+    }
+
+    private func weightCollectingCard(title: String, description: String) -> some View {
+        QuantCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(title, systemImage: "scalemass")
+                    .font(.headline)
+                Text(description)
+                Text("Der Vergleich startet erst mit mindestens acht Gewichtstagen über 21 Tage und 21 vollständigen Bilanztagen.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func calibrationStatusView(_ status: PersonalCalibrationStatus) -> some View {
+        switch status {
+        case .disabled:
+            Label("Persönliche Kalibrierung ist ausgeschaltet.", systemImage: "person.crop.circle.badge.xmark")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case let .collecting(weightCount, requiredWeightCount, balanceDayCount, requiredBalanceDayCount, spanDays, requiredSpanDays):
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Persönliches Modell lernt noch", systemImage: "person.crop.circle.badge.clock")
+                    .font(.footnote.weight(.semibold))
+                Text("\(weightCount)/\(requiredWeightCount) Gewichtstage · \(balanceDayCount)/\(requiredBalanceDayCount) Bilanztage · \(spanDays)/\(requiredSpanDays) Tage Zeitraum")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case let .unavailable(reason):
+            Label(reason, systemImage: "person.crop.circle.badge.questionmark")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .ready:
+            Label("Persönliches Modell aus mindestens sechs Wochen Verlauf aktiv", systemImage: "person.crop.circle.badge.checkmark")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.blue)
+        }
+    }
+
+    private func chartLegend(title: String, color: Color, dashed: Bool) -> some View {
+        HStack(spacing: 6) {
+            Capsule()
+                .stroke(color, style: StrokeStyle(lineWidth: 2, dash: dashed ? [5, 4] : []))
+                .frame(width: 24, height: 2)
+            Text(title)
+        }
+    }
+
+    private func signedKilograms(_ value: Double?) -> String {
+        guard let value else { return "— kg" }
+        return "\(value.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1)))) kg"
+    }
+
+    private func weightInterpretation(_ comparison: WeightBalanceComparison) -> String {
+        guard let observed = comparison.observedChangeKilograms,
+              let expected = comparison.expectedChangeKilograms else {
+            return "Für eine Einordnung fehlen noch auswertbare Daten."
+        }
+        let difference = observed - expected
+        if abs(difference) <= 0.5 {
+            return "Der geglättete Gewichtstrend passt im 28-Tage-Fenster grob zur berechneten Bilanz."
+        }
+        if difference < 0 {
+            return "Das Gewicht sank stärker beziehungsweise stieg weniger als aus der Bilanz erwartet. Prüfe vor allem, ob Mahlzeiten regelmäßig und vollständig erfasst wurden."
+        }
+        return "Das Gewicht sank weniger beziehungsweise stieg stärker als aus der Bilanz erwartet. Kurzfristige Schwankungen und unvollständige Erfassung können die Abweichung erklären."
+    }
+
+    private func weightComparisonAccessibilityValue(
+        _ comparison: WeightBalanceComparison
+    ) -> String {
+        "Beobachtete Änderung \(signedKilograms(comparison.observedChangeKilograms)), erwartete Änderung \(signedKilograms(comparison.expectedChangeKilograms))"
     }
 
     private var completenessCard: some View {
