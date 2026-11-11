@@ -164,6 +164,45 @@ struct WeightBalanceComparisonBuilderTests {
         #expect(comparison.readiness == .needsBalanceDays(current: 20, required: 21))
     }
 
+    @Test("Four weight days enable comparison while three remain insufficient")
+    func minimumComparisonWeightDays() {
+        let now = date(2026, 11, 11)
+        let completeBalances = balances(
+            from: -28,
+            count: 28,
+            relativeTo: now,
+            dailyBalance: -500
+        )
+        let fourWeights = [-28, -21, -7, 0].map { offset in
+            WeightMeasurement(date: day(offset, from: now), kilograms: 80)
+        }
+        let readyComparison = WeightBalanceComparisonBuilder.makeComparison(
+            measurements: fourWeights,
+            balances: completeBalances,
+            now: now,
+            calendar: calendar,
+            calibrationEnabled: false
+        )
+        #expect(readyComparison.readiness == .ready)
+
+        let threeWeights = [-28, -14, 0].map { offset in
+            WeightMeasurement(date: day(offset, from: now), kilograms: 80)
+        }
+        let collectingComparison = WeightBalanceComparisonBuilder.makeComparison(
+            measurements: threeWeights,
+            balances: completeBalances,
+            now: now,
+            calendar: calendar,
+            calibrationEnabled: false
+        )
+        #expect(collectingComparison.readiness == .needsWeights(
+            current: 3,
+            required: 4,
+            spanDays: 28,
+            requiredSpanDays: 21
+        ))
+    }
+
     private func balances(
         from firstOffset: Int,
         count: Int,

@@ -370,7 +370,7 @@ struct EnergyBalanceTrendsView: View {
                 Label(title, systemImage: "scalemass")
                     .font(.headline)
                 Text(description)
-                Text("Der Vergleich startet erst mit mindestens acht Gewichtstagen über 21 Tage und 21 vollständigen Bilanztagen.")
+                Text("Der Vergleich startet erst mit mindestens vier Gewichtstagen über 21 Tage und 21 vollständigen Bilanztagen.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

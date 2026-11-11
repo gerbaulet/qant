@@ -2,7 +2,7 @@ import Foundation
 
 enum WeightBalanceComparisonBuilder {
     static let comparisonDayCount = 28
-    static let minimumComparisonWeightCount = 8
+    static let minimumComparisonWeightCount = 4
     static let minimumComparisonWeightSpanDays = 21
     static let minimumComparisonBalanceDayCount = 21
     static let minimumCalibrationWeightCount = 12
