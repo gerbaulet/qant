@@ -487,7 +487,7 @@ enum NutritionTrendsBuilder {
         }
     }
 
-    private static func dateInterval(
+    static func dateInterval(
         for date: Date,
         range: NutritionTrendRange,
         calendar: Calendar

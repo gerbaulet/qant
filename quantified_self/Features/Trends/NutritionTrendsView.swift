@@ -188,20 +188,11 @@ struct NutritionTrendsContainer: View {
     }
 
     private func balanceInterval(for date: Date) -> DateInterval? {
-        let calendar = Calendar.autoupdatingCurrent
-        let period: Calendar.Component
-        switch balanceRange {
-        case .day, .week: period = .weekOfYear
-        case .month: period = .month
-        case .year: period = .year
-        }
-        guard let interval = calendar.dateInterval(of: period, for: date),
-              let tomorrow = calendar.date(
-                byAdding: .day,
-                value: 1,
-                to: calendar.startOfDay(for: date)
-              ) else { return nil }
-        return DateInterval(start: interval.start, end: min(interval.end, tomorrow))
+        NutritionTrendsBuilder.dateInterval(
+            for: date,
+            range: balanceRange,
+            calendar: .autoupdatingCurrent
+        )
     }
 }
 

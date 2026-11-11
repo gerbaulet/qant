@@ -135,6 +135,35 @@ struct EnergyBalanceBuilderTests {
         #expect(calendar.dateComponents([.hour], from: balances[1].date, to: balances[2].date).hour == 23)
     }
 
+    @Test("Balance trends use the same rolling day windows as nutrition trends")
+    func rollingTrendIntervals() throws {
+        let reference = date(2026, 8, 23, 12)
+
+        let week = try #require(NutritionTrendsBuilder.dateInterval(
+            for: reference,
+            range: .week,
+            calendar: calendar
+        ))
+        #expect(week.start == date(2026, 8, 17))
+        #expect(week.end == date(2026, 8, 24))
+
+        let month = try #require(NutritionTrendsBuilder.dateInterval(
+            for: reference,
+            range: .month,
+            calendar: calendar
+        ))
+        #expect(month.start == date(2026, 7, 25))
+        #expect(month.end == date(2026, 8, 24))
+
+        let year = try #require(NutritionTrendsBuilder.dateInterval(
+            for: reference,
+            range: .year,
+            calendar: calendar
+        ))
+        #expect(year.start == date(2025, 8, 24))
+        #expect(year.end == date(2026, 8, 24))
+    }
+
     @Test("Archived meals and portion adjustments follow nutrition presentation rules")
     func archivedAndAdjustedMeals() {
         let day = date(2026, 11, 10, 12)
