@@ -387,6 +387,7 @@ struct EnergyBalanceTrendsView: View {
                         }
                     }
                 }
+                .chartYScale(domain: weightChartYDomain(comparison))
                 .frame(height: 250)
                 .accessibilityLabel("Gewichtstrend im Vergleich zur Energiebilanz")
                 .accessibilityValue(weightComparisonAccessibilityValue(comparison))
@@ -544,6 +545,12 @@ struct EnergyBalanceTrendsView: View {
         _ comparison: WeightBalanceComparison
     ) -> String {
         "Beobachtete Änderung \(signedKilograms(comparison.observedChangeKilograms)), erwartete Änderung \(signedKilograms(comparison.expectedChangeKilograms))"
+    }
+
+    private func weightChartYDomain(
+        _ comparison: WeightBalanceComparison
+    ) -> ClosedRange<Double> {
+        WeightChartScaleCalculator.yDomain(for: comparison) ?? 0 ... 1
     }
 
     private var completenessCard: some View {
