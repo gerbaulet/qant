@@ -18,9 +18,28 @@ enum WeightBalanceComparisonBuilder {
         calibrationEnabled: Bool
     ) -> WeightBalanceComparison {
         let today = calendar.startOfDay(for: now)
-        let normalizedComparisonStart = min(
+        let requestedComparisonStart = min(
             calendar.startOfDay(for: comparisonStart),
             today
+        )
+        let selectedSpanDays = max(
+            calendar.dateComponents(
+                [.day],
+                from: requestedComparisonStart,
+                to: today
+            ).day ?? 0,
+            0
+        )
+        let firstNutritionDay = balances.compactMap { balance -> Date? in
+            guard balance.date >= requestedComparisonStart,
+                  balance.date <= today,
+                  balance.intakeKilocalories != nil else { return nil }
+            return calendar.startOfDay(for: balance.date)
+        }
+        .min()
+        let normalizedComparisonStart = max(
+            requestedComparisonStart,
+            firstNutritionDay ?? requestedComparisonStart
         )
         let comparisonSpanDays = max(
             calendar.dateComponents(
@@ -32,11 +51,11 @@ enum WeightBalanceComparisonBuilder {
         )
         let requiredWeightSpanDays = min(
             minimumComparisonWeightSpanDays,
-            comparisonSpanDays
+            selectedSpanDays
         )
         let requiredBalanceDayCount = min(
             minimumComparisonBalanceDayCount,
-            comparisonSpanDays
+            selectedSpanDays
         )
         let interval = DateInterval(start: normalizedComparisonStart, end: today)
         let dailyWeights = dailyMedians(

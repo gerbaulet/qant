@@ -340,6 +340,14 @@ struct EnergyBalanceTrendsView: View {
                     }
                 }
 
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("So wird „Erwartet“ berechnet", systemImage: "info.circle")
+                        .font(.footnote.weight(.semibold))
+                    Text(expectedWeightExplanation(comparison))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Text(weightInterpretation(comparison))
                     .font(.subheadline)
 
@@ -370,7 +378,7 @@ struct EnergyBalanceTrendsView: View {
                 Label(title, systemImage: "scalemass")
                     .font(.headline)
                 Text(description)
-                Text(weightComparisonRequirementText)
+                Text("Quant beginnt am ersten Tag mit erfassten Nährwerten. Es benötigt vier Gewichtstage sowie – abhängig vom verfügbaren Zeitraum – bis zu 19 Tage Abdeckung und 19 vollständige Bilanztage.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -417,17 +425,13 @@ struct EnergyBalanceTrendsView: View {
         return "\(value.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1)))) kg"
     }
 
-    private var weightComparisonRequirementText: String {
-        let completedDayCapacity = max(range.dayCount - 1, 0)
-        let requiredSpanDays = min(
-            WeightBalanceComparisonBuilder.minimumComparisonWeightSpanDays,
-            completedDayCapacity
-        )
-        let requiredBalanceDays = min(
-            WeightBalanceComparisonBuilder.minimumComparisonBalanceDayCount,
-            completedDayCapacity
-        )
-        return "Im gewählten Zeitraum braucht der Vergleich mindestens vier Gewichtstage über \(requiredSpanDays) Tage und \(requiredBalanceDays) vollständige Bilanztage."
+    private func expectedWeightExplanation(_ comparison: WeightBalanceComparison) -> String {
+        let base = "Quant addiert \(comparison.evaluableBalanceDayCount) vollständige, abgeschlossene Tagesbilanzen. Die Summe wird mit ungefähr 7.700 kcal pro Kilogramm umgerechnet: Defizite senken, Überschüsse erhöhen den Erwartungswert."
+        if case let .ready(factor) = comparison.calibrationStatus {
+            let formattedFactor = factor.formatted(.number.precision(.fractionLength(2)))
+            return "\(base) Dein aus früheren Verläufen kalibrierter Faktor ×\(formattedFactor) wird anschließend berücksichtigt."
+        }
+        return "\(base) Solange kein persönlicher Faktor aktiv ist, verwendet Quant die Standardumrechnung."
     }
 
     private func weightInterpretation(_ comparison: WeightBalanceComparison) -> String {

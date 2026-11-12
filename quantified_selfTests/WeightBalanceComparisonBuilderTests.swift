@@ -154,7 +154,7 @@ struct WeightBalanceComparisonBuilderTests {
     @Test("Nineteen balance days enable comparison while eighteen remain insufficient")
     func minimumComparisonBalanceDays() {
         let now = date(2026, 11, 11)
-        let weights = stride(from: -28, through: 0, by: 4).map { offset in
+        let weights = [-19, -14, -5, 0].map { offset in
             WeightMeasurement(date: day(offset, from: now), kilograms: 80)
         }
         let readyComparison = WeightBalanceComparisonBuilder.makeComparison(
@@ -167,9 +167,22 @@ struct WeightBalanceComparisonBuilderTests {
         )
         #expect(readyComparison.readiness == .ready)
 
+        let provisionalFirstDay = DailyEnergyBalance(
+            date: day(-19, from: now),
+            intakeKilocalories: 1_500,
+            activeKilocalories: 400,
+            restingKilocalories: 1_600,
+            completeness: .provisionalIntake,
+            isCurrentDay: false
+        )
         let collectingComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: weights,
-            balances: balances(from: -18, count: 18, relativeTo: now, dailyBalance: -500),
+            balances: [provisionalFirstDay] + balances(
+                from: -18,
+                count: 18,
+                relativeTo: now,
+                dailyBalance: -500
+            ),
             comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
@@ -281,6 +294,31 @@ struct WeightBalanceComparisonBuilderTests {
         })
         #expect(comparison.evaluableBalanceDayCount == 6)
         #expect(comparison.readiness == .ready)
+    }
+
+    @Test("A selected year starts on its first day with nutrition data")
+    func selectedYearStartsWithNutritionData() throws {
+        let now = date(2026, 11, 11)
+        let weights = [-100, -20, -15, -5, 0].map { offset in
+            WeightMeasurement(date: day(offset, from: now), kilograms: 80)
+        }
+        let comparison = WeightBalanceComparisonBuilder.makeComparison(
+            measurements: weights,
+            balances: balances(from: -20, count: 20, relativeTo: now, dailyBalance: -500),
+            comparisonStart: day(-364, from: now),
+            now: now,
+            calendar: calendar,
+            calibrationEnabled: false
+        )
+
+        #expect(comparison.interval.start == day(-20, from: now))
+        #expect(comparison.dailyWeights.map(\.date) == [-20, -15, -5, 0].map {
+            day($0, from: now)
+        })
+        #expect(comparison.expectedTrend.first?.date == day(-20, from: now))
+        #expect(comparison.evaluableBalanceDayCount == 20)
+        let expectedChange = try #require(comparison.expectedChangeKilograms)
+        #expect(abs(expectedChange - (-10_000 / 7_700)) < 0.0001)
     }
 
     private func balances(
