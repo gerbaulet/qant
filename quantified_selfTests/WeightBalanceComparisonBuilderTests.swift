@@ -147,7 +147,7 @@ struct WeightBalanceComparisonBuilderTests {
         #expect(spanDays == 0)
     }
 
-    @Test("Twenty balance days enable comparison while nineteen remain insufficient")
+    @Test("Nineteen balance days enable comparison while eighteen remain insufficient")
     func minimumComparisonBalanceDays() {
         let now = date(2026, 11, 11)
         let weights = stride(from: -28, through: 0, by: 4).map { offset in
@@ -155,7 +155,7 @@ struct WeightBalanceComparisonBuilderTests {
         }
         let readyComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: weights,
-            balances: balances(from: -20, count: 20, relativeTo: now, dailyBalance: -500),
+            balances: balances(from: -19, count: 19, relativeTo: now, dailyBalance: -500),
             now: now,
             calendar: calendar,
             calibrationEnabled: false
@@ -164,12 +164,12 @@ struct WeightBalanceComparisonBuilderTests {
 
         let collectingComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: weights,
-            balances: balances(from: -19, count: 19, relativeTo: now, dailyBalance: -500),
+            balances: balances(from: -18, count: 18, relativeTo: now, dailyBalance: -500),
             now: now,
             calendar: calendar,
             calibrationEnabled: false
         )
-        #expect(collectingComparison.readiness == .needsBalanceDays(current: 19, required: 20))
+        #expect(collectingComparison.readiness == .needsBalanceDays(current: 18, required: 19))
     }
 
     @Test("Four weight days enable comparison while three remain insufficient")
@@ -207,11 +207,11 @@ struct WeightBalanceComparisonBuilderTests {
             current: 3,
             required: 4,
             spanDays: 28,
-            requiredSpanDays: 20
+            requiredSpanDays: 19
         ))
     }
 
-    @Test("Twenty covered days enable comparison while nineteen remain insufficient")
+    @Test("Nineteen covered days enable comparison while eighteen remain insufficient")
     func minimumComparisonWeightSpan() {
         let now = date(2026, 11, 11)
         let completeBalances = balances(
@@ -220,11 +220,11 @@ struct WeightBalanceComparisonBuilderTests {
             relativeTo: now,
             dailyBalance: -500
         )
-        let twentyDayWeights = [-20, -15, -5, 0].map { offset in
+        let nineteenDayWeights = [-19, -14, -5, 0].map { offset in
             WeightMeasurement(date: day(offset, from: now), kilograms: 80)
         }
         let readyComparison = WeightBalanceComparisonBuilder.makeComparison(
-            measurements: twentyDayWeights,
+            measurements: nineteenDayWeights,
             balances: completeBalances,
             now: now,
             calendar: calendar,
@@ -232,11 +232,11 @@ struct WeightBalanceComparisonBuilderTests {
         )
         #expect(readyComparison.readiness == .ready)
 
-        let nineteenDayWeights = [-19, -14, -5, 0].map { offset in
+        let eighteenDayWeights = [-18, -13, -5, 0].map { offset in
             WeightMeasurement(date: day(offset, from: now), kilograms: 80)
         }
         let collectingComparison = WeightBalanceComparisonBuilder.makeComparison(
-            measurements: nineteenDayWeights,
+            measurements: eighteenDayWeights,
             balances: completeBalances,
             now: now,
             calendar: calendar,
@@ -245,8 +245,8 @@ struct WeightBalanceComparisonBuilderTests {
         #expect(collectingComparison.readiness == .needsWeights(
             current: 4,
             required: 4,
-            spanDays: 19,
-            requiredSpanDays: 20
+            spanDays: 18,
+            requiredSpanDays: 19
         ))
     }
 
