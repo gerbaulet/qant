@@ -73,43 +73,25 @@ struct WeightBalanceComparisonBuilderTests {
         #expect(!comparison.usesPersonalCalibration)
     }
 
-    @Test("Personal calibration uses six weeks of prior weight and balance history")
+    @Test("Personal calibration uses a fixed year of overlapping history")
     func personalCalibration() throws {
         let now = date(2026, 11, 11)
-        let trainingWeights = stride(from: -80, through: -36, by: 4).map { offset in
+        let historicalWeights = stride(from: -80, through: -4, by: 4).map { offset in
             WeightMeasurement(
                 date: day(offset, from: now),
                 kilograms: 80 + Double(offset + 80) * -0.08
             )
         }
-        let comparisonWeights = stride(from: -28, through: 0, by: 4).map { offset in
-            WeightMeasurement(
-                date: day(offset, from: now),
-                kilograms: 76.5 + Double(offset + 28) * -0.06
-            )
-        }
-        let trainingBalances = balances(
+        let historicalBalances = balances(
             from: -80,
-            count: 42,
+            count: 80,
             relativeTo: now,
             dailyBalance: -770
-        )
-        let comparisonBalances = balances(
-            from: -28,
-            count: 28,
-            relativeTo: now,
-            dailyBalance: -770
-        )
-        let balancesBeforeWeightHistory = balances(
-            from: -100,
-            count: 10,
-            relativeTo: now,
-            dailyBalance: -2_000
         )
 
         let comparison = WeightBalanceComparisonBuilder.makeComparison(
-            measurements: trainingWeights + comparisonWeights,
-            balances: balancesBeforeWeightHistory + trainingBalances + comparisonBalances,
+            measurements: historicalWeights,
+            balances: historicalBalances,
             comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
@@ -120,7 +102,7 @@ struct WeightBalanceComparisonBuilderTests {
             Issue.record("Expected a ready personal calibration")
             return
         }
-        #expect(abs(factor - (3.52 / 4.2)) < 0.001)
+        #expect(abs(factor - 0.8) < 0.001)
         #expect(comparison.usesPersonalCalibration)
         let expected = try #require(comparison.expectedChangeKilograms)
         #expect(abs(expected - (-2.8 * factor)) < 0.001)
@@ -146,9 +128,9 @@ struct WeightBalanceComparisonBuilderTests {
             Issue.record("Expected calibration to keep collecting history")
             return
         }
-        #expect(weightCount == 0)
-        #expect(balanceDayCount == 0)
-        #expect(spanDays == 0)
+        #expect(weightCount == 7)
+        #expect(balanceDayCount == 24)
+        #expect(spanDays == 24)
     }
 
     @Test("Nineteen balance days enable comparison while eighteen remain insufficient")
@@ -319,6 +301,46 @@ struct WeightBalanceComparisonBuilderTests {
         #expect(comparison.evaluableBalanceDayCount == 20)
         let expectedChange = try #require(comparison.expectedChangeKilograms)
         #expect(abs(expectedChange - (-10_000 / 7_700)) < 0.0001)
+    }
+
+    @Test("Personal calibration does not change with the selected display range")
+    func calibrationIsDisplayRangeIndependent() {
+        let now = date(2026, 11, 11)
+        let weights = (-80 ... -1).map { offset in
+            WeightMeasurement(
+                date: day(offset, from: now),
+                kilograms: 80 - Double(offset + 80) * 0.01
+            )
+        }
+        let history = balances(
+            from: -80,
+            count: 80,
+            relativeTo: now,
+            dailyBalance: -100
+        )
+
+        let week = WeightBalanceComparisonBuilder.makeComparison(
+            measurements: weights,
+            balances: history,
+            comparisonStart: day(-6, from: now),
+            now: now,
+            calendar: calendar,
+            calibrationEnabled: true
+        )
+        let year = WeightBalanceComparisonBuilder.makeComparison(
+            measurements: weights,
+            balances: history,
+            comparisonStart: day(-364, from: now),
+            now: now,
+            calendar: calendar,
+            calibrationEnabled: true
+        )
+
+        #expect(week.calibrationStatus == year.calibrationStatus)
+        guard case .ready = week.calibrationStatus else {
+            Issue.record("Expected a range-independent ready calibration")
+            return
+        }
     }
 
     private func balances(

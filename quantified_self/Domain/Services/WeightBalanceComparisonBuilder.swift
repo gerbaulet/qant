@@ -7,6 +7,7 @@ enum WeightBalanceComparisonBuilder {
     static let minimumCalibrationWeightCount = 12
     static let minimumCalibrationWeightSpanDays = 42
     static let minimumCalibrationBalanceDayCount = 42
+    static let calibrationHistoryDayCount = 365
     static let kilocaloriesPerKilogram = 7_700.0
 
     static func makeComparison(
@@ -70,7 +71,7 @@ enum WeightBalanceComparisonBuilder {
         let calibrationStatus = makeCalibrationStatus(
             measurements: measurements,
             balances: balances,
-            trainingEnd: normalizedComparisonStart,
+            interval: calibrationInterval(endingAt: now, calendar: calendar),
             calendar: calendar,
             enabled: calibrationEnabled
         )
@@ -158,16 +159,31 @@ enum WeightBalanceComparisonBuilder {
         .sorted { $0.date < $1.date }
     }
 
+    static func calibrationInterval(
+        endingAt date: Date,
+        calendar: Calendar
+    ) -> DateInterval {
+        let end = calendar.startOfDay(for: date)
+        let start = calendar.date(
+            byAdding: .day,
+            value: -calibrationHistoryDayCount,
+            to: end
+        ) ?? end
+        return DateInterval(start: start, end: end)
+    }
+
     private static func makeCalibrationStatus(
         measurements: [WeightMeasurement],
         balances: [DailyEnergyBalance],
-        trainingEnd: Date,
+        interval: DateInterval,
         calendar: Calendar,
         enabled: Bool
     ) -> PersonalCalibrationStatus {
         guard enabled else { return .disabled }
         let trainingWeights = dailyMedians(
-            measurements.filter { $0.date < trainingEnd },
+            measurements.filter {
+                $0.date >= interval.start && $0.date < interval.end
+            },
             calendar: calendar
         )
         let firstTrainingDate = trainingWeights.first?.date
@@ -176,7 +192,8 @@ enum WeightBalanceComparisonBuilder {
             guard let firstTrainingDate, let lastTrainingDate else { return false }
             return balance.date >= firstTrainingDate &&
                 balance.date < lastTrainingDate &&
-                balance.date < trainingEnd &&
+                balance.date >= interval.start &&
+                balance.date < interval.end &&
                 balance.completeness == .complete
         }
         let weightSpan = spanDays(for: trainingWeights, calendar: calendar)
