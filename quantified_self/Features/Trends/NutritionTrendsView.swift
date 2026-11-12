@@ -148,8 +148,11 @@ struct NutritionTrendsContainer: View {
               refreshID != lastBalanceRefreshID,
               let interval = balanceInterval(for: date) else { return }
         let calendar = Calendar.autoupdatingCurrent
-        let today = calendar.startOfDay(for: date)
-        let historyStart = calendar.date(byAdding: .day, value: -120, to: today) ?? interval.start
+        let historyStart = calendar.date(
+            byAdding: .day,
+            value: -120,
+            to: interval.start
+        ) ?? interval.start
         let queryStart = min(interval.start, historyStart)
         if healthMetrics.hasRequestedEnergyAccess {
             await healthMetrics.loadEnergy(
@@ -180,6 +183,7 @@ struct NutritionTrendsContainer: View {
         weightComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: healthMetrics.weights(within: historyInterval),
             balances: historicalBalances,
+            comparisonStart: interval.start,
             now: date,
             calendar: calendar,
             calibrationEnabled: healthMetrics.personalCalibrationEnabled

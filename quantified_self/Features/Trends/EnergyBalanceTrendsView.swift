@@ -242,13 +242,13 @@ struct EnergyBalanceTrendsView: View {
                 case let .needsBalanceDays(current, required):
                     weightCollectingCard(
                         title: "Bilanzvergleich wird aufgebaut",
-                        description: "\(current) von \(required) vollständigen Bilanztagen im 28-Tage-Fenster"
+                        description: "\(current) von \(required) vollständigen Bilanztagen im gewählten Zeitraum"
                     )
                 }
             } else {
                 weightCollectingCard(
                     title: "Gewichtstrend wird vorbereitet",
-                    description: "Quant lädt die Daten für den 28-Tage-Vergleich."
+                    description: "Quant lädt die Daten für den gewählten Zeitraum."
                 )
             }
         }
@@ -370,7 +370,7 @@ struct EnergyBalanceTrendsView: View {
                 Label(title, systemImage: "scalemass")
                     .font(.headline)
                 Text(description)
-                Text("Der Vergleich startet erst mit mindestens vier Gewichtstagen über 19 Tage und 19 vollständigen Bilanztagen.")
+                Text(weightComparisonRequirementText)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -417,6 +417,19 @@ struct EnergyBalanceTrendsView: View {
         return "\(value.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1)))) kg"
     }
 
+    private var weightComparisonRequirementText: String {
+        let completedDayCapacity = max(range.dayCount - 1, 0)
+        let requiredSpanDays = min(
+            WeightBalanceComparisonBuilder.minimumComparisonWeightSpanDays,
+            completedDayCapacity
+        )
+        let requiredBalanceDays = min(
+            WeightBalanceComparisonBuilder.minimumComparisonBalanceDayCount,
+            completedDayCapacity
+        )
+        return "Im gewählten Zeitraum braucht der Vergleich mindestens vier Gewichtstage über \(requiredSpanDays) Tage und \(requiredBalanceDays) vollständige Bilanztage."
+    }
+
     private func weightInterpretation(_ comparison: WeightBalanceComparison) -> String {
         guard let observed = comparison.observedChangeKilograms,
               let expected = comparison.expectedChangeKilograms else {
@@ -424,7 +437,7 @@ struct EnergyBalanceTrendsView: View {
         }
         let difference = observed - expected
         if abs(difference) <= 0.5 {
-            return "Der geglättete Gewichtstrend passt im 28-Tage-Fenster grob zur berechneten Bilanz."
+            return "Der geglättete Gewichtstrend passt im gewählten Zeitraum grob zur berechneten Bilanz."
         }
         if difference < 0 {
             return "Das Gewicht sank stärker beziehungsweise stieg weniger als aus der Bilanz erwartet. Prüfe vor allem, ob Mahlzeiten regelmäßig und vollständig erfasst wurden."

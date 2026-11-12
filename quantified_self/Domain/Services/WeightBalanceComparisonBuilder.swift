@@ -1,7 +1,6 @@
 import Foundation
 
 enum WeightBalanceComparisonBuilder {
-    static let comparisonDayCount = 28
     static let minimumComparisonWeightCount = 4
     static let minimumComparisonWeightSpanDays = 19
     static let minimumComparisonBalanceDayCount = 19
@@ -13,30 +12,46 @@ enum WeightBalanceComparisonBuilder {
     static func makeComparison(
         measurements: [WeightMeasurement],
         balances: [DailyEnergyBalance],
+        comparisonStart: Date,
         now: Date,
         calendar: Calendar,
         calibrationEnabled: Bool
     ) -> WeightBalanceComparison {
         let today = calendar.startOfDay(for: now)
-        let comparisonStart = calendar.date(
-            byAdding: .day,
-            value: -comparisonDayCount,
-            to: today
-        ) ?? today
-        let interval = DateInterval(start: comparisonStart, end: today)
+        let normalizedComparisonStart = min(
+            calendar.startOfDay(for: comparisonStart),
+            today
+        )
+        let comparisonSpanDays = max(
+            calendar.dateComponents(
+                [.day],
+                from: normalizedComparisonStart,
+                to: today
+            ).day ?? 0,
+            0
+        )
+        let requiredWeightSpanDays = min(
+            minimumComparisonWeightSpanDays,
+            comparisonSpanDays
+        )
+        let requiredBalanceDayCount = min(
+            minimumComparisonBalanceDayCount,
+            comparisonSpanDays
+        )
+        let interval = DateInterval(start: normalizedComparisonStart, end: today)
         let dailyWeights = dailyMedians(
-            measurements.filter { $0.date >= comparisonStart && $0.date <= now },
+            measurements.filter { $0.date >= normalizedComparisonStart && $0.date <= now },
             calendar: calendar
         )
         let comparisonBalances = balances.filter {
-            $0.date >= comparisonStart &&
+            $0.date >= normalizedComparisonStart &&
                 $0.date < today &&
                 $0.completeness == .complete
         }
         let calibrationStatus = makeCalibrationStatus(
             measurements: measurements,
             balances: balances,
-            trainingEnd: comparisonStart,
+            trainingEnd: normalizedComparisonStart,
             calendar: calendar,
             enabled: calibrationEnabled
         )
@@ -44,17 +59,17 @@ enum WeightBalanceComparisonBuilder {
         let weightSpan = spanDays(for: dailyWeights, calendar: calendar)
         let readiness: WeightComparisonReadiness
         if dailyWeights.count < minimumComparisonWeightCount ||
-            weightSpan < minimumComparisonWeightSpanDays {
+            weightSpan < requiredWeightSpanDays {
             readiness = .needsWeights(
                 current: dailyWeights.count,
                 required: minimumComparisonWeightCount,
                 spanDays: weightSpan,
-                requiredSpanDays: minimumComparisonWeightSpanDays
+                requiredSpanDays: requiredWeightSpanDays
             )
-        } else if comparisonBalances.count < minimumComparisonBalanceDayCount {
+        } else if comparisonBalances.count < requiredBalanceDayCount {
             readiness = .needsBalanceDays(
                 current: comparisonBalances.count,
-                required: minimumComparisonBalanceDayCount
+                required: requiredBalanceDayCount
             )
         } else {
             readiness = .ready
@@ -74,12 +89,7 @@ enum WeightBalanceComparisonBuilder {
             )
         }
 
-        let intervalDays = calendar.dateComponents(
-            [.day],
-            from: comparisonStart,
-            to: today
-        ).day ?? comparisonDayCount
-        let observedStart = line.value(on: comparisonStart, calendar: calendar)
+        let observedStart = line.value(on: normalizedComparisonStart, calendar: calendar)
         let observedEnd = line.value(on: today, calendar: calendar)
         let factor: Double
         if case let .ready(calibratedFactor) = calibrationStatus {
@@ -88,7 +98,7 @@ enum WeightBalanceComparisonBuilder {
             factor = 1
         }
         let expectedTrend = makeExpectedTrend(
-            startDate: comparisonStart,
+            startDate: normalizedComparisonStart,
             endDate: today,
             startingWeight: observedStart,
             balances: comparisonBalances,
@@ -100,11 +110,11 @@ enum WeightBalanceComparisonBuilder {
             interval: interval,
             dailyWeights: dailyWeights,
             observedTrend: [
-                WeightChartPoint(date: comparisonStart, kilograms: observedStart),
+                WeightChartPoint(date: normalizedComparisonStart, kilograms: observedStart),
                 WeightChartPoint(date: today, kilograms: observedEnd),
             ],
             expectedTrend: expectedTrend,
-            observedChangeKilograms: line.slopeKilogramsPerDay * Double(intervalDays),
+            observedChangeKilograms: line.slopeKilogramsPerDay * Double(comparisonSpanDays),
             expectedChangeKilograms: expectedTrend.last.map { $0.kilograms - observedStart },
             evaluableBalanceDayCount: comparisonBalances.count,
             readiness: readiness,

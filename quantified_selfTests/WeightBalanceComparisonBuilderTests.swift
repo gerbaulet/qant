@@ -38,6 +38,7 @@ struct WeightBalanceComparisonBuilderTests {
         let comparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: weights,
             balances: balances(from: -28, count: 28, relativeTo: now, dailyBalance: -500),
+            comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
             calibrationEnabled: false
@@ -60,6 +61,7 @@ struct WeightBalanceComparisonBuilderTests {
         let comparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: weights,
             balances: balances(from: -28, count: 28, relativeTo: now, dailyBalance: -550),
+            comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
             calibrationEnabled: false
@@ -108,6 +110,7 @@ struct WeightBalanceComparisonBuilderTests {
         let comparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: trainingWeights + comparisonWeights,
             balances: balancesBeforeWeightHistory + trainingBalances + comparisonBalances,
+            comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
             calibrationEnabled: true
@@ -132,6 +135,7 @@ struct WeightBalanceComparisonBuilderTests {
         let comparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: comparisonWeights,
             balances: balances(from: -28, count: 28, relativeTo: now, dailyBalance: -500),
+            comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
             calibrationEnabled: true
@@ -156,6 +160,7 @@ struct WeightBalanceComparisonBuilderTests {
         let readyComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: weights,
             balances: balances(from: -19, count: 19, relativeTo: now, dailyBalance: -500),
+            comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
             calibrationEnabled: false
@@ -165,6 +170,7 @@ struct WeightBalanceComparisonBuilderTests {
         let collectingComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: weights,
             balances: balances(from: -18, count: 18, relativeTo: now, dailyBalance: -500),
+            comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
             calibrationEnabled: false
@@ -187,6 +193,7 @@ struct WeightBalanceComparisonBuilderTests {
         let readyComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: fourWeights,
             balances: completeBalances,
+            comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
             calibrationEnabled: false
@@ -199,6 +206,7 @@ struct WeightBalanceComparisonBuilderTests {
         let collectingComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: threeWeights,
             balances: completeBalances,
+            comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
             calibrationEnabled: false
@@ -226,6 +234,7 @@ struct WeightBalanceComparisonBuilderTests {
         let readyComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: nineteenDayWeights,
             balances: completeBalances,
+            comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
             calibrationEnabled: false
@@ -238,6 +247,7 @@ struct WeightBalanceComparisonBuilderTests {
         let collectingComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: eighteenDayWeights,
             balances: completeBalances,
+            comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
             calibrationEnabled: false
@@ -248,6 +258,29 @@ struct WeightBalanceComparisonBuilderTests {
             spanDays: 18,
             requiredSpanDays: 19
         ))
+    }
+
+    @Test("A selected week uses its seven-day window and attainable requirements")
+    func selectedWeekWindow() {
+        let now = date(2026, 11, 11)
+        let weights = [-10, -6, -4, -2, 0].map { offset in
+            WeightMeasurement(date: day(offset, from: now), kilograms: 80)
+        }
+        let comparison = WeightBalanceComparisonBuilder.makeComparison(
+            measurements: weights,
+            balances: balances(from: -6, count: 6, relativeTo: now, dailyBalance: -500),
+            comparisonStart: day(-6, from: now),
+            now: now,
+            calendar: calendar,
+            calibrationEnabled: false
+        )
+
+        #expect(comparison.interval.start == day(-6, from: now))
+        #expect(comparison.dailyWeights.map(\.date) == [-6, -4, -2, 0].map {
+            day($0, from: now)
+        })
+        #expect(comparison.evaluableBalanceDayCount == 6)
+        #expect(comparison.readiness == .ready)
     }
 
     private func balances(
