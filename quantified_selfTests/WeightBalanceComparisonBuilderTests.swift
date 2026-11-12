@@ -98,11 +98,13 @@ struct WeightBalanceComparisonBuilderTests {
             calibrationEnabled: true
         )
 
-        guard case let .ready(factor) = comparison.calibrationStatus else {
+        guard case let .ready(factor, dailyBalanceAdjustmentKilocalories) =
+            comparison.calibrationStatus else {
             Issue.record("Expected a ready personal calibration")
             return
         }
         #expect(abs(factor - 0.8) < 0.001)
+        #expect(abs(dailyBalanceAdjustmentKilocalories - 154) < 0.001)
         #expect(comparison.usesPersonalCalibration)
         let expected = try #require(comparison.expectedChangeKilograms)
         #expect(abs(expected - (-2.8 * factor)) < 0.001)
@@ -341,6 +343,34 @@ struct WeightBalanceComparisonBuilderTests {
             Issue.record("Expected a range-independent ready calibration")
             return
         }
+    }
+
+    @Test("Daily personal balance adjustment is conservatively capped")
+    func calibrationAdjustmentIsCapped() {
+        let now = date(2026, 11, 11)
+        let weights = (-50 ... -1).map { offset in
+            WeightMeasurement(date: day(offset, from: now), kilograms: 80)
+        }
+        let comparison = WeightBalanceComparisonBuilder.makeComparison(
+            measurements: weights,
+            balances: balances(
+                from: -50,
+                count: 50,
+                relativeTo: now,
+                dailyBalance: -1_000
+            ),
+            comparisonStart: day(-28, from: now),
+            now: now,
+            calendar: calendar,
+            calibrationEnabled: true
+        )
+
+        guard case let .ready(_, dailyBalanceAdjustmentKilocalories) =
+            comparison.calibrationStatus else {
+            Issue.record("Expected a ready personal calibration")
+            return
+        }
+        #expect(dailyBalanceAdjustmentKilocalories == 500)
     }
 
     private func balances(

@@ -1,6 +1,20 @@
 import Charts
 import SwiftUI
 
+private enum EnergyBalancePresentation: String, CaseIterable, Identifiable {
+    case recorded
+    case personal
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .recorded: "Erfasst"
+        case .personal: "Persönlich"
+        }
+    }
+}
+
 struct EnergyBalanceTrendsView: View {
     let balances: [DailyEnergyBalance]
     @Binding var range: NutritionTrendRange
@@ -8,6 +22,7 @@ struct EnergyBalanceTrendsView: View {
     let weightStatus: HealthDataStatus
     let weightComparison: WeightBalanceComparison?
     let onOpenSettings: () -> Void
+    @State private var selectedPresentation: EnergyBalancePresentation?
 
     private var displayedBalances: [DailyEnergyBalance] {
         balances.filter(\.canDescribeBalance)
@@ -17,16 +32,31 @@ struct EnergyBalanceTrendsView: View {
         balances.filter { $0.completeness == .complete && !$0.isCurrentDay }
     }
 
+    private var personalDailyAdjustment: Double? {
+        weightComparison?.dailyBalanceAdjustmentKilocalories
+    }
+
+    private var balancePresentation: EnergyBalancePresentation {
+        guard personalDailyAdjustment != nil else { return .recorded }
+        return selectedPresentation ?? .personal
+    }
+
+    private var appliedDailyAdjustment: Double? {
+        balancePresentation == .personal ? personalDailyAdjustment : nil
+    }
+
     private var averageBalance: Double? {
-        let values = completedBalances.compactMap(\.balanceKilocalories)
-        guard !values.isEmpty else { return nil }
-        return values.reduce(0, +) / Double(values.count)
+        PersonalEnergyBalanceCalculator.averageBalanceKilocalories(
+            for: balances,
+            dailyAdjustmentKilocalories: appliedDailyAdjustment
+        )
     }
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
                 rangePicker
+                balancePresentationPicker
                 content
             }
             .padding(.horizontal, QuantLayout.pageInset)
@@ -43,6 +73,25 @@ struct EnergyBalanceTrendsView: View {
         }
         .pickerStyle(.segmented)
         .accessibilityIdentifier("balance.range")
+    }
+
+    @ViewBuilder
+    private var balancePresentationPicker: some View {
+        if personalDailyAdjustment != nil {
+            Picker(
+                "Bilanzmodell",
+                selection: Binding(
+                    get: { balancePresentation },
+                    set: { selectedPresentation = $0 }
+                )
+            ) {
+                ForEach(EnergyBalancePresentation.allCases) { presentation in
+                    Text(presentation.title).tag(presentation)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("balance.model")
+        }
     }
 
     @ViewBuilder
@@ -118,9 +167,17 @@ struct EnergyBalanceTrendsView: View {
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
-                    Text("Aus \(completedBalances.count) vollständigen, abgeschlossenen Tagen")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(summarySourceText)
+                        if let adjustment = appliedDailyAdjustment {
+                            Text("Persönliche Korrektur: \(signedKilocalories(adjustment))/Tag")
+                        }
+                        if personalDailyAdjustment != nil {
+                            Text("Die erfassten Rohdaten bleiben unverändert und sind oben jederzeit auswählbar.")
+                        }
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 } else {
                     Text("Für einen Durchschnitt braucht Quant mindestens einen vollständigen abgeschlossenen Tag.")
                         .foregroundStyle(.secondary)
@@ -147,7 +204,7 @@ struct EnergyBalanceTrendsView: View {
                     RuleMark(y: .value("Ausgeglichen", 0))
                         .foregroundStyle(.secondary)
                     ForEach(displayedBalances) { balance in
-                        if let value = balance.balanceKilocalories {
+                        if let value = displayedBalanceKilocalories(for: balance) {
                             BarMark(
                                 x: .value("Tag", balance.date, unit: .day),
                                 y: .value("Bilanz", value)
@@ -171,7 +228,11 @@ struct EnergyBalanceTrendsView: View {
                 .accessibilityLabel("Energiebilanz im gewählten Zeitraum")
                 .accessibilityValue(chartAccessibilityValue)
 
-                if displayedBalances.contains(where: { $0.isCurrentDay || $0.completeness != .complete }) {
+                if balancePresentation == .personal {
+                    Text("Die persönliche Korrektur gilt nur für vollständige, abgeschlossene Tage. Helle Zwischenstände bleiben unverändert erfasst.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if displayedBalances.contains(where: { $0.isCurrentDay || $0.completeness != .complete }) {
                     Text("Hell dargestellte Werte sind Zwischenstände oder enthalten vorläufige Mahlzeitenschätzungen.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -187,6 +248,13 @@ struct EnergyBalanceTrendsView: View {
                 Label("Einordnung", systemImage: "lightbulb")
                     .font(.headline)
                 Text(interpretationText)
+                if let personalInterpretation {
+                    Text(personalInterpretation)
+                        .font(.subheadline)
+                    Text("Die Korrektur kann unter anderem Unterschiede bei Mahlzeitenschätzungen, Health-Verbrauchswerten sowie längerfristige Veränderungen abbilden.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Text("Die Werte sind Schätzungen und keine medizinische Beratung.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -404,10 +472,15 @@ struct EnergyBalanceTrendsView: View {
             Label(reason, systemImage: "person.crop.circle.badge.questionmark")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-        case .ready:
-            Label("Persönliches Modell aus mindestens sechs Wochen Verlauf aktiv", systemImage: "person.crop.circle.badge.checkmark")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.blue)
+        case let .ready(_, dailyBalanceAdjustmentKilocalories):
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Persönliches Modell aus mindestens sechs Wochen Verlauf aktiv", systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.blue)
+                Text("Korrektur der Tagesbilanz: \(signedKilocalories(dailyBalanceAdjustmentKilocalories))/Tag")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -420,6 +493,24 @@ struct EnergyBalanceTrendsView: View {
         }
     }
 
+    private var summarySourceText: String {
+        if appliedDailyAdjustment != nil {
+            return "Persönlich kalibriert aus \(completedBalances.count) vollständigen, abgeschlossenen Tagen"
+        }
+        return "Erfasst aus \(completedBalances.count) vollständigen, abgeschlossenen Tagen"
+    }
+
+    private func displayedBalanceKilocalories(for balance: DailyEnergyBalance) -> Double? {
+        PersonalEnergyBalanceCalculator.balanceKilocalories(
+            for: balance,
+            dailyAdjustmentKilocalories: appliedDailyAdjustment
+        )
+    }
+
+    private func signedKilocalories(_ value: Double) -> String {
+        "\(value.formatted(.number.sign(strategy: .always()).precision(.fractionLength(0)))) kcal"
+    }
+
     private func signedKilograms(_ value: Double?) -> String {
         guard let value else { return "— kg" }
         return "\(value.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1)))) kg"
@@ -427,7 +518,7 @@ struct EnergyBalanceTrendsView: View {
 
     private func expectedWeightExplanation(_ comparison: WeightBalanceComparison) -> String {
         let base = "Quant addiert \(comparison.evaluableBalanceDayCount) vollständige, abgeschlossene Tagesbilanzen. Die Summe wird mit ungefähr 7.700 kcal pro Kilogramm umgerechnet: Defizite senken, Überschüsse erhöhen den Erwartungswert."
-        if case let .ready(factor) = comparison.calibrationStatus {
+        if case let .ready(factor, _) = comparison.calibrationStatus {
             let formattedFactor = factor.formatted(.number.precision(.fractionLength(2)))
             return "\(base) Dein aus früheren Verläufen kalibrierter Faktor ×\(formattedFactor) wird anschließend berücksichtigt."
         }
@@ -494,10 +585,23 @@ struct EnergyBalanceTrendsView: View {
         return "Im betrachteten Zeitraum lag im Mittel ein geschätzter Überschuss vor. Einzelne Tage sind normal; beobachte den längerfristigen Verlauf."
     }
 
+    private var personalInterpretation: String? {
+        guard let adjustment = appliedDailyAdjustment else { return nil }
+        let amount = wholeNumber(abs(adjustment))
+        if adjustment > 50 {
+            return "Dein längerfristiger Gewichtstrend spricht für eine um etwa \(amount) kcal pro Tag höhere Bilanz als erfasst. Das tatsächliche Defizit könnte daher kleiner beziehungsweise der Überschuss größer sein."
+        }
+        if adjustment < -50 {
+            return "Dein längerfristiger Gewichtstrend spricht für eine um etwa \(amount) kcal pro Tag niedrigere Bilanz als erfasst. Das tatsächliche Defizit könnte daher größer beziehungsweise der Überschuss kleiner sein."
+        }
+        return "Dein längerfristiger Gewichtstrend passt bereits gut zur erfassten Tagesbilanz; die persönliche Korrektur ist gering."
+    }
+
     private var chartAccessibilityValue: String {
         guard let averageBalance else { return "Keine vollständigen abgeschlossenen Tage" }
         let direction = averageBalance <= 0 ? "Defizit" : "Überschuss"
-        return "Durchschnittlich \(wholeNumber(abs(averageBalance))) Kilokalorien \(direction) pro vollständigem Tag"
+        let source = appliedDailyAdjustment == nil ? "Erfasst" : "Persönlich kalibriert"
+        return "\(source), durchschnittlich \(wholeNumber(abs(averageBalance))) Kilokalorien \(direction) pro vollständigem Tag"
     }
 
     private func balanceColor(_ value: Double) -> Color {

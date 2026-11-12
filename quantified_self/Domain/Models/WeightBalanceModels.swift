@@ -36,7 +36,10 @@ enum PersonalCalibrationStatus: Sendable, Equatable {
         requiredSpanDays: Int
     )
     case unavailable(reason: String)
-    case ready(factor: Double)
+    case ready(
+        factor: Double,
+        dailyBalanceAdjustmentKilocalories: Double
+    )
 }
 
 struct WeightBalanceComparison: Sendable, Equatable {
@@ -53,5 +56,10 @@ struct WeightBalanceComparison: Sendable, Equatable {
     var usesPersonalCalibration: Bool {
         if case .ready = calibrationStatus { return true }
         return false
+    }
+
+    var dailyBalanceAdjustmentKilocalories: Double? {
+        guard case let .ready(_, adjustment) = calibrationStatus else { return nil }
+        return adjustment
     }
 }

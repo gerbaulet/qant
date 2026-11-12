@@ -9,6 +9,7 @@ enum WeightBalanceComparisonBuilder {
     static let minimumCalibrationBalanceDayCount = 42
     static let calibrationHistoryDayCount = 365
     static let kilocaloriesPerKilogram = 7_700.0
+    static let maximumDailyBalanceAdjustmentKilocalories = 500.0
 
     static func makeComparison(
         measurements: [WeightMeasurement],
@@ -112,7 +113,7 @@ enum WeightBalanceComparisonBuilder {
         let observedStart = line.value(on: normalizedComparisonStart, calendar: calendar)
         let observedEnd = line.value(on: today, calendar: calendar)
         let factor: Double
-        if case let .ready(calibratedFactor) = calibrationStatus {
+        if case let .ready(calibratedFactor, _) = calibrationStatus {
             factor = calibratedFactor
         } else {
             factor = 1
@@ -217,8 +218,9 @@ enum WeightBalanceComparisonBuilder {
 
         let trendDays = calendar.dateComponents([.day], from: firstDate, to: lastDate).day ?? 0
         let observedChange = line.slopeKilogramsPerDay * Double(trendDays)
-        let predictedChange = trainingBalances.compactMap(\.balanceKilocalories).reduce(0, +) /
-            kilocaloriesPerKilogram
+        let recordedBalances = trainingBalances.compactMap(\.balanceKilocalories)
+        let recordedBalanceSum = recordedBalances.reduce(0, +)
+        let predictedChange = recordedBalanceSum / kilocaloriesPerKilogram
         guard abs(predictedChange) >= 0.25 else {
             return .unavailable(
                 reason: "Die bisherige Energiebilanz enthält zu wenig Signal für eine persönliche Kalibrierung."
@@ -231,7 +233,20 @@ enum WeightBalanceComparisonBuilder {
         }
 
         let rawFactor = observedChange / predictedChange
-        return .ready(factor: min(max(rawFactor, 0.6), 1.4))
+        let recordedDailyBalance = recordedBalanceSum / Double(recordedBalances.count)
+        let observedDailyBalance = line.slopeKilogramsPerDay * kilocaloriesPerKilogram
+        let rawDailyAdjustment = observedDailyBalance - recordedDailyBalance
+        let boundedDailyAdjustment = min(
+            max(
+                rawDailyAdjustment,
+                -maximumDailyBalanceAdjustmentKilocalories
+            ),
+            maximumDailyBalanceAdjustmentKilocalories
+        )
+        return .ready(
+            factor: min(max(rawFactor, 0.6), 1.4),
+            dailyBalanceAdjustmentKilocalories: boundedDailyAdjustment
+        )
     }
 
     private static func makeExpectedTrend(
