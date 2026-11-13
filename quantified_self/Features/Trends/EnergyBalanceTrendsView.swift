@@ -473,14 +473,29 @@ struct EnergyBalanceTrendsView: View {
             Label(reason, systemImage: "person.crop.circle.badge.questionmark")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-        case let .ready(_, dailyBalanceAdjustmentKilocalories):
+        case let .ready(
+            _,
+            dailyBalanceAdjustmentKilocalories,
+            uncappedDailyBalanceAdjustmentKilocalories
+        ):
             VStack(alignment: .leading, spacing: 4) {
                 Label("Persönliches Modell aus mindestens sechs Wochen Verlauf aktiv", systemImage: "person.crop.circle.badge.checkmark")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.blue)
-                Text("Korrektur der Tagesbilanz: \(signedKilocalories(dailyBalanceAdjustmentKilocalories))/Tag")
+                Text("Verwendete Korrektur: \(signedKilocalories(dailyBalanceAdjustmentKilocalories))/Tag")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if abs(
+                    uncappedDailyBalanceAdjustmentKilocalories -
+                        dailyBalanceAdjustmentKilocalories
+                ) >= 0.5 {
+                    Text("Modellwert vor Sicherheitsgrenze: \(signedKilocalories(uncappedDailyBalanceAdjustmentKilocalories))/Tag")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Nur zur Einordnung; dieser Wert wird nicht für die Bilanz verwendet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -519,7 +534,7 @@ struct EnergyBalanceTrendsView: View {
 
     private func expectedWeightExplanation(_ comparison: WeightBalanceComparison) -> String {
         let base = "Quant addiert \(comparison.evaluableBalanceDayCount) vollständige, abgeschlossene Tagesbilanzen. Die Summe wird mit ungefähr 7.700 kcal pro Kilogramm umgerechnet: Defizite senken, Überschüsse erhöhen den Erwartungswert."
-        if case let .ready(factor, _) = comparison.calibrationStatus {
+        if case let .ready(factor, _, _) = comparison.calibrationStatus {
             let formattedFactor = factor.formatted(.number.precision(.fractionLength(2)))
             return "\(base) Dein aus früheren Verläufen kalibrierter Faktor ×\(formattedFactor) wird anschließend berücksichtigt."
         }

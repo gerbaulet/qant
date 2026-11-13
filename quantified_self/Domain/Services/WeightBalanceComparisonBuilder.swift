@@ -113,7 +113,7 @@ enum WeightBalanceComparisonBuilder {
         let observedStart = line.value(on: normalizedComparisonStart, calendar: calendar)
         let observedEnd = line.value(on: today, calendar: calendar)
         let factor: Double
-        if case let .ready(calibratedFactor, _) = calibrationStatus {
+        if case let .ready(calibratedFactor, _, _) = calibrationStatus {
             factor = calibratedFactor
         } else {
             factor = 1
@@ -245,7 +245,8 @@ enum WeightBalanceComparisonBuilder {
         )
         return .ready(
             factor: min(max(rawFactor, 0.6), 1.4),
-            dailyBalanceAdjustmentKilocalories: boundedDailyAdjustment
+            dailyBalanceAdjustmentKilocalories: boundedDailyAdjustment,
+            uncappedDailyBalanceAdjustmentKilocalories: rawDailyAdjustment
         )
     }
 
