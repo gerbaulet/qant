@@ -16,6 +16,25 @@ SIMULATOR_OS ?= latest
 DEVICE ?= Clemens-iPhone2
 TEST_TARGET ?= QuantTests
 
+POSITIONAL_DEVICE :=
+ifeq ($(firstword $(MAKECMDGOALS)),deploy-device)
+POSITIONAL_DEVICE := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+endif
+
+ifneq ($(strip $(POSITIONAL_DEVICE)),)
+ifeq ($(origin DEVICE),command line)
+$(error Pass the device either as a quoted argument or with DEVICE=..., not both)
+endif
+override DEVICE := $(POSITIONAL_DEVICE)
+
+# Make treats the quoted device name as another goal. Accept that exact goal
+# after deploy-device so names containing spaces can be used positionally.
+.DEFAULT:
+	@actual_target="$@"; \
+	if [[ -n "$%" ]]; then actual_target="$@($%)"; fi; \
+	test "$$actual_target" = "$(POSITIONAL_DEVICE)" || { echo "Unknown target: $$actual_target" >&2; exit 2; }
+endif
+
 SIMULATOR_DESTINATION = platform=iOS Simulator,name=$(SIMULATOR_NAME),OS=$(SIMULATOR_OS)
 DEVICE_APP = $(DEVICE_DERIVED_DATA)/Build/Products/$(CONFIGURATION)-iphoneos/Quant.app
 XCODEBUILD = xcodebuild -project "$(PROJECT)" -scheme "$(SCHEME)" -configuration "$(CONFIGURATION)"
@@ -103,7 +122,7 @@ launch-device: ## Launch Quant on the selected unlocked iPhone.
 		--terminate-existing \
 		"$(BUNDLE_ID)"
 
-deploy-device: ## Build, install, and launch Quant on the selected iPhone.
-	$(MAKE) build-device
-	$(MAKE) install-device
-	$(MAKE) launch-device
+deploy-device: ## Build, install, and launch Quant; accepts a quoted device name.
+	$(MAKE) build-device DEVICE="$(DEVICE)"
+	$(MAKE) install-device DEVICE="$(DEVICE)"
+	$(MAKE) launch-device DEVICE="$(DEVICE)"
