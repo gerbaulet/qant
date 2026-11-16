@@ -130,6 +130,7 @@ private struct TodayDashboardContainer: View {
     @State private var weeklySummary: WeeklyNutritionSummary?
     @State private var intakeForecast: TodayIntakeForecast?
     @State private var energyBalance: DailyEnergyBalance?
+    @State private var expenditureForecast: EnergyExpenditureForecast?
     @State private var lastRefreshID: RefreshID?
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
     private let widgetSynchronizer = WidgetCalorieSnapshotSynchronizer()
@@ -180,6 +181,7 @@ private struct TodayDashboardContainer: View {
                 weeklySummary: weeklySummary,
                 intakeForecast: intakeForecast,
                 energyBalance: energyBalance,
+                expenditureForecast: expenditureForecast,
                 healthStatus: healthMetrics.energyStatus,
                 onAddFood: onAddFood,
                 onRetryMeal: retryAnalysis,
@@ -209,11 +211,16 @@ private struct TodayDashboardContainer: View {
         guard let refreshID = refreshID(for: date), refreshID != lastRefreshID else { return }
         await Task.yield()
         let calendar = Calendar.autoupdatingCurrent
-        if healthMetrics.hasRequestedEnergyAccess,
-           let dayInterval = calendar.dateInterval(of: .day, for: date) {
+        let forecastInterval = energyForecastInterval(for: date, calendar: calendar)
+        if healthMetrics.hasRequestedEnergyAccess, let forecastInterval {
             await healthMetrics.loadEnergy(
-                from: dayInterval.start,
-                to: dayInterval.end,
+                from: forecastInterval.start,
+                to: forecastInterval.end,
+                calendar: calendar
+            )
+            await healthMetrics.loadHourlyEnergy(
+                from: forecastInterval.start,
+                to: forecastInterval.end,
                 calendar: calendar
             )
         }
@@ -227,13 +234,25 @@ private struct TodayDashboardContainer: View {
         snapshot = presentation.snapshot
         weeklySummary = presentation.weeklySummary
         intakeForecast = presentation.intakeForecast
+        let currentExpenditure = healthMetrics.expenditure(for: date, calendar: calendar)
         energyBalance = EnergyBalanceBuilder.makeBalance(
             for: date,
             meals: meals,
-            expenditure: healthMetrics.expenditure(for: date, calendar: calendar),
+            expenditure: currentExpenditure,
             now: date,
             calendar: calendar
         )
+        if let forecastInterval {
+            expenditureForecast = EnergyExpenditureForecastBuilder.makeForecast(
+                for: date,
+                current: currentExpenditure,
+                dailyExpenditures: healthMetrics.expenditures(within: forecastInterval),
+                hourlyExpenditures: healthMetrics.hourlyExpenditures(within: forecastInterval),
+                calendar: calendar
+            )
+        } else {
+            expenditureForecast = nil
+        }
         lastRefreshID = refreshID
     }
 
@@ -247,6 +266,27 @@ private struct TodayDashboardContainer: View {
             calendar: calendar,
             force: true
         )
+        await healthMetrics.loadHourlyEnergy(
+            from: dayInterval.start,
+            to: dayInterval.end,
+            calendar: calendar,
+            force: true
+        )
+    }
+
+    private func energyForecastInterval(
+        for date: Date,
+        calendar: Calendar
+    ) -> DateInterval? {
+        guard let dayInterval = calendar.dateInterval(of: .day, for: date),
+              let start = calendar.date(
+                byAdding: .day,
+                value: -90,
+                to: dayInterval.start
+              ) else {
+            return nil
+        }
+        return DateInterval(start: start, end: dayInterval.end)
     }
 
     private func widgetSnapshot(for snapshot: TodayDashboardSnapshot) -> WidgetCalorieSnapshot {

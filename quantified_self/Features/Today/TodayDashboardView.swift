@@ -5,6 +5,7 @@ struct TodayDashboardView: View {
     let weeklySummary: WeeklyNutritionSummary?
     let intakeForecast: TodayIntakeForecast?
     let energyBalance: DailyEnergyBalance?
+    let expenditureForecast: EnergyExpenditureForecast?
     let healthStatus: HealthDataStatus
     let onAddFood: () -> Void
     let onRetryMeal: (UUID) -> Void
@@ -16,6 +17,7 @@ struct TodayDashboardView: View {
         weeklySummary: WeeklyNutritionSummary? = nil,
         intakeForecast: TodayIntakeForecast? = nil,
         energyBalance: DailyEnergyBalance? = nil,
+        expenditureForecast: EnergyExpenditureForecast? = nil,
         healthStatus: HealthDataStatus = .notRequested,
         onAddFood: @escaping () -> Void,
         onRetryMeal: @escaping (UUID) -> Void = { _ in },
@@ -26,6 +28,7 @@ struct TodayDashboardView: View {
         self.weeklySummary = weeklySummary
         self.intakeForecast = intakeForecast
         self.energyBalance = energyBalance
+        self.expenditureForecast = expenditureForecast
         self.healthStatus = healthStatus
         self.onAddFood = onAddFood
         self.onRetryMeal = onRetryMeal
@@ -142,13 +145,43 @@ struct TodayDashboardView: View {
                                     .monospacedDigit()
                             }
                             .accessibilityIdentifier("today.intakeForecast")
-                            Text("Basierend auf deinem bisherigen Tagesverlauf und \(intakeForecast.historicalDayCount) früheren erfassten Tagen.")
+                            Text("Auf Basis deines bisherigen Verlaufs und \(intakeForecast.historicalDayCount) früherer Ernährungstage.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Text("Für die Hochrechnung werden mindestens drei frühere erfasste Tage benötigt.")
+                            Text("Für die Aufnahmehochrechnung werden mindestens drei frühere erfasste Tage benötigt.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                        }
+
+                        if let expenditureForecast {
+                            LabeledContent("Verbrauch") {
+                                Text("≈ \(wholeNumber(expenditureForecast.totalKilocalories)) kcal")
+                                    .monospacedDigit()
+                            }
+                            .accessibilityIdentifier("today.expenditureForecast")
+                            forecastExpenditureBreakdown(expenditureForecast)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            Text(expenditureForecastExplanation(expenditureForecast))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Für die Verbrauchshochrechnung werden mindestens sieben vollständige Apple-Health-Tage benötigt.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let intakeForecast, let expenditureForecast {
+                            Divider()
+                            LabeledContent("Bilanz") {
+                                Text(projectedBalanceText(
+                                    intake: intakeForecast.energyKilocalories,
+                                    expenditure: expenditureForecast.totalKilocalories
+                                ))
+                                .monospacedDigit()
+                            }
+                            .accessibilityIdentifier("today.balanceForecast")
                         }
                     }
                 }
@@ -486,6 +519,45 @@ struct TodayDashboardView: View {
         return "Aktuell liegt ein geschätzter Überschuss vor. Einzelne Tage sind normal; entscheidend ist der längerfristige Verlauf."
     }
 
+    private func projectedBalanceText(intake: Double, expenditure: Double) -> String {
+        let balance = intake - expenditure
+        return "\(balanceHeadline(balance)) \(balance <= 0 ? "Defizit" : "Überschuss")"
+    }
+
+    private func forecastExpenditureBreakdown(
+        _ forecast: EnergyExpenditureForecast
+    ) -> some View {
+        let resting = Label(
+            "Ruhe ≈\(wholeNumber(forecast.restingKilocalories))",
+            systemImage: "bed.double"
+        )
+        let active = Label(
+            "Aktiv ≈\(wholeNumber(forecast.activeKilocalories))",
+            systemImage: "figure.walk"
+        )
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                resting
+                active
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                resting
+                active
+            }
+        }
+    }
+
+    private func expenditureForecastExplanation(
+        _ forecast: EnergyExpenditureForecast
+    ) -> String {
+        switch forecast.method {
+        case .historicalRemainder:
+            "Auf Basis des typischen Restverbrauchs von \(forecast.historicalDayCount) vollständigen Apple-Health-Tagen."
+        case .dailyMedian:
+            "Auf Basis des typischen Tagesverbrauchs von \(forecast.historicalDayCount) vollständigen Apple-Health-Tagen."
+        }
+    }
+
     private func progressText(_ progress: NutrientProgress) -> String {
         let consumed = wholeNumber(progress.consumed)
         if let target = progress.target {
@@ -528,7 +600,29 @@ private extension NutrientIdentifier {
 #if DEBUG
 #Preview("Heute – Beispieldaten") {
     NavigationStack {
-        TodayDashboardView(snapshot: .preview, onAddFood: {})
+        TodayDashboardView(
+            snapshot: .preview,
+            intakeForecast: TodayIntakeForecast(
+                energyKilocalories: 2_100,
+                historicalDayCount: 18
+            ),
+            energyBalance: DailyEnergyBalance(
+                date: TodayDashboardSnapshot.preview.date,
+                intakeKilocalories: 1_640,
+                activeKilocalories: 520,
+                restingKilocalories: 1_120,
+                completeness: .provisionalIntake,
+                isCurrentDay: true
+            ),
+            expenditureForecast: EnergyExpenditureForecast(
+                activeKilocalories: 720,
+                restingKilocalories: 1_580,
+                historicalDayCount: 42,
+                method: .historicalRemainder
+            ),
+            healthStatus: .available,
+            onAddFood: {}
+        )
     }
 }
 #endif

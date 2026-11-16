@@ -6,13 +6,17 @@ import Observation
 final class HealthMetricsModel {
     private(set) var energyStatus: HealthDataStatus
     private(set) var energyExpenditures: [DailyEnergyExpenditure] = []
+    private(set) var hourlyEnergyExpenditures: [HourlyEnergyExpenditure] = []
     private(set) var weightStatus: HealthDataStatus
     private(set) var weightMeasurements: [WeightMeasurement] = []
     private(set) var dataVersion = 0
     private(set) var isLoadingEnergy = false
+    private(set) var isLoadingHourlyEnergy = false
     private(set) var isLoadingWeight = false
     private var loadedEnergyInterval: DateInterval?
     private var lastCurrentDayEnergyLoadDate: Date?
+    private var loadedHourlyEnergyInterval: DateInterval?
+    private var lastCurrentDayHourlyEnergyLoadDate: Date?
     private var loadedWeightInterval: DateInterval?
 
     var hasRequestedEnergyAccess: Bool {
@@ -99,6 +103,8 @@ final class HealthMetricsModel {
         let requestedInterval = DateInterval(start: startDate, end: endDate)
         guard let queryInterval = energyQueryInterval(
             for: requestedInterval,
+            loadedInterval: loadedEnergyInterval,
+            lastCurrentDayLoadDate: lastCurrentDayEnergyLoadDate,
             calendar: calendar,
             force: force
         ) else {
@@ -152,6 +158,60 @@ final class HealthMetricsModel {
         }
     }
 
+    func loadHourlyEnergy(
+        from startDate: Date,
+        to endDate: Date,
+        calendar: Calendar,
+        force: Bool = false
+    ) async {
+        guard preferences.hasRequestedEnergyAccess,
+              energyProvider.isHealthDataAvailable(),
+              !isLoadingHourlyEnergy else {
+            return
+        }
+        let requestedInterval = DateInterval(start: startDate, end: endDate)
+        guard let queryInterval = energyQueryInterval(
+            for: requestedInterval,
+            loadedInterval: loadedHourlyEnergyInterval,
+            lastCurrentDayLoadDate: lastCurrentDayHourlyEnergyLoadDate,
+            calendar: calendar,
+            force: force
+        ) else {
+            return
+        }
+
+        isLoadingHourlyEnergy = true
+        defer { isLoadingHourlyEnergy = false }
+
+        do {
+            let next = try await energyProvider.hourlyEnergy(
+                from: queryInterval.start,
+                to: queryInterval.end,
+                calendar: calendar
+            )
+            let loadDate = now()
+            mergeHourlyEnergy(next, replacing: queryInterval)
+            if currentDayIntersection(
+                with: queryInterval,
+                referenceDate: loadDate,
+                calendar: calendar
+            ) != nil {
+                lastCurrentDayHourlyEnergyLoadDate = loadDate
+            }
+            if let loadedHourlyEnergyInterval {
+                self.loadedHourlyEnergyInterval = DateInterval(
+                    start: min(loadedHourlyEnergyInterval.start, queryInterval.start),
+                    end: max(loadedHourlyEnergyInterval.end, queryInterval.end)
+                )
+            } else {
+                loadedHourlyEnergyInterval = queryInterval
+            }
+            dataVersion += 1
+        } catch {
+            return
+        }
+    }
+
     func expenditure(for date: Date, calendar: Calendar) -> DailyEnergyExpenditure? {
         let day = calendar.startOfDay(for: date)
         return energyExpenditures.first {
@@ -161,6 +221,12 @@ final class HealthMetricsModel {
 
     func expenditures(within interval: DateInterval) -> [DailyEnergyExpenditure] {
         energyExpenditures.filter {
+            $0.date >= interval.start && $0.date < interval.end
+        }
+    }
+
+    func hourlyExpenditures(within interval: DateInterval) -> [HourlyEnergyExpenditure] {
+        hourlyEnergyExpenditures.filter {
             $0.date >= interval.start && $0.date < interval.end
         }
     }
@@ -237,14 +303,16 @@ final class HealthMetricsModel {
 
     private func energyQueryInterval(
         for requestedInterval: DateInterval,
+        loadedInterval: DateInterval?,
+        lastCurrentDayLoadDate: Date?,
         calendar: Calendar,
         force: Bool
     ) -> DateInterval? {
-        guard !force, let loadedEnergyInterval else {
+        guard !force, let loadedInterval else {
             return requestedInterval
         }
-        guard loadedEnergyInterval.start <= requestedInterval.start,
-              loadedEnergyInterval.end >= requestedInterval.end else {
+        guard loadedInterval.start <= requestedInterval.start,
+              loadedInterval.end >= requestedInterval.end else {
             return requestedInterval
         }
 
@@ -254,11 +322,11 @@ final class HealthMetricsModel {
             referenceDate: referenceDate,
             calendar: calendar
         ) else { return nil }
-        guard let lastCurrentDayEnergyLoadDate,
+        guard let lastCurrentDayLoadDate,
               let currentHour = calendar.dateInterval(of: .hour, for: referenceDate)?.start,
               let loadedHour = calendar.dateInterval(
                 of: .hour,
-                for: lastCurrentDayEnergyLoadDate
+                for: lastCurrentDayLoadDate
               )?.start else {
             return currentDayInterval
         }
@@ -294,6 +362,22 @@ final class HealthMetricsModel {
             byDay[calendar.startOfDay(for: expenditure.date)] = expenditure
         }
         energyExpenditures = byDay.values.sorted { $0.date < $1.date }
+    }
+
+    private func mergeHourlyEnergy(
+        _ next: [HourlyEnergyExpenditure],
+        replacing interval: DateInterval
+    ) {
+        var byHour = Dictionary(
+            hourlyEnergyExpenditures
+                .filter { !interval.contains($0.date) }
+                .map { ($0.date, $0) },
+            uniquingKeysWith: { _, newest in newest }
+        )
+        for expenditure in next {
+            byHour[expenditure.date] = expenditure
+        }
+        hourlyEnergyExpenditures = byHour.values.sorted { $0.date < $1.date }
     }
 
     private func mergeWeights(

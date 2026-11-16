@@ -13,6 +13,30 @@ struct DailyEnergyExpenditure: Identifiable, Sendable, Equatable {
     }
 }
 
+struct HourlyEnergyExpenditure: Identifiable, Sendable, Equatable {
+    let date: Date
+    let activeKilocalories: Double?
+    let restingKilocalories: Double?
+
+    var id: Date { date }
+}
+
+enum EnergyExpenditureForecastMethod: Sendable, Equatable {
+    case historicalRemainder
+    case dailyMedian
+}
+
+struct EnergyExpenditureForecast: Sendable, Equatable {
+    let activeKilocalories: Double
+    let restingKilocalories: Double
+    let historicalDayCount: Int
+    let method: EnergyExpenditureForecastMethod
+
+    var totalKilocalories: Double {
+        activeKilocalories + restingKilocalories
+    }
+}
+
 enum EnergyBalanceCompleteness: Sendable, Equatable {
     case complete
     case provisionalIntake

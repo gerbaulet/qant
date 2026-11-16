@@ -10,6 +10,11 @@ protocol HealthEnergyProviding {
         to endDate: Date,
         calendar: Calendar
     ) async throws -> [DailyEnergyExpenditure]
+    func hourlyEnergy(
+        from startDate: Date,
+        to endDate: Date,
+        calendar: Calendar
+    ) async throws -> [HourlyEnergyExpenditure]
     func earliestAuthorizedEnergyDate() async throws -> Date?
 }
 
@@ -22,6 +27,27 @@ protocol HealthWeightProviding {
 
 @MainActor
 final class HealthKitEnergyProvider: HealthEnergyProviding {
+    private enum StatisticsInterval {
+        case day
+        case hour
+
+        var components: DateComponents {
+            switch self {
+            case .day: DateComponents(day: 1)
+            case .hour: DateComponents(hour: 1)
+            }
+        }
+
+        func bucketStart(for date: Date, calendar: Calendar) -> Date {
+            switch self {
+            case .day:
+                calendar.startOfDay(for: date)
+            case .hour:
+                calendar.dateInterval(of: .hour, for: date)?.start ?? date
+            }
+        }
+    }
+
     private let store: HKHealthStore
 
     init(store: HKHealthStore = HKHealthStore()) {
@@ -45,17 +71,19 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         let activeType = HKQuantityType(.activeEnergyBurned)
         let restingType = HKQuantityType(.basalEnergyBurned)
 
-        async let active = dailySums(
+        async let active = energySums(
             for: activeType,
             from: startDate,
             to: endDate,
-            calendar: calendar
+            calendar: calendar,
+            interval: .day
         )
-        async let resting = dailySums(
+        async let resting = energySums(
             for: restingType,
             from: startDate,
             to: endDate,
-            calendar: calendar
+            calendar: calendar,
+            interval: .day
         )
         let (activeByDay, restingByDay) = try await (active, resting)
         let allDays = Set(activeByDay.keys).union(restingByDay.keys)
@@ -65,6 +93,41 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                 date: day,
                 activeKilocalories: activeByDay[day],
                 restingKilocalories: restingByDay[day]
+            )
+        }
+    }
+
+    func hourlyEnergy(
+        from startDate: Date,
+        to endDate: Date,
+        calendar: Calendar
+    ) async throws -> [HourlyEnergyExpenditure] {
+        guard startDate < endDate else { return [] }
+        let activeType = HKQuantityType(.activeEnergyBurned)
+        let restingType = HKQuantityType(.basalEnergyBurned)
+
+        async let active = energySums(
+            for: activeType,
+            from: startDate,
+            to: endDate,
+            calendar: calendar,
+            interval: .hour
+        )
+        async let resting = energySums(
+            for: restingType,
+            from: startDate,
+            to: endDate,
+            calendar: calendar,
+            interval: .hour
+        )
+        let (activeByHour, restingByHour) = try await (active, resting)
+        let allHours = Set(activeByHour.keys).union(restingByHour.keys)
+
+        return allHours.sorted().map { hour in
+            HourlyEnergyExpenditure(
+                date: hour,
+                activeKilocalories: activeByHour[hour],
+                restingKilocalories: restingByHour[hour]
             )
         }
     }
@@ -85,11 +148,12 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         ]
     }
 
-    private func dailySums(
+    private func energySums(
         for type: HKQuantityType,
         from startDate: Date,
         to endDate: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        interval: StatisticsInterval
     ) async throws -> [Date: Double] {
         let anchor = calendar.startOfDay(for: startDate)
         let predicate = HKQuery.predicateForSamples(
@@ -104,7 +168,7 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                 quantitySamplePredicate: predicate,
                 options: .cumulativeSum,
                 anchorDate: anchor,
-                intervalComponents: DateComponents(day: 1)
+                intervalComponents: interval.components
             )
             query.initialResultsHandler = { _, collection, error in
                 if let error {
@@ -119,7 +183,11 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                 var values: [Date: Double] = [:]
                 collection.enumerateStatistics(from: startDate, to: endDate) { statistics, _ in
                     guard let quantity = statistics.sumQuantity() else { return }
-                    values[calendar.startOfDay(for: statistics.startDate)] = quantity.doubleValue(
+                    let bucket = interval.bucketStart(
+                        for: statistics.startDate,
+                        calendar: calendar
+                    )
+                    values[bucket] = quantity.doubleValue(
                         for: .kilocalorie()
                     )
                 }
