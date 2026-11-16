@@ -128,6 +128,7 @@ private struct TodayDashboardContainer: View {
     @State private var duplicateConfirmationMealID: UUID?
     @State private var snapshot: TodayDashboardSnapshot?
     @State private var weeklySummary: WeeklyNutritionSummary?
+    @State private var intakeForecast: TodayIntakeForecast?
     @State private var energyBalance: DailyEnergyBalance?
     @State private var lastRefreshID: RefreshID?
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
@@ -177,6 +178,7 @@ private struct TodayDashboardContainer: View {
             TodayDashboardView(
                 snapshot: snapshot,
                 weeklySummary: weeklySummary,
+                intakeForecast: intakeForecast,
                 energyBalance: energyBalance,
                 healthStatus: healthMetrics.energyStatus,
                 onAddFood: onAddFood,
@@ -224,6 +226,7 @@ private struct TodayDashboardContainer: View {
         guard !Task.isCancelled else { return }
         snapshot = presentation.snapshot
         weeklySummary = presentation.weeklySummary
+        intakeForecast = presentation.intakeForecast
         energyBalance = EnergyBalanceBuilder.makeBalance(
             for: date,
             meals: meals,

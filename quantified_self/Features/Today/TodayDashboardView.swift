@@ -3,6 +3,7 @@ import SwiftUI
 struct TodayDashboardView: View {
     let snapshot: TodayDashboardSnapshot
     let weeklySummary: WeeklyNutritionSummary?
+    let intakeForecast: TodayIntakeForecast?
     let energyBalance: DailyEnergyBalance?
     let healthStatus: HealthDataStatus
     let onAddFood: () -> Void
@@ -13,6 +14,7 @@ struct TodayDashboardView: View {
     init(
         snapshot: TodayDashboardSnapshot,
         weeklySummary: WeeklyNutritionSummary? = nil,
+        intakeForecast: TodayIntakeForecast? = nil,
         energyBalance: DailyEnergyBalance? = nil,
         healthStatus: HealthDataStatus = .notRequested,
         onAddFood: @escaping () -> Void,
@@ -22,6 +24,7 @@ struct TodayDashboardView: View {
     ) {
         self.snapshot = snapshot
         self.weeklySummary = weeklySummary
+        self.intakeForecast = intakeForecast
         self.energyBalance = energyBalance
         self.healthStatus = healthStatus
         self.onAddFood = onAddFood
@@ -127,6 +130,28 @@ struct TodayDashboardView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                if balance.isCurrentDay {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Hochrechnung bis Tagesende")
+                            .font(.subheadline.weight(.semibold))
+                        if let intakeForecast {
+                            LabeledContent("Aufnahme") {
+                                Text("≈ \(wholeNumber(intakeForecast.energyKilocalories)) kcal")
+                                    .monospacedDigit()
+                            }
+                            .accessibilityIdentifier("today.intakeForecast")
+                            Text("Basierend auf deinem bisherigen Tagesverlauf und \(intakeForecast.historicalDayCount) früheren erfassten Tagen.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Für die Hochrechnung werden mindestens drei frühere erfasste Tage benötigt.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
 
                 if let target = snapshot.energy.target {
                     Divider()

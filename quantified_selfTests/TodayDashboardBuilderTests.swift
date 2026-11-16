@@ -166,6 +166,27 @@ struct TodayDashboardBuilderTests {
         #expect(presentation.weeklySummary?.trackedDayCount == 2)
     }
 
+    @Test("Presentation reuses the existing daily intake forecast")
+    func presentationIncludesIntakeForecast() {
+        let reference = date(2026, 8, 24, 14)
+        let meals = [
+            meal(at: date(2026, 8, 21, 18), state: .confirmed, energy: 400, protein: 20),
+            meal(at: date(2026, 8, 22, 18), state: .confirmed, energy: 500, protein: 25),
+            meal(at: date(2026, 8, 23, 18), state: .confirmed, energy: 600, protein: 30),
+            meal(at: date(2026, 8, 24, 8), state: .confirmed, energy: 700, protein: 35),
+        ]
+
+        let presentation = TodayDashboardPresentationBuilder.makePresentation(
+            for: reference,
+            meals: meals,
+            goals: goals(starting: date(2026, 8, 1)),
+            calendar: calendar
+        )
+
+        #expect(presentation.intakeForecast?.energyKilocalories == 1_200)
+        #expect(presentation.intakeForecast?.historicalDayCount == 3)
+    }
+
     @Test("Portion multiplier scales meal, daily and weekly nutrients")
     func portionMultiplier() {
         let reference = date(2026, 8, 23, 12)

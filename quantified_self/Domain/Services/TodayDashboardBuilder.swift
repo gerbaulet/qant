@@ -301,9 +301,15 @@ enum TodayDashboardBuilder {
     }
 }
 
+struct TodayIntakeForecast: Sendable, Equatable {
+    let energyKilocalories: Double
+    let historicalDayCount: Int
+}
+
 struct TodayDashboardPresentation {
     let snapshot: TodayDashboardSnapshot
     let weeklySummary: WeeklyNutritionSummary?
+    let intakeForecast: TodayIntakeForecast?
 }
 
 @MainActor
@@ -316,6 +322,12 @@ enum TodayDashboardPresentationBuilder {
     ) -> TodayDashboardPresentation {
         let portionMultipliers = PortionMultiplierSnapshot()
         let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
+        let intakeTrend = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date,
+            nutrient: .energy,
+            meals: meals,
+            calendar: calendar
+        )
         return TodayDashboardPresentation(
             snapshot: TodayDashboardBuilder.makeSnapshot(
                 for: date,
@@ -332,7 +344,13 @@ enum TodayDashboardPresentationBuilder {
                 calendar: calendar,
                 portionMultipliers: portionMultipliers,
                 activeRevisions: activeRevisions
-            )
+            ),
+            intakeForecast: intakeTrend.forecastPoints.last.map {
+                TodayIntakeForecast(
+                    energyKilocalories: $0.value,
+                    historicalDayCount: intakeTrend.forecastDayCount
+                )
+            }
         )
     }
 }
