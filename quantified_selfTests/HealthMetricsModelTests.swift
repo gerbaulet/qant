@@ -4,11 +4,16 @@ import Testing
 
 @MainActor
 struct HealthMetricsModelTests {
-    @Test("An empty Health query is cached and not repeated")
-    func cachesEmptyQueryRange() async {
+    @Test("An empty historical Health query stays cached across hours")
+    func cachesEmptyHistoricalQueryRange() async {
+        var now = Date(timeIntervalSince1970: 200_000)
         let provider = StubHealthEnergyProvider(results: [[]])
         let preferences = StubHealthAccessPreferences(hasRequestedEnergyAccess: true)
-        let model = HealthMetricsModel(energyProvider: provider, preferences: preferences)
+        let model = HealthMetricsModel(
+            energyProvider: provider,
+            preferences: preferences,
+            now: { now }
+        )
         let interval = DateInterval(
             start: Date(timeIntervalSince1970: 1_000),
             end: Date(timeIntervalSince1970: 2_000)
@@ -19,6 +24,7 @@ struct HealthMetricsModelTests {
             to: interval.end,
             calendar: Calendar(identifier: .gregorian)
         )
+        now = Date(timeIntervalSince1970: 204_000)
         await model.loadEnergy(
             from: interval.start,
             to: interval.end,
@@ -27,6 +33,63 @@ struct HealthMetricsModelTests {
 
         #expect(provider.queryCount == 1)
         #expect(model.energyStatus == .noData)
+    }
+
+    @Test("The current Health day refreshes after the hour changes")
+    func refreshesCurrentDayAfterHourChange() async {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let day = calendar.date(from: DateComponents(
+            year: 2026,
+            month: 11,
+            day: 16
+        ))!
+        var now = calendar.date(byAdding: .hour, value: 8, to: day)!
+        let expenditure = DailyEnergyExpenditure(
+            date: day,
+            activeKilocalories: 350,
+            restingKilocalories: 700
+        )
+        let provider = StubHealthEnergyProvider(results: [[], [expenditure]])
+        let preferences = StubHealthAccessPreferences(hasRequestedEnergyAccess: true)
+        let model = HealthMetricsModel(
+            energyProvider: provider,
+            preferences: preferences,
+            now: { now }
+        )
+        let interval = DateInterval(
+            start: calendar.date(byAdding: .day, value: -7, to: day)!,
+            end: calendar.date(byAdding: .day, value: 1, to: day)!
+        )
+        let currentDayInterval = DateInterval(
+            start: day,
+            end: interval.end
+        )
+
+        await model.loadEnergy(
+            from: interval.start,
+            to: interval.end,
+            calendar: calendar
+        )
+        await model.loadEnergy(
+            from: interval.start,
+            to: interval.end,
+            calendar: calendar
+        )
+        #expect(provider.queryCount == 1)
+        #expect(model.energyExpenditures.isEmpty)
+
+        now = calendar.date(byAdding: .hour, value: 1, to: now)!
+        await model.loadEnergy(
+            from: interval.start,
+            to: interval.end,
+            calendar: calendar
+        )
+
+        #expect(provider.queryCount == 2)
+        #expect(provider.queriedIntervals == [interval, currentDayInterval])
+        #expect(model.energyExpenditures == [expenditure])
+        #expect(model.energyStatus == .available)
     }
 
     @Test("A forced refresh removes Health values that no longer exist")
@@ -99,6 +162,7 @@ struct HealthMetricsModelTests {
 private final class StubHealthEnergyProvider: HealthEnergyProviding {
     private var results: [[DailyEnergyExpenditure]]
     private(set) var queryCount = 0
+    private(set) var queriedIntervals: [DateInterval] = []
 
     init(results: [[DailyEnergyExpenditure]]) {
         self.results = results
@@ -114,6 +178,7 @@ private final class StubHealthEnergyProvider: HealthEnergyProviding {
         calendar: Calendar
     ) async throws -> [DailyEnergyExpenditure] {
         queryCount += 1
+        queriedIntervals.append(DateInterval(start: startDate, end: endDate))
         return results.isEmpty ? [] : results.removeFirst()
     }
 

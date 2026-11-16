@@ -12,6 +12,7 @@ final class HealthMetricsModel {
     private(set) var isLoadingEnergy = false
     private(set) var isLoadingWeight = false
     private var loadedEnergyInterval: DateInterval?
+    private var lastCurrentDayEnergyLoadDate: Date?
     private var loadedWeightInterval: DateInterval?
 
     var hasRequestedEnergyAccess: Bool {
@@ -35,12 +36,14 @@ final class HealthMetricsModel {
     private let weightProvider: any HealthWeightProviding
     private let preferences: any HealthAccessPreferenceStoring
     private let weightPreferences: any HealthWeightPreferenceStoring
+    private let now: () -> Date
 
     init(
         energyProvider: (any HealthEnergyProviding)? = nil,
         preferences: (any HealthAccessPreferenceStoring)? = nil,
         weightProvider: (any HealthWeightProviding)? = nil,
-        weightPreferences: (any HealthWeightPreferenceStoring)? = nil
+        weightPreferences: (any HealthWeightPreferenceStoring)? = nil,
+        now: @escaping () -> Date = { .now }
     ) {
         let resolvedPreferences = preferences ?? UserDefaultsHealthAccessPreferenceStore()
         let resolvedWeightPreferences = weightPreferences ?? UserDefaultsHealthAccessPreferenceStore()
@@ -48,6 +51,7 @@ final class HealthMetricsModel {
         self.weightProvider = weightProvider ?? HealthKitWeightProvider()
         self.preferences = resolvedPreferences
         self.weightPreferences = resolvedWeightPreferences
+        self.now = now
         energyStatus = resolvedPreferences.hasRequestedEnergyAccess ? .noData : .notRequested
         weightStatus = resolvedWeightPreferences.hasRequestedWeightAccess ? .noData : .notRequested
     }
@@ -92,7 +96,12 @@ final class HealthMetricsModel {
             return
         }
         guard !isLoadingEnergy else { return }
-        if !force, cachedRangeContains(startDate: startDate, endDate: endDate) {
+        let requestedInterval = DateInterval(start: startDate, end: endDate)
+        guard let queryInterval = energyQueryInterval(
+            for: requestedInterval,
+            calendar: calendar,
+            force: force
+        ) else {
             return
         }
 
@@ -104,22 +113,30 @@ final class HealthMetricsModel {
 
         do {
             let next = try await energyProvider.dailyEnergy(
-                from: startDate,
-                to: endDate,
+                from: queryInterval.start,
+                to: queryInterval.end,
                 calendar: calendar
             )
+            let loadDate = now()
             merge(
                 next,
-                replacing: DateInterval(start: startDate, end: endDate),
+                replacing: queryInterval,
                 calendar: calendar
             )
+            if currentDayIntersection(
+                with: queryInterval,
+                referenceDate: loadDate,
+                calendar: calendar
+            ) != nil {
+                lastCurrentDayEnergyLoadDate = loadDate
+            }
             if let loadedEnergyInterval {
                 self.loadedEnergyInterval = DateInterval(
-                    start: min(loadedEnergyInterval.start, startDate),
-                    end: max(loadedEnergyInterval.end, endDate)
+                    start: min(loadedEnergyInterval.start, queryInterval.start),
+                    end: max(loadedEnergyInterval.end, queryInterval.end)
                 )
             } else {
-                loadedEnergyInterval = DateInterval(start: startDate, end: endDate)
+                loadedEnergyInterval = queryInterval
             }
             let earliestDate = try await energyProvider.earliestAuthorizedEnergyDate()
             if let earliestDate {
@@ -218,9 +235,48 @@ final class HealthMetricsModel {
         }
     }
 
-    private func cachedRangeContains(startDate: Date, endDate: Date) -> Bool {
-        guard let loadedEnergyInterval else { return false }
-        return loadedEnergyInterval.start <= startDate && loadedEnergyInterval.end >= endDate
+    private func energyQueryInterval(
+        for requestedInterval: DateInterval,
+        calendar: Calendar,
+        force: Bool
+    ) -> DateInterval? {
+        guard !force, let loadedEnergyInterval else {
+            return requestedInterval
+        }
+        guard loadedEnergyInterval.start <= requestedInterval.start,
+              loadedEnergyInterval.end >= requestedInterval.end else {
+            return requestedInterval
+        }
+
+        let referenceDate = now()
+        guard let currentDayInterval = currentDayIntersection(
+            with: requestedInterval,
+            referenceDate: referenceDate,
+            calendar: calendar
+        ) else { return nil }
+        guard let lastCurrentDayEnergyLoadDate,
+              let currentHour = calendar.dateInterval(of: .hour, for: referenceDate)?.start,
+              let loadedHour = calendar.dateInterval(
+                of: .hour,
+                for: lastCurrentDayEnergyLoadDate
+              )?.start else {
+            return currentDayInterval
+        }
+        return loadedHour == currentHour ? nil : currentDayInterval
+    }
+
+    private func currentDayIntersection(
+        with interval: DateInterval,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> DateInterval? {
+        guard let currentDay = calendar.dateInterval(of: .day, for: referenceDate) else {
+            return nil
+        }
+        let start = max(interval.start, currentDay.start)
+        let end = min(interval.end, currentDay.end)
+        guard start < end else { return nil }
+        return DateInterval(start: start, end: end)
     }
 
     private func merge(

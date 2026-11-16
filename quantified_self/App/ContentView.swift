@@ -121,6 +121,7 @@ private struct TodayDashboardContainer: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(HealthMetricsModel.self) private var healthMetrics
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var navigationPath: [UUID] = []
@@ -148,6 +149,10 @@ private struct TodayDashboardContainer: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
             navigationPath.removeAll()
+        }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await refreshCurrentDayEnergy()
         }
     }
 
@@ -227,6 +232,18 @@ private struct TodayDashboardContainer: View {
             calendar: calendar
         )
         lastRefreshID = refreshID
+    }
+
+    private func refreshCurrentDayEnergy() async {
+        guard healthMetrics.hasRequestedEnergyAccess else { return }
+        let calendar = Calendar.autoupdatingCurrent
+        guard let dayInterval = calendar.dateInterval(of: .day, for: .now) else { return }
+        await healthMetrics.loadEnergy(
+            from: dayInterval.start,
+            to: dayInterval.end,
+            calendar: calendar,
+            force: true
+        )
     }
 
     private func widgetSnapshot(for snapshot: TodayDashboardSnapshot) -> WidgetCalorieSnapshot {
