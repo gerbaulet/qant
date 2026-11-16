@@ -42,7 +42,6 @@ struct TodayDashboardView: View {
                 dateHeader
                 calorieCard
                 healthStatusCard
-                balanceHintCard
                 hintsSection
                 weeklyCalorieCard
                 macroCard
@@ -94,7 +93,7 @@ struct TodayDashboardView: View {
 
     private func energyBalanceCard(_ balance: DailyEnergyBalance) -> some View {
         QuantCard(style: .hero) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Energiebilanz")
                         .font(.headline)
@@ -109,81 +108,18 @@ struct TodayDashboardView: View {
                     }
                 }
 
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(balanceHeadline(balance.balanceKilocalories ?? 0))
-                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                        .foregroundStyle(balanceColor(balance.balanceKilocalories ?? 0))
-                    Text((balance.balanceKilocalories ?? 0) <= 0 ? "Defizit" : "Überschuss")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-
                 Divider()
-                LabeledContent("Aufnahme") {
-                    Text("~\(wholeNumber(balance.intakeKilocalories ?? 0)) kcal")
-                        .monospacedDigit()
-                }
-                LabeledContent("Verbrauch") {
-                    Text("~\(wholeNumber(balance.expenditureKilocalories ?? 0)) kcal")
-                        .monospacedDigit()
-                }
-                HStack(spacing: 16) {
-                    Label("Ruhe ~\(wholeNumber(balance.restingKilocalories ?? 0))", systemImage: "bed.double")
-                    Label("Aktiv ~\(wholeNumber(balance.activeKilocalories ?? 0))", systemImage: "figure.walk")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                energyBalanceTable(balance)
 
-                if balance.isCurrentDay {
-                    Divider()
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Hochrechnung bis Tagesende")
-                            .font(.subheadline.weight(.semibold))
-                        if let intakeForecast {
-                            LabeledContent("Aufnahme") {
-                                Text("≈ \(wholeNumber(intakeForecast.energyKilocalories)) kcal")
-                                    .monospacedDigit()
-                            }
-                            .accessibilityIdentifier("today.intakeForecast")
-                            Text("Auf Basis deines bisherigen Verlaufs und \(intakeForecast.historicalDayCount) früherer Ernährungstage.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("Für die Aufnahmehochrechnung werden mindestens drei frühere erfasste Tage benötigt.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                expenditureBreakdown(balance)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-                        if let expenditureForecast {
-                            LabeledContent("Verbrauch") {
-                                Text("≈ \(wholeNumber(expenditureForecast.totalKilocalories)) kcal")
-                                    .monospacedDigit()
-                            }
-                            .accessibilityIdentifier("today.expenditureForecast")
-                            forecastExpenditureBreakdown(expenditureForecast)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            Text(expenditureForecastExplanation(expenditureForecast))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("Für die Verbrauchshochrechnung werden mindestens sieben vollständige Apple-Health-Tage benötigt.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if let intakeForecast, let expenditureForecast {
-                            Divider()
-                            LabeledContent("Bilanz") {
-                                Text(projectedBalanceText(
-                                    intake: intakeForecast.energyKilocalories,
-                                    expenditure: expenditureForecast.totalKilocalories
-                                ))
-                                .monospacedDigit()
-                            }
-                            .accessibilityIdentifier("today.balanceForecast")
-                        }
-                    }
+                if balance.isCurrentDay,
+                   intakeForecast == nil || expenditureForecast == nil {
+                    Label("Für die Hochrechnung fehlen noch Verlaufsdaten.", systemImage: "clock.arrow.circlepath")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
 
                 if let target = snapshot.energy.target {
@@ -207,6 +143,104 @@ struct TodayDashboardView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("today.energyBalance")
+    }
+
+    private func energyBalanceTable(_ balance: DailyEnergyBalance) -> some View {
+        Grid(alignment: .trailing, horizontalSpacing: 12, verticalSpacing: 9) {
+            GridRow {
+                Text("kcal")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .gridColumnAlignment(.leading)
+                Text("Jetzt")
+                if balance.isCurrentDay {
+                    Text("Tagesende")
+                }
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+
+            energyTableRow(
+                title: "Aufnahme",
+                current: balance.intakeKilocalories,
+                forecast: balance.isCurrentDay ? intakeForecast?.energyKilocalories : nil,
+                forecastIdentifier: "today.intakeForecast",
+                showsForecastColumn: balance.isCurrentDay
+            )
+            energyTableRow(
+                title: "Verbrauch",
+                current: balance.expenditureKilocalories,
+                forecast: balance.isCurrentDay ? expenditureForecast?.totalKilocalories : nil,
+                forecastIdentifier: "today.expenditureForecast",
+                showsForecastColumn: balance.isCurrentDay
+            )
+            energyTableRow(
+                title: "Bilanz",
+                current: balance.balanceKilocalories,
+                forecast: balance.isCurrentDay ? projectedBalance : nil,
+                forecastIdentifier: "today.balanceForecast",
+                showsForecastColumn: balance.isCurrentDay,
+                showsSign: true
+            )
+        }
+    }
+
+    private func energyTableRow(
+        title: String,
+        current: Double?,
+        forecast: Double?,
+        forecastIdentifier: String,
+        showsForecastColumn: Bool,
+        showsSign: Bool = false
+    ) -> some View {
+        GridRow {
+            Text(title)
+                .fontWeight(showsSign ? .semibold : .regular)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            energyTableValue(current, showsSign: showsSign)
+                .foregroundStyle(showsSign ? balanceColor(current ?? 0) : .primary)
+            if showsForecastColumn {
+                energyTableValue(forecast, showsSign: showsSign)
+                    .foregroundStyle(showsSign ? balanceColor(forecast ?? 0) : .primary)
+                    .accessibilityIdentifier(forecastIdentifier)
+            }
+        }
+    }
+
+    private func energyTableValue(_ value: Double?, showsSign: Bool) -> some View {
+        Text(energyTableText(value, showsSign: showsSign))
+            .fontWeight(showsSign ? .semibold : .regular)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+    }
+
+    private func expenditureBreakdown(_ balance: DailyEnergyBalance) -> some View {
+        let resting = Label(
+            expenditureComponentText(
+                title: "Ruhe",
+                current: balance.restingKilocalories,
+                forecast: balance.isCurrentDay ? expenditureForecast?.restingKilocalories : nil
+            ),
+            systemImage: "bed.double"
+        )
+        let active = Label(
+            expenditureComponentText(
+                title: "Aktiv",
+                current: balance.activeKilocalories,
+                forecast: balance.isCurrentDay ? expenditureForecast?.activeKilocalories : nil
+            ),
+            systemImage: "figure.walk"
+        )
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                resting
+                active
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                resting
+                active
+            }
+        }
     }
 
     private var intakeCard: some View {
@@ -284,22 +318,6 @@ struct TodayDashboardView: View {
                 .foregroundStyle(.orange)
         default:
             EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var balanceHintCard: some View {
-        if let energyBalance, energyBalance.canDescribeBalance {
-            let value = energyBalance.balanceKilocalories ?? 0
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Einordnung")
-                    .font(.headline)
-                Text(balanceHint(value))
-                    .font(.subheadline)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(QuantLayout.cardPadding)
-            .background(.blue.opacity(0.08), in: .rect(cornerRadius: QuantLayout.cardCornerRadius))
         }
     }
 
@@ -501,61 +519,32 @@ struct TodayDashboardView: View {
         return "\(wholeNumber(snapshot.energy.consumed)) von \(wholeNumber(target)) Kilokalorien"
     }
 
-    private func balanceHeadline(_ value: Double) -> String {
-        "≈ \(wholeNumber(abs(value))) kcal"
-    }
-
     private func balanceColor(_ value: Double) -> Color {
         abs(value) < 100 ? .secondary : (value < 0 ? .blue : .orange)
     }
 
-    private func balanceHint(_ value: Double) -> String {
-        if abs(value) < 100 {
-            return "Aufnahme und Verbrauch liegen heute ungefähr auf demselben Niveau. Der Tageswert bleibt eine Schätzung."
-        }
-        if value < 0 {
-            return "Aktuell liegt ein geschätztes Defizit vor. Aussagekräftiger als ein einzelner Tag ist der Verlauf über mehrere Wochen."
-        }
-        return "Aktuell liegt ein geschätzter Überschuss vor. Einzelne Tage sind normal; entscheidend ist der längerfristige Verlauf."
+    private var projectedBalance: Double? {
+        guard let intakeForecast, let expenditureForecast else { return nil }
+        return intakeForecast.energyKilocalories - expenditureForecast.totalKilocalories
     }
 
-    private func projectedBalanceText(intake: Double, expenditure: Double) -> String {
-        let balance = intake - expenditure
-        return "\(balanceHeadline(balance)) \(balance <= 0 ? "Defizit" : "Überschuss")"
+    private func energyTableText(_ value: Double?, showsSign: Bool) -> String {
+        guard let value else { return "—" }
+        guard showsSign else { return "≈ \(wholeNumber(value))" }
+        let sign = value < -0.5 ? "−" : (value > 0.5 ? "+" : "")
+        return "≈ \(sign)\(wholeNumber(abs(value)))"
     }
 
-    private func forecastExpenditureBreakdown(
-        _ forecast: EnergyExpenditureForecast
-    ) -> some View {
-        let resting = Label(
-            "Ruhe ≈\(wholeNumber(forecast.restingKilocalories))",
-            systemImage: "bed.double"
-        )
-        let active = Label(
-            "Aktiv ≈\(wholeNumber(forecast.activeKilocalories))",
-            systemImage: "figure.walk"
-        )
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 16) {
-                resting
-                active
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                resting
-                active
-            }
-        }
-    }
-
-    private func expenditureForecastExplanation(
-        _ forecast: EnergyExpenditureForecast
+    private func expenditureComponentText(
+        title: String,
+        current: Double?,
+        forecast: Double?
     ) -> String {
-        switch forecast.method {
-        case .historicalRemainder:
-            "Auf Basis des typischen Restverbrauchs von \(forecast.historicalDayCount) vollständigen Apple-Health-Tagen."
-        case .dailyMedian:
-            "Auf Basis des typischen Tagesverbrauchs von \(forecast.historicalDayCount) vollständigen Apple-Health-Tagen."
+        let currentText = current.map { "≈\(wholeNumber($0))" } ?? "—"
+        guard let forecast else {
+            return "\(title) \(currentText)"
         }
+        return "\(title) \(currentText) → ≈\(wholeNumber(forecast))"
     }
 
     private func progressText(_ progress: NutrientProgress) -> String {
