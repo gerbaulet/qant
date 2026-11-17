@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 import UIKit
@@ -12,6 +13,13 @@ struct CameraCaptureFlowTests {
     @Test("Standard captures retain the confirmation step")
     func standardCaptureKeepsConfirmation() {
         #expect(CameraCaptureFlow.forCapture(openedFromShortcut: false) == .confirmBeforeUsing)
+    }
+
+    @MainActor
+    @Test("Camera captures start with the flash disabled")
+    func cameraFlashStartsDisabled() {
+        #expect(CameraFlashConfiguration.imagePickerMode == .off)
+        #expect(CameraFlashConfiguration.photoSettingsMode == .off)
     }
 
     @MainActor

@@ -151,6 +151,7 @@ final class DirectCameraCaptureViewController: UIViewController, AVCapturePhotoC
 
         let settings = AVCapturePhotoSettings()
         settings.photoQualityPrioritization = .quality
+        settings.flashMode = CameraFlashConfiguration.photoSettingsMode
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
 
