@@ -14,6 +14,19 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testShowsEnergyBalanceTableWithoutIntakeOrExpenditure() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let energyBalance = app.descendants(matching: .any)["today.energyBalance"]
+        XCTAssertTrue(energyBalance.waitForExistence(timeout: 3))
+        XCTAssertTrue(energyBalance.label.contains("Aufnahme"))
+        XCTAssertTrue(energyBalance.label.contains("Verbrauch"))
+        XCTAssertTrue(energyBalance.label.contains("Tagesende"))
+    }
+
+    @MainActor
     func testCapturesMealLocally() throws {
         let app = XCUIApplication()
         app.launchArguments.append("--ui-testing")

@@ -82,23 +82,19 @@ struct TodayDashboardView: View {
             ))
     }
 
-    @ViewBuilder
     private var calorieCard: some View {
-        if let energyBalance, energyBalance.canDescribeBalance {
-            energyBalanceCard(energyBalance)
-        } else {
-            intakeCard
-        }
+        energyBalanceCard(energyBalance)
     }
 
-    private func energyBalanceCard(_ balance: DailyEnergyBalance) -> some View {
+    private func energyBalanceCard(_ balance: DailyEnergyBalance?) -> some View {
         QuantCard(style: .hero) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Energiebilanz")
                         .font(.headline)
                     Spacer()
-                    if balance.isCurrentDay || balance.completeness == .provisionalIntake {
+                    if let balance,
+                       balance.isCurrentDay || balance.completeness == .provisionalIntake {
                         Text(balance.isCurrentDay ? "ZWISCHENSTAND" : "VORLÄUFIG")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.orange)
@@ -115,7 +111,7 @@ struct TodayDashboardView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                if balance.isCurrentDay,
+                if balance?.isCurrentDay ?? true,
                    intakeForecast == nil || expenditureForecast == nil {
                     Label("Für die Hochrechnung fehlen noch Verlaufsdaten.", systemImage: "clock.arrow.circlepath")
                         .font(.caption2)
@@ -127,7 +123,7 @@ struct TodayDashboardView: View {
                     HStack {
                         Text("Aufnahmeziel")
                         Spacer()
-                        Text("~\(wholeNumber(snapshot.energy.consumed)) / \(wholeNumber(target)) kcal")
+                        Text(intakeGoalText(target: target))
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
                     }
@@ -145,14 +141,15 @@ struct TodayDashboardView: View {
         .accessibilityIdentifier("today.energyBalance")
     }
 
-    private func energyBalanceTable(_ balance: DailyEnergyBalance) -> some View {
-        Grid(alignment: .trailing, horizontalSpacing: 12, verticalSpacing: 9) {
+    private func energyBalanceTable(_ balance: DailyEnergyBalance?) -> some View {
+        let showsForecastColumn = balance?.isCurrentDay ?? true
+        return Grid(alignment: .trailing, horizontalSpacing: 12, verticalSpacing: 9) {
             GridRow {
                 Text("kcal")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .gridColumnAlignment(.leading)
                 Text("Jetzt")
-                if balance.isCurrentDay {
+                if showsForecastColumn {
                     Text("Tagesende")
                 }
             }
@@ -161,24 +158,25 @@ struct TodayDashboardView: View {
 
             energyTableRow(
                 title: "Aufnahme",
-                current: balance.intakeKilocalories,
-                forecast: balance.isCurrentDay ? intakeForecast?.energyKilocalories : nil,
+                current: balance?.intakeKilocalories,
+                currentIsProvisional: snapshot.hasProvisionalValues,
+                forecast: showsForecastColumn ? intakeForecast?.energyKilocalories : nil,
                 forecastIdentifier: "today.intakeForecast",
-                showsForecastColumn: balance.isCurrentDay
+                showsForecastColumn: showsForecastColumn
             )
             energyTableRow(
                 title: "Verbrauch",
-                current: balance.expenditureKilocalories,
-                forecast: balance.isCurrentDay ? expenditureForecast?.totalKilocalories : nil,
+                current: balance?.expenditureKilocalories,
+                forecast: showsForecastColumn ? expenditureForecast?.totalKilocalories : nil,
                 forecastIdentifier: "today.expenditureForecast",
-                showsForecastColumn: balance.isCurrentDay
+                showsForecastColumn: showsForecastColumn
             )
             energyTableRow(
                 title: "Bilanz",
-                current: balance.balanceKilocalories,
-                forecast: balance.isCurrentDay ? projectedBalance : nil,
+                current: balance?.balanceKilocalories,
+                forecast: showsForecastColumn ? projectedBalance : nil,
                 forecastIdentifier: "today.balanceForecast",
-                showsForecastColumn: balance.isCurrentDay,
+                showsForecastColumn: showsForecastColumn,
                 showsSign: true
             )
         }
@@ -187,6 +185,7 @@ struct TodayDashboardView: View {
     private func energyTableRow(
         title: String,
         current: Double?,
+        currentIsProvisional: Bool = false,
         forecast: Double?,
         forecastIdentifier: String,
         showsForecastColumn: Bool,
@@ -196,7 +195,11 @@ struct TodayDashboardView: View {
             Text(title)
                 .fontWeight(showsSign ? .semibold : .regular)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            energyTableValue(current, showsSign: showsSign)
+            energyTableValue(
+                current,
+                showsSign: showsSign,
+                isProvisional: currentIsProvisional
+            )
                 .foregroundStyle(showsSign ? balanceColor(current ?? 0) : .primary)
             if showsForecastColumn {
                 energyTableValue(forecast, showsSign: showsSign)
@@ -206,28 +209,40 @@ struct TodayDashboardView: View {
         }
     }
 
-    private func energyTableValue(_ value: Double?, showsSign: Bool) -> some View {
-        Text(energyTableText(value, showsSign: showsSign))
+    private func energyTableValue(
+        _ value: Double?,
+        showsSign: Bool,
+        isProvisional: Bool = false
+    ) -> some View {
+        Text(TodayEnergyValueFormatter.text(
+            value,
+            showsSign: showsSign,
+            isProvisional: isProvisional
+        ))
             .fontWeight(showsSign ? .semibold : .regular)
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.75)
     }
 
-    private func expenditureBreakdown(_ balance: DailyEnergyBalance) -> some View {
+    private func expenditureBreakdown(_ balance: DailyEnergyBalance?) -> some View {
         let resting = Label(
             expenditureComponentText(
                 title: "Ruhe",
-                current: balance.restingKilocalories,
-                forecast: balance.isCurrentDay ? expenditureForecast?.restingKilocalories : nil
+                current: balance?.restingKilocalories,
+                forecast: (balance?.isCurrentDay ?? true)
+                    ? expenditureForecast?.restingKilocalories
+                    : nil
             ),
             systemImage: "bed.double"
         )
         let active = Label(
             expenditureComponentText(
                 title: "Aktiv",
-                current: balance.activeKilocalories,
-                forecast: balance.isCurrentDay ? expenditureForecast?.activeKilocalories : nil
+                current: balance?.activeKilocalories,
+                forecast: (balance?.isCurrentDay ?? true)
+                    ? expenditureForecast?.activeKilocalories
+                    : nil
             ),
             systemImage: "figure.walk"
         )
@@ -241,52 +256,6 @@ struct TodayDashboardView: View {
                 active
             }
         }
-    }
-
-    private var intakeCard: some View {
-        QuantCard(style: .hero) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Aufnahme")
-                        .font(.headline)
-                    Spacer()
-                    if snapshot.hasProvisionalValues {
-                        Text("VORLÄUFIG")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.orange.opacity(0.12), in: .capsule)
-                    }
-                }
-
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(estimatedNumber(snapshot.energy.consumed))
-                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                    if let target = snapshot.energy.target {
-                        Text("/ \(wholeNumber(target)) kcal")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("kcal")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if let target = snapshot.energy.target {
-                    ProgressView(value: min(snapshot.energy.consumed, target), total: target)
-                        .tint(remainingColor)
-                        .accessibilityLabel("Fortschritt zum Aufnahmeziel")
-                        .accessibilityValue(progressAccessibilityValue)
-                }
-
-                Text(remainingEnergyText)
-                    .font(.headline)
-                    .foregroundStyle(remainingColor)
-            }
-        }
-        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -497,19 +466,14 @@ struct TodayDashboardView: View {
         .accessibilityIdentifier("today.addFood")
     }
 
-    private var remainingEnergyText: String {
-        guard let remaining = snapshot.energy.remaining else {
-            return "Noch kein Aufnahmeziel festgelegt"
-        }
-        if remaining >= 0 {
-            return "\(wholeNumber(remaining)) kcal verbleibend"
-        }
-        return "\(wholeNumber(abs(remaining))) kcal über dem Ziel"
-    }
-
     private var remainingColor: Color {
         guard let remaining = snapshot.energy.remaining else { return .secondary }
         return remaining >= 0 ? .green : .orange
+    }
+
+    private func intakeGoalText(target: Double) -> String {
+        let estimateMarker = snapshot.hasProvisionalValues ? "~" : ""
+        return "\(estimateMarker)\(wholeNumber(snapshot.energy.consumed)) / \(wholeNumber(target)) kcal"
     }
 
     private var progressAccessibilityValue: String {
@@ -528,23 +492,16 @@ struct TodayDashboardView: View {
         return intakeForecast.energyKilocalories - expenditureForecast.totalKilocalories
     }
 
-    private func energyTableText(_ value: Double?, showsSign: Bool) -> String {
-        guard let value else { return "—" }
-        guard showsSign else { return "≈ \(wholeNumber(value))" }
-        let sign = value < -0.5 ? "−" : (value > 0.5 ? "+" : "")
-        return "≈ \(sign)\(wholeNumber(abs(value)))"
-    }
-
     private func expenditureComponentText(
         title: String,
         current: Double?,
         forecast: Double?
     ) -> String {
-        let currentText = current.map { "≈\(wholeNumber($0))" } ?? "—"
+        let currentText = current.map(wholeNumber) ?? "—"
         guard let forecast else {
             return "\(title) \(currentText)"
         }
-        return "\(title) \(currentText) → ≈\(wholeNumber(forecast))"
+        return "\(title) \(currentText) → \(wholeNumber(forecast))"
     }
 
     private func progressText(_ progress: NutrientProgress) -> String {
@@ -555,12 +512,32 @@ struct TodayDashboardView: View {
         return "\(consumed) \(progress.unit.rawValue)"
     }
 
-    private func estimatedNumber(_ value: Double) -> String {
-        value > 0 ? "~\(wholeNumber(value))" : wholeNumber(value)
-    }
-
     private func wholeNumber(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0)))
+    }
+}
+
+enum TodayEnergyValueFormatter {
+    static func text(
+        _ value: Double?,
+        showsSign: Bool = false,
+        isProvisional: Bool = false
+    ) -> String {
+        guard let value else { return "—" }
+        let sign: String
+        if !showsSign {
+            sign = ""
+        } else if value < -0.5 {
+            sign = "−"
+        } else if value > 0.5 {
+            sign = "+"
+        } else {
+            sign = ""
+        }
+        let estimateMarker = isProvisional ? "~" : ""
+        let displayedValue = showsSign ? abs(value) : value
+        let formattedValue = displayedValue.formatted(.number.precision(.fractionLength(0)))
+        return "\(estimateMarker)\(sign)\(formattedValue)"
     }
 }
 
