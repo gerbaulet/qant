@@ -166,6 +166,7 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if shouldStart {
+		log.Printf("relay job accepted")
 		slotHandedOff = true
 		bodyHandedOff = true
 		s.jobs.Add(1)
@@ -302,10 +303,13 @@ func (s *Server) runJob(id, apiKey string, body []byte) {
 	}
 	if err := s.store.Succeed(id, response.StatusCode, responseBody); err != nil {
 		log.Printf("persisting successful job %s failed: %v", id, err)
+		return
 	}
+	log.Printf("relay job completed upstream_status=%d", response.StatusCode)
 }
 
 func (s *Server) failJob(id string, status int, body []byte, code, message string, retryable bool) {
+	log.Printf("relay job failed code=%s upstream_status=%d retryable=%t", code, status, retryable)
 	if err := s.store.Fail(id, status, body, code, message, retryable); err != nil {
 		log.Printf("persisting failed job %s failed: %v", id, err)
 	}

@@ -46,6 +46,10 @@ commands are not required:
 | `make tailscale-status` | Show the active Tailscale Serve configuration |
 | `make help` | List all available commands |
 
+`make logs` shows a privacy-safe lifecycle line when an analysis job is
+accepted, completed, or fails. These lines contain no API key, request body,
+model, meal data, or Tailscale identity.
+
 The container is published only on host loopback. Do not change that binding to
 `0.0.0.0` when using Tailscale Serve.
 
