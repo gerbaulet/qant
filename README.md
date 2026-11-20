@@ -23,10 +23,25 @@ shared key in the Compose configuration or on the server.
 ## Start the server
 
 ```sh
-docker compose up -d --build
-docker compose ps
-curl http://127.0.0.1:8080/healthz
+make up
+make status
+make health
 ```
+
+The Makefile provides the usual lifecycle commands, so direct Docker Compose
+commands are not required:
+
+| Command | Effect |
+| --- | --- |
+| `make up` | Validate, build, and start the server in the background |
+| `make down` | Stop and remove containers while preserving the job volume |
+| `make start` | Start existing containers without rebuilding |
+| `make stop` | Stop containers without removing them |
+| `make restart` | Restart the running server |
+| `make status` | Show container status |
+| `make logs` | Follow the latest server logs |
+| `make health` | Check the local health endpoint |
+| `make help` | List all available commands |
 
 The container is published only on host loopback. Do not change that binding to
 `0.0.0.0` when using Tailscale Serve.
@@ -110,6 +125,7 @@ requests without a Tailscale identity only when the direct peer is loopback.
 ```sh
 make test
 make docker-build
+make config
 ```
 
 The server has no third-party Go dependencies.
