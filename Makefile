@@ -1,8 +1,11 @@
 .DEFAULT_GOAL := help
 
 COMPOSE ?= docker compose
+TAILSCALE ?= tailscale
+TAILSCALE_TARGET ?= 8080
+TAILSCALE_HTTPS_PORT ?= 443
 
-.PHONY: help test build docker-build config up start stop restart down status logs health run
+.PHONY: help test build docker-build config up start stop restart down status logs health run tailscale-up tailscale-down tailscale-status
 
 help: ## Show available commands.
 	@awk 'BEGIN { FS = ":.*## " } /^[a-z-]+:.*## / { printf "  %-18s %s\n", $$1, $$2 }' "$(firstword $(MAKEFILE_LIST))"
@@ -45,3 +48,12 @@ health: ## Check whether the local server is healthy.
 	@printf '\n'
 
 run: up ## Alias for "make up".
+
+tailscale-up: ## Publish the server privately with Tailscale Serve.
+	$(TAILSCALE) serve --bg $(TAILSCALE_TARGET)
+
+tailscale-down: ## Disable Tailscale Serve on HTTPS port 443.
+	$(TAILSCALE) serve --https=$(TAILSCALE_HTTPS_PORT) off
+
+tailscale-status: ## Show the active Tailscale Serve configuration.
+	$(TAILSCALE) serve status

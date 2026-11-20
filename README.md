@@ -41,6 +41,9 @@ commands are not required:
 | `make status` | Show container status |
 | `make logs` | Follow the latest server logs |
 | `make health` | Check the local health endpoint |
+| `make tailscale-up` | Publish the server privately using Tailscale Serve |
+| `make tailscale-down` | Disable the server's Tailscale HTTPS proxy |
+| `make tailscale-status` | Show the active Tailscale Serve configuration |
 | `make help` | List all available commands |
 
 The container is published only on host loopback. Do not change that binding to
@@ -49,9 +52,15 @@ The container is published only on host loopback. Do not change that binding to
 Expose it privately inside the tailnet:
 
 ```sh
-sudo tailscale serve --bg 8080
-tailscale serve status
+make tailscale-up
+make tailscale-status
 ```
+
+If the local Tailscale installation requires elevated permissions, pass the
+command explicitly, for example `make TAILSCALE="sudo tailscale" tailscale-up`.
+`make tailscale-down` disables Tailscale Serve on HTTPS port 443. It does not
+disconnect the host from the tailnet and does not reset the complete Serve
+configuration.
 
 Tailscale prints an address similar to:
 
