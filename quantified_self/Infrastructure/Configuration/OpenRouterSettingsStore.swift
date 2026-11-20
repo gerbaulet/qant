@@ -1,10 +1,41 @@
 import Foundation
 
 protocol OpenRouterSettingsStoring: AnyObject {
+    var serverURL: String { get set }
     var modelIdentifier: String { get set }
     var costTier: OpenRouterCostTier { get set }
     var providerPreference: OpenRouterProviderPreference { get set }
     var modelCatalogCache: OpenRouterModelCatalogCache? { get set }
+}
+
+enum QuantServerEndpoint {
+    static func parse(_ value: String) throws -> URL {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            var components = URLComponents(string: trimmed),
+            let scheme = components.scheme?.lowercased(),
+            let host = components.host?.lowercased(),
+            !host.isEmpty,
+            components.user == nil,
+            components.password == nil,
+            components.query == nil,
+            components.fragment == nil,
+            components.path.isEmpty || components.path == "/"
+        else {
+            throw OpenRouterClientError.invalidServerURL
+        }
+
+        let isLoopback = host == "localhost" || host == "127.0.0.1" || host == "::1"
+        guard scheme == "https" || (scheme == "http" && isLoopback) else {
+            throw OpenRouterClientError.invalidServerURL
+        }
+        components.scheme = scheme
+        components.path = ""
+        guard let url = components.url else {
+            throw OpenRouterClientError.invalidServerURL
+        }
+        return url
+    }
 }
 
 enum OpenRouterProviderPreference: String, CaseIterable, Codable, Equatable, Identifiable {
@@ -54,10 +85,16 @@ struct OpenRouterModelCatalogCache: Codable, Equatable {
 
 final class UserDefaultsOpenRouterSettingsStore: OpenRouterSettingsStoring {
     private enum Key {
+        static let serverURL = "openrouter.server-url"
         static let modelIdentifier = "openrouter.model-identifier"
         static let costTier = "openrouter.cost-tier"
         static let providerPreference = "openrouter.provider-preference"
         static let modelCatalogCache = "openrouter.model-catalog-cache"
+    }
+
+    var serverURL: String {
+        get { defaults.string(forKey: Key.serverURL) ?? "" }
+        set { defaults.set(newValue, forKey: Key.serverURL) }
     }
 
     private let defaults: UserDefaults

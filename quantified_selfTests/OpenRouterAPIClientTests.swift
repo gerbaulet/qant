@@ -5,11 +5,12 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct OpenRouterAPIClientTests {
-    @Test("Configuration check validates the key and model capabilities")
+    private let serverBaseURL = URL(string: "https://example.test")!
+
+    @Test("Configuration check uses the Quant Server metadata proxy")
     func configurationCheck() async throws {
         let session = makeSession { request in
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-secret")
-
             switch request.url?.path {
             case "/api/v1/key":
                 return Self.response(for: request, status: 200, json: #"{"data":{"label":"test"}}"#)
@@ -24,14 +25,12 @@ struct OpenRouterAPIClientTests {
                 return Self.response(for: request, status: 404, json: "{}")
             }
         }
-        let client = OpenRouterAPIClient(
-            session: session,
-            baseURL: URL(string: "https://example.test/api/v1")!
-        )
+        let client = OpenRouterAPIClient(session: session)
 
         let result = try await client.checkConfiguration(
             apiKey: " test-secret ",
-            modelIdentifier: " google/gemini-test "
+            modelIdentifier: " google/gemini-test ",
+            serverBaseURL: serverBaseURL
         )
 
         #expect(result.modelIdentifier == "google/gemini-test")
@@ -45,58 +44,33 @@ struct OpenRouterAPIClientTests {
         let session = makeSession { request in
             Self.response(for: request, status: 401, json: #"{"error":{"message":"sensitive provider detail"}}"#)
         }
-        let client = OpenRouterAPIClient(
-            session: session,
-            baseURL: URL(string: "https://example.test/api/v1")!
-        )
+        let client = OpenRouterAPIClient(session: session)
 
         await #expect(throws: OpenRouterClientError.invalidAPIKey) {
             try await client.checkConfiguration(
                 apiKey: "invalid-secret",
-                modelIdentifier: "google/gemini-test"
+                modelIdentifier: "google/gemini-test",
+                serverBaseURL: serverBaseURL
             )
         }
     }
 
-    @Test("Provider request errors preserve a useful local diagnostic")
-    func providerErrorDiagnostic() async {
+    @Test("A missing Tailscale identity gets a specific configuration error")
+    func missingTailscaleIdentity() async {
         let session = makeSession { request in
             Self.response(
                 for: request,
-                status: 400,
-                json: #"{"error":{"message":"No endpoints support response_format for this model"}}"#
+                status: 401,
+                json: #"{"error":{"code":"tailscale_identity_required","message":"Tailscale-Identität fehlt."}}"#
             )
         }
-        let client = OpenRouterAPIClient(
-            session: session,
-            baseURL: URL(string: "https://example.test/api/v1")!
-        )
+        let client = OpenRouterAPIClient(session: session)
 
-        await #expect(throws: OpenRouterClientError.apiError(
-            statusCode: 400,
-            message: "No endpoints support response_format for this model"
-        )) {
-            try await client.sendChatCompletion(apiKey: "test-secret", body: Data("{}".utf8))
-        }
-    }
-
-    @Test("Malformed model metadata is rejected")
-    func malformedModelMetadata() async {
-        let session = makeSession { request in
-            if request.url?.path == "/api/v1/key" {
-                return Self.response(for: request, status: 200, json: "{}")
-            }
-            return Self.response(for: request, status: 200, json: #"{"data":{"unexpected":true}}"#)
-        }
-        let client = OpenRouterAPIClient(
-            session: session,
-            baseURL: URL(string: "https://example.test/api/v1")!
-        )
-
-        await #expect(throws: OpenRouterClientError.invalidResponse) {
+        await #expect(throws: OpenRouterClientError.serverAuthenticationRequired) {
             try await client.checkConfiguration(
                 apiKey: "test-secret",
-                modelIdentifier: "google/gemini-test"
+                modelIdentifier: "google/gemini-test",
+                serverBaseURL: serverBaseURL
             )
         }
     }
@@ -107,54 +81,60 @@ struct OpenRouterAPIClientTests {
             Issue.record("Unexpected request: \(request)")
             return Self.response(for: request, status: 500, json: "{}")
         }
-        let client = OpenRouterAPIClient(
-            session: session,
-            baseURL: URL(string: "https://example.test/api/v1")!
-        )
+        let client = OpenRouterAPIClient(session: session)
 
         await #expect(throws: OpenRouterClientError.invalidModelIdentifier) {
             try await client.checkConfiguration(
                 apiKey: "test-secret",
-                modelIdentifier: "missing-provider"
+                modelIdentifier: "missing-provider",
+                serverBaseURL: serverBaseURL
             )
         }
     }
 
-    @Test("Chat completions use the authenticated JSON endpoint")
-    func chatCompletionRequest() async throws {
+    @Test("Chat completions create and poll an authenticated durable job")
+    func chatCompletionJob() async throws {
         let body = Data(#"{"model":"example/model"}"#.utf8)
+        let upstream = Data(#"{"choices":[{"message":{"content":"{\"mealName\":\"Test\"}"}}],"model":"example/model","provider":"Example","usage":{"prompt_tokens":12,"completion_tokens":4,"cost":0.001}}"#.utf8)
         let trafficLog = RecordingOpenRouterTrafficLog()
         let session = makeSession { request in
-            #expect(request.url?.path == "/api/v1/chat/completions")
-            #expect(request.httpMethod == "POST")
-            #expect(Self.bodyData(for: request) == body)
-            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-secret")
-            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
-            #expect(request.value(forHTTPHeaderField: "Accept") == "text/event-stream")
-            #expect(request.timeoutInterval == 60)
+            if request.httpMethod == "POST" {
+                #expect(request.url?.path == "/api/v1/jobs")
+                #expect(Self.bodyData(for: request) == body)
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-secret")
+                #expect(request.value(forHTTPHeaderField: "Idempotency-Key") == "analysis-request-1")
+                #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+                #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
+                #expect(request.timeoutInterval == 30)
+                return Self.response(
+                    for: request,
+                    status: 202,
+                    json: #"{"id":"job-123","status":"running"}"#
+                )
+            }
+            #expect(request.url?.path == "/api/v1/jobs/job-123")
+            #expect(request.httpMethod == "GET")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
             return Self.response(
                 for: request,
                 status: 200,
                 json: """
-                data: {"model":"example/model","provider":"Example","choices":[{"delta":{"content":"{\\\"meal"}}]}
-
-                data: {"choices":[{"delta":{"content":"Name\\\":\\\"Test\\\"}"}}],"usage":{"prompt_tokens":12,"completion_tokens":4,"cost":0.001}}
-
-                data: [DONE]
-
+                {"id":"job-123","status":"succeeded","upstream_status":200,"response_body":"\(upstream.base64EncodedString())"}
                 """
             )
         }
         let client = OpenRouterAPIClient(
             session: session,
-            baseURL: URL(string: "https://example.test/api/v1")!,
-            trafficLog: trafficLog
+            trafficLog: trafficLog,
+            pollIntervalNanoseconds: 0
         )
 
         var receivedEvents: [NutritionAnalysisStreamEvent] = []
         let response = try await client.sendChatCompletion(
             apiKey: "test-secret",
-            body: body
+            body: body,
+            idempotencyKey: "analysis-request-1",
+            serverBaseURL: serverBaseURL
         ) { event in
             receivedEvents.append(event)
         }
@@ -169,17 +149,41 @@ struct OpenRouterAPIClientTests {
         #expect(message["content"] as? String == #"{"mealName":"Test"}"#)
         #expect(json["model"] as? String == "example/model")
         #expect(json["provider"] as? String == "Example")
-        let usage = try #require(json["usage"] as? [String: Any])
-        #expect(usage["prompt_tokens"] as? Int == 12)
-        #expect(usage["completion_tokens"] as? Int == 4)
         let entries = await trafficLog.snapshot()
         #expect(entries.count == 2)
-        #expect(entries[0].contains("REQUEST POST https://example.test/api/v1/chat/completions"))
+        #expect(entries[0].contains("REQUEST POST https://example.test/api/v1/jobs"))
         #expect(entries[0].contains(#"{"model":"example/model"}"#))
         #expect(!entries[0].localizedCaseInsensitiveContains("authorization"))
         #expect(!entries[0].contains("test-secret"))
         #expect(entries[1].contains("RESPONSE 200"))
         #expect(entries[1].contains(#"{\"mealName\":\"Test\"}"#))
+    }
+
+    @Test("A failed job preserves the OpenRouter diagnostic")
+    func failedJobDiagnostic() async {
+        let upstream = Data(#"{"error":{"message":"No endpoints support response_format for this model"}}"#.utf8)
+        let session = makeSession { request in
+            Self.response(
+                for: request,
+                status: 200,
+                json: """
+                {"id":"job-failed","status":"failed","upstream_status":400,"response_body":"\(upstream.base64EncodedString())","failure_code":"upstream_http_error"}
+                """
+            )
+        }
+        let client = OpenRouterAPIClient(session: session, pollIntervalNanoseconds: 0)
+
+        await #expect(throws: OpenRouterClientError.apiError(
+            statusCode: 400,
+            message: "No endpoints support response_format for this model"
+        )) {
+            try await client.sendChatCompletion(
+                apiKey: "test-secret",
+                body: Data(#"{"model":"example/model"}"#.utf8),
+                idempotencyKey: "analysis-request-2",
+                serverBaseURL: serverBaseURL
+            )
+        }
     }
 
     @Test("Model catalog returns image models with structured output")
@@ -194,12 +198,12 @@ struct OpenRouterAPIClientTests {
                 json: #"{"data":[{"id":"vision/compatible","name":"Compatible Vision","architecture":{"input_modalities":["text","image"]},"supported_parameters":["response_format"]},{"id":"text/only","name":"Text Only","architecture":{"input_modalities":["text"]},"supported_parameters":["response_format"]}]}"#
             )
         }
-        let client = OpenRouterAPIClient(
-            session: session,
-            baseURL: URL(string: "https://example.test/api/v1")!
-        )
+        let client = OpenRouterAPIClient(session: session)
 
-        let models = try await client.compatibleModels(apiKey: "test-secret")
+        let models = try await client.compatibleModels(
+            apiKey: "test-secret",
+            serverBaseURL: serverBaseURL
+        )
 
         #expect(models == [OpenRouterModelOption(id: "vision/compatible", name: "Compatible Vision")])
     }

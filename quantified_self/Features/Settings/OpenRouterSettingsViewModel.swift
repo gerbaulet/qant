@@ -12,6 +12,7 @@ final class OpenRouterSettingsViewModel {
     }
 
     var replacementAPIKey = ""
+    var serverURL = ""
     var modelIdentifier = ""
     var costTier: OpenRouterCostTier = .low
     var providerPreference: OpenRouterProviderPreference = .balanced
@@ -23,7 +24,8 @@ final class OpenRouterSettingsViewModel {
     private(set) var testState: TestState = .idle
 
     var canLoadModels: Bool {
-        hasStoredAPIKey || !replacementAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        (hasStoredAPIKey || !replacementAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) &&
+            (try? QuantServerEndpoint.parse(serverURL)) != nil
     }
 
     var isAutoRouterSelected: Bool {
@@ -51,6 +53,7 @@ final class OpenRouterSettingsViewModel {
     }
 
     func load() {
+        serverURL = settingsStore.serverURL
         modelIdentifier = settingsStore.modelIdentifier
         costTier = settingsStore.costTier
         providerPreference = settingsStore.providerPreference
@@ -88,7 +91,8 @@ final class OpenRouterSettingsViewModel {
             }
             let result = try await configurationChecker.checkConfiguration(
                 apiKey: apiKey,
-                modelIdentifier: settingsStore.modelIdentifier
+                modelIdentifier: settingsStore.modelIdentifier,
+                serverBaseURL: try QuantServerEndpoint.parse(settingsStore.serverURL)
             )
             testState = .success(result)
         } catch {
@@ -112,11 +116,15 @@ final class OpenRouterSettingsViewModel {
         defer { isLoadingModels = false }
 
         do {
+            try persistServerURL()
             try persistReplacementAPIKey()
             guard let apiKey = try secretStore.secret(for: .openRouterAPIKey) else {
                 throw OpenRouterClientError.invalidAPIKey
             }
-            let refreshedOptions = try await modelCatalog.compatibleModels(apiKey: apiKey)
+            let refreshedOptions = try await modelCatalog.compatibleModels(
+                apiKey: apiKey,
+                serverBaseURL: try QuantServerEndpoint.parse(settingsStore.serverURL)
+            )
             guard !refreshedOptions.isEmpty else {
                 testState = .failure("OpenRouter hat keine passenden Bildmodelle zurückgegeben.")
                 return
@@ -146,6 +154,7 @@ final class OpenRouterSettingsViewModel {
     }
 
     private func persistConfiguration() throws {
+        try persistServerURL()
         let trimmedModel = modelIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
         let modelComponents = trimmedModel.split(separator: "/", omittingEmptySubsequences: false)
         guard modelComponents.count >= 2,
@@ -159,6 +168,13 @@ final class OpenRouterSettingsViewModel {
         modelIdentifier = trimmedModel
 
         try persistReplacementAPIKey()
+    }
+
+    private func persistServerURL() throws {
+        let endpoint = try QuantServerEndpoint.parse(serverURL)
+        let normalized = endpoint.absoluteString
+        settingsStore.serverURL = normalized
+        serverURL = normalized
     }
 
     private func persistReplacementAPIKey() throws {

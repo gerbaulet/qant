@@ -70,6 +70,18 @@ struct OpenRouterSettingsView: View {
                 }
 
                 Section {
+                    TextField("https://quant-server.…ts.net", text: $viewModel.serverURL)
+                        .keyboardType(.URL)
+                        .textContentType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityLabel("Quant-Serveradresse")
+                        .accessibilityIdentifier("settings.quantServerURL")
+
+                    Text("Quant verbindet sich über diese private HTTPS-Adresse mit deinem Server. Trage die von Tailscale Serve angezeigte Adresse ohne /api/v1 ein.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
                     HStack {
                         Text("API-Schlüssel")
                         Spacer()
@@ -194,9 +206,9 @@ struct OpenRouterSettingsView: View {
                         }
                     }
                 } header: {
-                    Text("OpenRouter")
+                    Text("Quant Server und OpenRouter")
                 } footer: {
-                    Text("Der API-Schlüssel liegt ausschließlich im iOS-Schlüsselbund. Quant verwendet normalerweise einen KI-Aufruf. Bei Tellerfotos ohne erkanntes Etikett oder genaue Mengenangabe werden drei Schätzungen erstellt; eine fehlerhafte Antwort kann einmalig korrigiert werden.")
+                    Text("Der API-Schlüssel wird dauerhaft nur im iOS-Schlüsselbund gespeichert. Quant überträgt ihn für den jeweiligen Auftrag verschlüsselt an deinen Server; dieser verwendet ihn für OpenRouter und speichert ihn nicht. Normalerweise fällt ein KI-Aufruf an. Bei Tellerfotos ohne erkanntes Etikett oder genaue Mengenangabe werden drei Schätzungen erstellt; eine fehlerhafte Antwort kann einmalig korrigiert werden.")
                 }
 
                 statusSection
@@ -206,7 +218,7 @@ struct OpenRouterSettingsView: View {
                 Section("Datenschutz") {
                     Label("Keine Werbung, Analytik-SDKs oder unnötige Tracker", systemImage: "hand.raised.fill")
                     Text("Mahlzeiten, Ziele und Fotos werden lokal in der App gespeichert. Fotos bleiben erhalten, solange der zugehörige Eintrag gespeichert ist.")
-                    Text("Nur bei einer Analyse werden die zugehörigen Fotos und dein Kommentar an OpenRouter sowie den ausgewählten Modellanbieter gesendet. Für die erste Schätzung und nach beantworteten Rückfragen geschieht dies dreimal parallel.")
+                    Text("Nur bei einer Analyse werden die zugehörigen Fotos und dein Kommentar über deinen Quant Server an OpenRouter sowie den ausgewählten Modellanbieter gesendet. Für die erste Schätzung und nach beantworteten Rückfragen geschieht dies dreimal parallel.")
                     Text("OpenRouter und einzelne Anbieter können unterschiedliche Datenschutz- und Aufbewahrungsrichtlinien haben. Die App sendet keine anderen Mahlzeiten. API-Schlüssel werden niemals protokolliert; das detaillierte lokale OpenRouter-Log ist standardmäßig ausgeschaltet.")
                 }
 

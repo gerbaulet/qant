@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
@@ -70,16 +71,18 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let modelIdentifier = settingsStore.modelIdentifier
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let apiKey, !apiKey.isEmpty, !modelIdentifier.isEmpty else {
+        let serverURL = settingsStore.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let apiKey, !apiKey.isEmpty, !modelIdentifier.isEmpty, !serverURL.isEmpty else {
             throw NutritionAnalysisError.missingConfiguration
         }
+        let serverBaseURL = try QuantServerEndpoint.parse(serverURL)
 
         let requestBody: Data
         do {
-            requestBody = try JSONSerialization.data(withJSONObject: makeRequestBody(
-                request,
-                modelIdentifier: modelIdentifier
-            ))
+            requestBody = try JSONSerialization.data(
+                withJSONObject: makeRequestBody(request, modelIdentifier: modelIdentifier),
+                options: [.sortedKeys]
+            )
         } catch {
             throw NutritionAnalysisError.malformedResponse
         }
@@ -88,6 +91,8 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         let responseData = try await client.sendChatCompletion(
             apiKey: apiKey,
             body: requestBody,
+            idempotencyKey: idempotencyKey(for: request, body: requestBody),
+            serverBaseURL: serverBaseURL,
             onStreamEvent: onStreamEvent
         )
         let decoder = JSONDecoder()
@@ -118,6 +123,13 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
                 costUSD: response.usage?.cost
             )
         ))
+    }
+
+    private func idempotencyKey(for request: NutritionAnalysisRequest, body: Data) -> String {
+        let digest = SHA256.hash(data: body)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "\(request.requestGroupIdentifier.uuidString.lowercased())-\(digest)"
     }
 
     private func makeRequestBody(

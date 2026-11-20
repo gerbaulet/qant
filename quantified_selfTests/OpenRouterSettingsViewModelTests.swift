@@ -96,6 +96,39 @@ struct OpenRouterSettingsViewModelTests {
         #expect(viewModel.statusMessage == "Konfiguration gespeichert.")
     }
 
+    @Test("Saving normalizes and persists the Quant Server URL")
+    func persistsServerURL() {
+        let settings = SettingsStoreStub()
+        let viewModel = makeViewModel(
+            settings: settings,
+            catalog: ModelCatalogStub(result: .success(refreshedOptions))
+        )
+        viewModel.serverURL = "  https://quant-server.example/  "
+        viewModel.modelIdentifier = "invented/model"
+
+        viewModel.save()
+
+        #expect(settings.serverURL == "https://quant-server.example")
+        #expect(viewModel.serverURL == "https://quant-server.example")
+    }
+
+    @Test("Saving rejects an unencrypted non-local server URL")
+    func rejectsPublicHTTPServerURL() {
+        let settings = SettingsStoreStub()
+        let viewModel = makeViewModel(
+            settings: settings,
+            catalog: ModelCatalogStub(result: .success(refreshedOptions))
+        )
+        viewModel.serverURL = "http://quant-server.example"
+        viewModel.modelIdentifier = "invented/model"
+
+        viewModel.save()
+
+        #expect(viewModel.testState == .failure(
+            "Gib eine gültige HTTPS-Adresse für den Quant Server ein."
+        ))
+    }
+
     @Test("Saving rejects a malformed manual model identifier")
     func rejectsMalformedManualModel() {
         let settings = SettingsStoreStub()
@@ -184,18 +217,21 @@ struct OpenRouterSettingsViewModelTests {
         settings: SettingsStoreStub,
         catalog: ModelCatalogStub
     ) -> OpenRouterSettingsViewModel {
-        OpenRouterSettingsViewModel(
+        let viewModel = OpenRouterSettingsViewModel(
             secretStore: SecretStoreStub(),
             settingsStore: settings,
             configurationChecker: ConfigurationCheckerStub(),
             modelCatalog: catalog,
             now: { currentDate }
         )
+        viewModel.serverURL = settings.serverURL
+        return viewModel
     }
 }
 
 @MainActor
 private final class SettingsStoreStub: OpenRouterSettingsStoring {
+    var serverURL = "https://quant-server.example"
     var modelIdentifier = ""
     var costTier: OpenRouterCostTier = .low
     var providerPreference: OpenRouterProviderPreference = .balanced
@@ -211,7 +247,7 @@ private final class ModelCatalogStub: OpenRouterModelCatalogProviding {
         self.result = result
     }
 
-    func compatibleModels(apiKey: String) async throws -> [OpenRouterModelOption] {
+    func compatibleModels(apiKey: String, serverBaseURL: URL) async throws -> [OpenRouterModelOption] {
         requestCount += 1
         return try result.get()
     }
@@ -226,7 +262,8 @@ private struct SecretStoreStub: SecretStoring {
 private struct ConfigurationCheckerStub: OpenRouterConfigurationChecking {
     func checkConfiguration(
         apiKey: String,
-        modelIdentifier: String
+        modelIdentifier: String,
+        serverBaseURL: URL
     ) async throws -> OpenRouterConfigurationCheck {
         OpenRouterConfigurationCheck(
             modelIdentifier: modelIdentifier,

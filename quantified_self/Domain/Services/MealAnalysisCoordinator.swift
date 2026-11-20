@@ -122,6 +122,7 @@ final class MealAnalysisCoordinator {
         await performAnalysis(
             meal,
             trigger: pendingAnalysis.trigger,
+            requestGroupIdentifier: pendingAnalysis.id,
             clarificationAnswer: pendingAnalysis.clarificationAnswer,
             userCorrection: pendingAnalysis.userCorrection
         )
@@ -130,6 +131,7 @@ final class MealAnalysisCoordinator {
     private func performAnalysis(
         _ meal: Meal,
         trigger: AnalysisTrigger,
+        requestGroupIdentifier: UUID = UUID(),
         clarificationAnswer: String? = nil,
         userCorrection: String? = nil
     ) async {
@@ -179,6 +181,7 @@ final class MealAnalysisCoordinator {
             let recognizedLabelText = await textRecognizer.recognizeText(in: images)
             let uploadImages = await NutritionAnalysisImagePreparation.prepareForUpload(images)
             let request = NutritionAnalysisRequest(
+                requestGroupIdentifier: requestGroupIdentifier,
                 images: uploadImages,
                 userComment: meal.userComment,
                 previousAnalysis: previousAnalysis,
@@ -412,7 +415,8 @@ final class MealAnalysisCoordinator {
             return true
         case let .apiError(statusCode, _):
             return statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)
-        case .invalidAPIKey, .accessForbidden, .invalidModelIdentifier, .modelUnavailable, .modelNotFound,
+        case .invalidServerURL, .serverAuthenticationRequired, .invalidAPIKey, .accessForbidden,
+                .invalidModelIdentifier, .modelUnavailable, .modelNotFound,
                 .invalidRequest, .insufficientCredits:
             return false
         }

@@ -9,6 +9,7 @@ struct OpenRouterNutritionAnalysisServiceTests {
         let client = ChatClientStub(responseData: try Self.chatResponseData())
         let settings = AnalysisSettingsStore(modelIdentifier: "example/vision-model")
         let requestedAt = Date(timeIntervalSince1970: 1_788_000_000)
+        let requestGroupIdentifier = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
         let service = OpenRouterNutritionAnalysisService(
             secretStore: AnalysisSecretStore(secret: "test-secret"),
             settingsStore: settings,
@@ -17,6 +18,7 @@ struct OpenRouterNutritionAnalysisServiceTests {
         )
 
         let result = try await service.analyze(NutritionAnalysisRequest(
+            requestGroupIdentifier: requestGroupIdentifier,
             images: [
                 NutritionAnalysisImage(data: Data([1, 2, 3])),
                 NutritionAnalysisImage(data: Data([4, 5, 6])),
@@ -36,6 +38,10 @@ struct OpenRouterNutritionAnalysisServiceTests {
             costUSD: 0.001234
         ))
         #expect(client.receivedAPIKey == "test-secret")
+        #expect(client.receivedServerBaseURL == URL(string: "https://quant-server.example"))
+        #expect(client.receivedIdempotencyKey?.hasPrefix(
+            "11111111-2222-3333-4444-555555555555-"
+        ) == true)
 
         let body = try #require(client.receivedBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -519,27 +525,43 @@ private final class ChatClientStub: OpenRouterChatCompleting {
     let contentDeltas: [String]
     var receivedAPIKey: String?
     var receivedBody: Data?
+    var receivedIdempotencyKey: String?
+    var receivedServerBaseURL: URL?
 
     init(responseData: Data, contentDeltas: [String] = []) {
         self.responseData = responseData
         self.contentDeltas = contentDeltas
     }
 
-    func sendChatCompletion(apiKey: String, body: Data) async throws -> Data {
+    func sendChatCompletion(
+        apiKey: String,
+        body: Data,
+        idempotencyKey: String,
+        serverBaseURL: URL
+    ) async throws -> Data {
         receivedAPIKey = apiKey
         receivedBody = body
+        receivedIdempotencyKey = idempotencyKey
+        receivedServerBaseURL = serverBaseURL
         return responseData
     }
 
     func sendChatCompletion(
         apiKey: String,
         body: Data,
+        idempotencyKey: String,
+        serverBaseURL: URL,
         onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data {
         for delta in contentDeltas {
             onStreamEvent(.contentDelta(delta))
         }
-        return try await sendChatCompletion(apiKey: apiKey, body: body)
+        return try await sendChatCompletion(
+            apiKey: apiKey,
+            body: body,
+            idempotencyKey: idempotencyKey,
+            serverBaseURL: serverBaseURL
+        )
     }
 }
 
@@ -552,6 +574,7 @@ private struct AnalysisSecretStore: SecretStoring {
 }
 
 private final class AnalysisSettingsStore: OpenRouterSettingsStoring {
+    var serverURL = "https://quant-server.example"
     var modelIdentifier: String
     var costTier: OpenRouterCostTier = .low
     var providerPreference: OpenRouterProviderPreference = .balanced

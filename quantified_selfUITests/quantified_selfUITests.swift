@@ -176,6 +176,12 @@ final class QuantUITests: XCTestCase {
         }
         XCTAssertTrue(reminderButton.waitForExistence(timeout: 2))
 
+        let serverURLField = app.textFields["settings.quantServerURL"]
+        for _ in 0..<4 where !serverURLField.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(serverURLField.waitForExistence(timeout: 2))
+
         let apiKeyField = app.secureTextFields["settings.openRouterAPIKey"]
         for _ in 0..<4 where !apiKeyField.isHittable {
             app.swipeUp()

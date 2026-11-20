@@ -75,6 +75,7 @@ struct MealAnalysisQueueTests {
         }
 
         #expect(provider.receivedRequest?.clarificationAnswer == "Zwei Esslöffel")
+        #expect(provider.receivedRequest?.requestGroupIdentifier == pending.id)
         #expect(meal.activeRevision?.trigger == .clarification)
         #expect(meal.activeRevision?.clarificationAnswer == "Zwei Esslöffel")
         #expect(meal.analysisState == .confirmed)

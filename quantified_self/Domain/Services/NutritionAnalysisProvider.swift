@@ -16,6 +16,7 @@ struct NutritionClarificationExchange: Codable, Sendable, Equatable {
 }
 
 struct NutritionAnalysisRequest: Sendable, Equatable {
+    let requestGroupIdentifier: UUID
     let images: [NutritionAnalysisImage]
     let userComment: String?
     let previousAnalysis: NutritionAnalysisResult?
@@ -29,6 +30,7 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
     let independentEstimateNumber: Int?
 
     init(
+        requestGroupIdentifier: UUID = UUID(),
         images: [NutritionAnalysisImage],
         userComment: String?,
         previousAnalysis: NutritionAnalysisResult? = nil,
@@ -41,6 +43,7 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
         validationFeedback: String? = nil,
         independentEstimateNumber: Int? = nil
     ) {
+        self.requestGroupIdentifier = requestGroupIdentifier
         self.images = images
         self.userComment = userComment
         self.previousAnalysis = previousAnalysis
@@ -59,6 +62,7 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
         feedback: String
     ) -> NutritionAnalysisRequest {
         NutritionAnalysisRequest(
+            requestGroupIdentifier: requestGroupIdentifier,
             images: images,
             userComment: userComment,
             previousAnalysis: previousAnalysis ?? self.previousAnalysis,
@@ -75,6 +79,7 @@ struct NutritionAnalysisRequest: Sendable, Equatable {
 
     func independentEstimate(number: Int) -> NutritionAnalysisRequest {
         NutritionAnalysisRequest(
+            requestGroupIdentifier: requestGroupIdentifier,
             images: images,
             userComment: userComment,
             previousAnalysis: nil,
@@ -236,7 +241,7 @@ enum NutritionAnalysisError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .missingConfiguration:
-            "Richte zuerst API-Schlüssel und Modell in den Einstellungen ein."
+            "Richte zuerst Serveradresse, API-Schlüssel und Modell in den Einstellungen ein."
         case .malformedResponse:
             "Die Ernährungsanalyse konnte nicht gelesen werden."
         case let .invalidResult(reason):

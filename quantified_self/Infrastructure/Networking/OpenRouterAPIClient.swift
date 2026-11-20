@@ -16,19 +16,27 @@ struct OpenRouterModelOption: Codable, Identifiable, Sendable, Equatable {
 protocol OpenRouterConfigurationChecking {
     func checkConfiguration(
         apiKey: String,
-        modelIdentifier: String
+        modelIdentifier: String,
+        serverBaseURL: URL
     ) async throws -> OpenRouterConfigurationCheck
 }
 
 protocol OpenRouterModelCatalogProviding {
-    func compatibleModels(apiKey: String) async throws -> [OpenRouterModelOption]
+    func compatibleModels(apiKey: String, serverBaseURL: URL) async throws -> [OpenRouterModelOption]
 }
 
 protocol OpenRouterChatCompleting {
-    func sendChatCompletion(apiKey: String, body: Data) async throws -> Data
     func sendChatCompletion(
         apiKey: String,
         body: Data,
+        idempotencyKey: String,
+        serverBaseURL: URL
+    ) async throws -> Data
+    func sendChatCompletion(
+        apiKey: String,
+        body: Data,
+        idempotencyKey: String,
+        serverBaseURL: URL,
         onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data
 }
@@ -37,13 +45,22 @@ extension OpenRouterChatCompleting {
     func sendChatCompletion(
         apiKey: String,
         body: Data,
+        idempotencyKey: String,
+        serverBaseURL: URL,
         onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data {
-        try await sendChatCompletion(apiKey: apiKey, body: body)
+        try await sendChatCompletion(
+            apiKey: apiKey,
+            body: body,
+            idempotencyKey: idempotencyKey,
+            serverBaseURL: serverBaseURL
+        )
     }
 }
 
 enum OpenRouterClientError: Error, LocalizedError, Equatable {
+    case invalidServerURL
+    case serverAuthenticationRequired
     case invalidAPIKey
     case accessForbidden
     case invalidModelIdentifier
@@ -60,6 +77,10 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
+        case .invalidServerURL:
+            "Gib eine gültige HTTPS-Adresse für den Quant Server ein."
+        case .serverAuthenticationRequired:
+            "Der Quant Server hat keine Tailscale-Identität erhalten. Prüfe Tailscale und verwende die Serve-Adresse."
         case .invalidAPIKey:
             "Der OpenRouter API-Schlüssel ist ungültig."
         case .accessForbidden:
@@ -83,7 +104,7 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
         case .invalidResponse:
             "OpenRouter hat eine unerwartete Antwort geliefert."
         case .transportFailure:
-            "OpenRouter konnte nicht erreicht werden. Prüfe deine Internetverbindung."
+            "Quant Server oder OpenRouter konnte nicht erreicht werden. Prüfe deine Internetverbindung und Tailscale."
         case let .apiError(statusCode, message):
             "OpenRouter-Fehler \(statusCode): \(message)"
         }
@@ -91,39 +112,34 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
 }
 
 struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCatalogProviding, OpenRouterChatCompleting, Sendable {
-    private static let chatCompletionTimeout: TimeInterval = 60
+    private static let requestTimeout: TimeInterval = 30
+    private static let maximumJobWait: TimeInterval = 3 * 60
 
-    private nonisolated struct ChatCompletionStreamChunk: Decodable {
+    private struct RelayJob: Decodable {
+        enum Status: String, Decodable {
+            case running
+            case succeeded
+            case failed
+        }
+
+        let id: String
+        let status: Status
+        let upstreamStatus: Int?
+        let responseBody: Data?
+        let failureCode: String?
+        let failureMessage: String?
+    }
+
+    private struct CompletedContent: Decodable {
         struct Choice: Decodable {
-            struct Delta: Decodable {
-                let content: String?
+            struct Message: Decodable {
+                let content: String
             }
 
-            let delta: Delta
+            let message: Message
         }
 
-        struct Usage: Decodable, Encodable {
-            let promptTokens: Int?
-            let completionTokens: Int?
-            let cost: Double?
-
-            private enum CodingKeys: String, CodingKey {
-                case promptTokens = "prompt_tokens"
-                case completionTokens = "completion_tokens"
-                case cost
-            }
-        }
-
-        struct StreamError: Decodable {
-            let message: String
-            let code: Int?
-        }
-
-        let choices: [Choice]?
-        let model: String?
-        let provider: String?
-        let usage: Usage?
-        let error: StreamError?
+        let choices: [Choice]
     }
 
     private struct ModelResponse: Decodable {
@@ -157,22 +173,23 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
     }
 
     private let session: URLSession
-    private let baseURL: URL
     private let trafficLog: any OpenRouterTrafficLogging
+    private let pollIntervalNanoseconds: UInt64
 
     init(
         session: URLSession = .shared,
-        baseURL: URL = URL(string: "https://openrouter.ai/api/v1")!,
-        trafficLog: any OpenRouterTrafficLogging = FileOpenRouterTrafficLog.shared
+        trafficLog: any OpenRouterTrafficLogging = FileOpenRouterTrafficLog.shared,
+        pollIntervalNanoseconds: UInt64 = 500_000_000
     ) {
         self.session = session
-        self.baseURL = baseURL
         self.trafficLog = trafficLog
+        self.pollIntervalNanoseconds = pollIntervalNanoseconds
     }
 
     func checkConfiguration(
         apiKey: String,
-        modelIdentifier: String
+        modelIdentifier: String,
+        serverBaseURL: URL
     ) async throws -> OpenRouterConfigurationCheck {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedModel = modelIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -182,6 +199,7 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
             throw OpenRouterClientError.invalidModelIdentifier
         }
 
+        let baseURL = apiBaseURL(for: serverBaseURL)
         _ = try await performRequest(
             url: baseURL.appending(path: "key"),
             apiKey: trimmedKey
@@ -206,30 +224,45 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         )
     }
 
-    func sendChatCompletion(apiKey: String, body: Data) async throws -> Data {
-        try await sendChatCompletion(apiKey: apiKey, body: body) { _ in }
+    func sendChatCompletion(
+        apiKey: String,
+        body: Data,
+        idempotencyKey: String,
+        serverBaseURL: URL
+    ) async throws -> Data {
+        try await sendChatCompletion(
+            apiKey: apiKey,
+            body: body,
+            idempotencyKey: idempotencyKey,
+            serverBaseURL: serverBaseURL
+        ) { _ in }
     }
 
     func sendChatCompletion(
         apiKey: String,
         body: Data,
+        idempotencyKey: String,
+        serverBaseURL: URL,
         onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else { throw OpenRouterClientError.invalidAPIKey }
-        return try await performStreamingRequest(
-            url: baseURL.appending(path: "chat/completions"),
+        let trimmedIdempotencyKey = idempotencyKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedIdempotencyKey.isEmpty else { throw OpenRouterClientError.invalidRequest }
+        return try await performRelayJob(
+            url: apiBaseURL(for: serverBaseURL).appending(path: "jobs"),
             apiKey: trimmedKey,
             body: body,
-            timeout: Self.chatCompletionTimeout,
+            idempotencyKey: trimmedIdempotencyKey,
             onStreamEvent: onStreamEvent
         )
     }
 
-    func compatibleModels(apiKey: String) async throws -> [OpenRouterModelOption] {
+    func compatibleModels(apiKey: String, serverBaseURL: URL) async throws -> [OpenRouterModelOption] {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else { throw OpenRouterClientError.invalidAPIKey }
 
+        let baseURL = apiBaseURL(for: serverBaseURL)
         var components = URLComponents(
             url: baseURL.appending(path: "models"),
             resolvingAgainstBaseURL: false
@@ -343,18 +376,19 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         }
     }
 
-    @concurrent private nonisolated func performStreamingRequest(
+    private func performRelayJob(
         url: URL,
         apiKey: String,
         body: Data,
-        timeout: TimeInterval,
+        idempotencyKey: String,
         onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data {
-        var request = URLRequest(url: url, timeoutInterval: timeout)
+        var request = URLRequest(url: url, timeoutInterval: Self.requestTimeout)
         request.httpMethod = "POST"
         request.httpBody = body
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let requestID = UUID()
@@ -369,42 +403,35 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         )
 
         do {
-            await onStreamEvent(.requestStarted)
-            let (bytes, response) = try await session.bytes(for: request)
+            onStreamEvent(.requestStarted)
+            let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw OpenRouterClientError.invalidResponse
             }
-            await onStreamEvent(.responseStarted)
-            let responseHeaders = httpResponse.allHeaderFields.reduce(into: [String: String]()) { result, item in
-                result[String(describing: item.key)] = String(describing: item.value)
-            }
-            guard (200..<300).contains(httpResponse.statusCode) else {
-                var responseData = Data()
-                for try await byte in bytes {
-                    responseData.append(byte)
-                }
+            guard httpResponse.statusCode == 200 || httpResponse.statusCode == 202 else {
                 await trafficLog.recordResponse(
                     id: requestID,
                     statusCode: httpResponse.statusCode,
-                    headers: responseHeaders,
-                    body: responseData
+                    headers: responseHeaders(httpResponse),
+                    body: data
                 )
-                return try validatedResponseData(responseData, statusCode: httpResponse.statusCode)
+                return try validatedResponseData(data, statusCode: httpResponse.statusCode)
             }
-
-            let responseData = try await assembledChatCompletion(
-                from: bytes,
+            var job = try decodeRelayJob(data)
+            onStreamEvent(.responseStarted)
+            let deadline = Date.now.addingTimeInterval(Self.maximumJobWait)
+            while job.status == .running {
+                guard Date.now < deadline else { throw OpenRouterClientError.timedOut }
+                if pollIntervalNanoseconds > 0 {
+                    try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+                }
+                job = try await pollJob(id: job.id, jobsURL: url)
+            }
+            return try await finish(
+                job,
+                requestID: requestID,
                 onStreamEvent: onStreamEvent
             )
-            await onStreamEvent(.responseCompleted)
-            await trafficLog.recordResponse(
-                id: requestID,
-                statusCode: httpResponse.statusCode,
-                headers: responseHeaders,
-                body: responseData
-            )
-            AppLogger.nutritionAnalysis.debug("OpenRouter streaming request succeeded")
-            return responseData
         } catch is CancellationError {
             await trafficLog.recordFailure(id: requestID, description: "Anfrage abgebrochen")
             throw CancellationError()
@@ -424,71 +451,96 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
                 id: requestID,
                 description: "Transportfehler: \(error.localizedDescription)"
             )
-            AppLogger.nutritionAnalysis.error("OpenRouter streaming transport request failed")
+            AppLogger.nutritionAnalysis.error("Quant Server transport request failed")
             throw OpenRouterClientError.transportFailure
         } catch {
             await trafficLog.recordFailure(
                 id: requestID,
                 description: "Transportfehler: \(error.localizedDescription)"
             )
-            AppLogger.nutritionAnalysis.error("OpenRouter streaming request failed")
+            AppLogger.nutritionAnalysis.error("Quant Server request failed")
             throw OpenRouterClientError.transportFailure
         }
     }
 
-    private nonisolated func assembledChatCompletion(
-        from bytes: URLSession.AsyncBytes,
+    private func pollJob(id: String, jobsURL: URL) async throws -> RelayJob {
+        var request = URLRequest(
+            url: jobsURL.appending(path: id),
+            timeoutInterval: Self.requestTimeout
+        )
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenRouterClientError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            _ = try validatedResponseData(data, statusCode: httpResponse.statusCode)
+            throw OpenRouterClientError.invalidResponse
+        }
+        return try decodeRelayJob(data)
+    }
+
+    private func finish(
+        _ job: RelayJob,
+        requestID: UUID,
         onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data {
-        var content = ""
-        var model: String?
-        var provider: String?
-        var usage: ChatCompletionStreamChunk.Usage?
-        let decoder = JSONDecoder()
-        var streamCoalescer = NutritionAnalysisStreamCoalescer()
-
-        for try await line in bytes.lines {
-            guard line.hasPrefix("data:") else { continue }
-            let payload = line.dropFirst("data:".count)
-                .trimmingCharacters(in: .whitespaces)
-            guard payload != "[DONE]", let data = payload.data(using: .utf8) else { continue }
-            let chunk = try decoder.decode(ChatCompletionStreamChunk.self, from: data)
-            if let streamError = chunk.error {
-                throw OpenRouterClientError.apiError(
-                    statusCode: streamError.code ?? 500,
-                    message: String(streamError.message.prefix(500))
+        let responseBody = job.responseBody ?? Data()
+        let upstreamStatus = job.upstreamStatus ?? 500
+        if job.status == .failed {
+            if !responseBody.isEmpty {
+                await trafficLog.recordResponse(
+                    id: requestID,
+                    statusCode: upstreamStatus,
+                    headers: ["X-Quant-Job-ID": job.id],
+                    body: responseBody
                 )
+                return try validatedResponseData(responseBody, statusCode: upstreamStatus)
             }
-            let contentDelta = chunk.choices?.compactMap(\.delta.content).joined() ?? ""
-            if !contentDelta.isEmpty {
-                content += contentDelta
-                if let emittedContent = streamCoalescer.append(contentDelta, at: .now) {
-                    await onStreamEvent(.contentDelta(emittedContent))
-                }
+            let description = job.failureMessage ?? "Quant Server konnte den Auftrag nicht abschließen."
+            await trafficLog.recordFailure(id: requestID, description: description)
+            if job.failureCode == "upstream_timeout" {
+                throw OpenRouterClientError.timedOut
             }
-            model = chunk.model ?? model
-            provider = chunk.provider ?? provider
-            usage = chunk.usage ?? usage
+            throw OpenRouterClientError.transportFailure
         }
+        guard job.status == .succeeded, !responseBody.isEmpty else {
+            throw OpenRouterClientError.invalidResponse
+        }
+        if let content = try? JSONDecoder().decode(CompletedContent.self, from: responseBody)
+            .choices.first?.message.content,
+           !content.isEmpty {
+            onStreamEvent(.contentDelta(content))
+        }
+        onStreamEvent(.responseCompleted)
+        await trafficLog.recordResponse(
+            id: requestID,
+            statusCode: upstreamStatus,
+            headers: ["X-Quant-Job-ID": job.id],
+            body: responseBody
+        )
+        AppLogger.nutritionAnalysis.debug("Quant Server job succeeded")
+        return try validatedResponseData(responseBody, statusCode: upstreamStatus)
+    }
 
-        if let emittedContent = streamCoalescer.flush(at: .now) {
-            await onStreamEvent(.contentDelta(emittedContent))
+    private func decodeRelayJob(_ data: Data) throws -> RelayJob {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let job = try? decoder.decode(RelayJob.self, from: data) else {
+            throw OpenRouterClientError.invalidResponse
         }
+        return job
+    }
 
-        guard !content.isEmpty else { throw OpenRouterClientError.invalidResponse }
-        var response: [String: Any] = [
-            "choices": [["message": ["content": content]]],
-        ]
-        if let model { response["model"] = model }
-        if let provider { response["provider"] = provider }
-        if let usage {
-            var encodedUsage: [String: Any] = [:]
-            if let promptTokens = usage.promptTokens { encodedUsage["prompt_tokens"] = promptTokens }
-            if let completionTokens = usage.completionTokens { encodedUsage["completion_tokens"] = completionTokens }
-            if let cost = usage.cost { encodedUsage["cost"] = cost }
-            response["usage"] = encodedUsage
+    private func apiBaseURL(for serverBaseURL: URL) -> URL {
+        serverBaseURL.appending(path: "api/v1")
+    }
+
+    private func responseHeaders(_ response: HTTPURLResponse) -> [String: String] {
+        response.allHeaderFields.reduce(into: [String: String]()) { result, item in
+            result[String(describing: item.key)] = String(describing: item.value)
         }
-        return try JSONSerialization.data(withJSONObject: response)
     }
 
     private nonisolated func validatedResponseData(_ data: Data, statusCode: Int) throws -> Data {
@@ -496,6 +548,9 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         case 200..<300:
             return data
         case 401:
+            if relayErrorCode(from: data) == "tailscale_identity_required" {
+                throw OpenRouterClientError.serverAuthenticationRequired
+            }
             throw OpenRouterClientError.invalidAPIKey
         case 403:
             throw OpenRouterClientError.accessForbidden
@@ -532,5 +587,14 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .prefix(500)
         return .apiError(statusCode: statusCode, message: String(message))
+    }
+
+    private nonisolated func relayErrorCode(from data: Data) -> String? {
+        struct ErrorEnvelope: Decodable {
+            struct RelayError: Decodable { let code: String }
+            let error: RelayError
+        }
+
+        return try? JSONDecoder().decode(ErrorEnvelope.self, from: data).error.code
     }
 }
