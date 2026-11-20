@@ -214,6 +214,7 @@ final class QuantUITests: XCTestCase {
             app.swipeUp()
         }
         XCTAssertTrue(testConnectionButton.waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Konfiguration speichern"].exists)
 
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "OpenRouter settings"

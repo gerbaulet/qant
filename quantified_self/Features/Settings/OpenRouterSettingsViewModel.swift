@@ -66,14 +66,98 @@ final class OpenRouterSettingsViewModel {
         }
     }
 
-    func save() {
+    func saveServerURL() {
         do {
-            try persistConfiguration()
-            statusMessage = "Konfiguration gespeichert."
+            try persistServerURL()
+            statusMessage = "Serveradresse automatisch gespeichert."
             testState = .idle
         } catch {
-            statusMessage = nil
-            testState = .failure(error.localizedDescription)
+            report(error)
+        }
+    }
+
+    func persistServerURLIfValid() {
+        guard let endpoint = try? QuantServerEndpoint.parse(serverURL) else { return }
+        settingsStore.serverURL = endpoint.absoluteString
+    }
+
+    func saveAPIKey() {
+        guard !replacementAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        do {
+            try persistReplacementAPIKey()
+            statusMessage = "API-Schlüssel sicher gespeichert."
+            testState = .idle
+        } catch {
+            report(error)
+        }
+    }
+
+    func saveModelIdentifier() {
+        do {
+            try persistModelConfiguration()
+            statusMessage = "Modellauswahl automatisch gespeichert."
+            testState = .idle
+        } catch {
+            report(error)
+        }
+    }
+
+    func selectModel(_ identifier: String) {
+        modelIdentifier = identifier
+        saveModelIdentifier()
+    }
+
+    func updateCostTier(_ tier: OpenRouterCostTier) {
+        costTier = tier
+        settingsStore.costTier = tier
+        statusMessage = "Kostenstufe automatisch gespeichert."
+        testState = .idle
+    }
+
+    func updateProviderPreference(_ preference: OpenRouterProviderPreference) {
+        providerPreference = preference
+        settingsStore.providerPreference = preference
+        statusMessage = "Provider-Auswahl automatisch gespeichert."
+        testState = .idle
+    }
+
+    @discardableResult
+    func finishEditing() -> Bool {
+        var firstError: Error?
+        func attempt(_ operation: () throws -> Void) {
+            do {
+                try operation()
+            } catch {
+                if firstError == nil { firstError = error }
+            }
+        }
+
+        // Persist independently so one malformed field cannot discard another
+        // valid value, especially the API key stored in the Keychain.
+        attempt { try persistReplacementAPIKey() }
+        attempt { try persistServerURL() }
+        attempt { try persistModelConfiguration() }
+
+        if let firstError {
+            report(firstError)
+            return false
+        }
+        statusMessage = "Änderungen automatisch gespeichert."
+        testState = .idle
+        return true
+    }
+
+    func persistPendingChangesSilently() {
+        try? persistReplacementAPIKey()
+        if let endpoint = try? QuantServerEndpoint.parse(serverURL) {
+            settingsStore.serverURL = endpoint.absoluteString
+        }
+        if isValidModelIdentifier(modelIdentifier) {
+            settingsStore.modelIdentifier = modelIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            settingsStore.costTier = costTier
+            settingsStore.providerPreference = providerPreference
         }
     }
 
@@ -85,7 +169,9 @@ final class OpenRouterSettingsViewModel {
         defer { isTesting = false }
 
         do {
-            try persistConfiguration()
+            try persistReplacementAPIKey()
+            try persistServerURL()
+            try persistModelConfiguration()
             guard let apiKey = try secretStore.secret(for: .openRouterAPIKey) else {
                 throw OpenRouterClientError.invalidAPIKey
             }
@@ -116,8 +202,8 @@ final class OpenRouterSettingsViewModel {
         defer { isLoadingModels = false }
 
         do {
-            try persistServerURL()
             try persistReplacementAPIKey()
+            try persistServerURL()
             guard let apiKey = try secretStore.secret(for: .openRouterAPIKey) else {
                 throw OpenRouterClientError.invalidAPIKey
             }
@@ -153,12 +239,9 @@ final class OpenRouterSettingsViewModel {
         }
     }
 
-    private func persistConfiguration() throws {
-        try persistServerURL()
+    private func persistModelConfiguration() throws {
         let trimmedModel = modelIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
-        let modelComponents = trimmedModel.split(separator: "/", omittingEmptySubsequences: false)
-        guard modelComponents.count >= 2,
-              !modelComponents.contains(where: \.isEmpty) else {
+        guard isValidModelIdentifier(trimmedModel) else {
             throw OpenRouterClientError.invalidModelIdentifier
         }
 
@@ -184,6 +267,18 @@ final class OpenRouterSettingsViewModel {
             replacementAPIKey = ""
             hasStoredAPIKey = true
         }
+    }
+
+    private func isValidModelIdentifier(_ identifier: String) -> Bool {
+        let components = identifier
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "/", omittingEmptySubsequences: false)
+        return components.count >= 2 && !components.contains(where: \.isEmpty)
+    }
+
+    private func report(_ error: Error) {
+        statusMessage = nil
+        testState = .failure(error.localizedDescription)
     }
 
     private func selectAvailableModelIfNeeded() {

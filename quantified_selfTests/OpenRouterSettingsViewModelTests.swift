@@ -81,7 +81,7 @@ struct OpenRouterSettingsViewModelTests {
         #expect(viewModel.modelIdentifier == "removed/model")
     }
 
-    @Test("Saving accepts a well-formed manual model identifier")
+    @Test("A manual model identifier saves independently")
     func acceptsManualModel() {
         let settings = SettingsStoreStub()
         let viewModel = makeViewModel(
@@ -90,13 +90,13 @@ struct OpenRouterSettingsViewModelTests {
         )
         viewModel.modelIdentifier = "invented/model"
 
-        viewModel.save()
+        viewModel.saveModelIdentifier()
 
         #expect(settings.modelIdentifier == "invented/model")
-        #expect(viewModel.statusMessage == "Konfiguration gespeichert.")
+        #expect(viewModel.statusMessage == "Modellauswahl automatisch gespeichert.")
     }
 
-    @Test("Saving normalizes and persists the Quant Server URL")
+    @Test("The Quant Server URL saves independently and is normalized")
     func persistsServerURL() {
         let settings = SettingsStoreStub()
         let viewModel = makeViewModel(
@@ -104,15 +104,28 @@ struct OpenRouterSettingsViewModelTests {
             catalog: ModelCatalogStub(result: .success(refreshedOptions))
         )
         viewModel.serverURL = "  https://quant-server.example/  "
-        viewModel.modelIdentifier = "invented/model"
-
-        viewModel.save()
+        viewModel.saveServerURL()
 
         #expect(settings.serverURL == "https://quant-server.example")
         #expect(viewModel.serverURL == "https://quant-server.example")
     }
 
-    @Test("Saving rejects an unencrypted non-local server URL")
+    @Test("Automatic URL persistence ignores incomplete values")
+    func ignoresIncompleteServerURL() {
+        let settings = SettingsStoreStub()
+        let viewModel = makeViewModel(
+            settings: settings,
+            catalog: ModelCatalogStub(result: .success(refreshedOptions))
+        )
+        viewModel.serverURL = "https://"
+
+        viewModel.persistServerURLIfValid()
+
+        #expect(settings.serverURL == "https://quant-server.example")
+        #expect(viewModel.testState == .idle)
+    }
+
+    @Test("Saving the URL rejects an unencrypted non-local server")
     func rejectsPublicHTTPServerURL() {
         let settings = SettingsStoreStub()
         let viewModel = makeViewModel(
@@ -120,16 +133,14 @@ struct OpenRouterSettingsViewModelTests {
             catalog: ModelCatalogStub(result: .success(refreshedOptions))
         )
         viewModel.serverURL = "http://quant-server.example"
-        viewModel.modelIdentifier = "invented/model"
-
-        viewModel.save()
+        viewModel.saveServerURL()
 
         #expect(viewModel.testState == .failure(
             "Gib eine gültige HTTPS-Adresse für den Quant Server ein."
         ))
     }
 
-    @Test("Saving rejects a malformed manual model identifier")
+    @Test("Saving a manual model rejects a malformed identifier")
     func rejectsMalformedManualModel() {
         let settings = SettingsStoreStub()
         let viewModel = makeViewModel(
@@ -138,12 +149,33 @@ struct OpenRouterSettingsViewModelTests {
         )
         viewModel.modelIdentifier = "invented-model"
 
-        viewModel.save()
+        viewModel.saveModelIdentifier()
 
         #expect(settings.modelIdentifier.isEmpty)
         #expect(viewModel.testState == .failure(
             "Gib eine Modell-ID im Format anbieter/modell ein."
         ))
+    }
+
+    @Test("The API key saves even when URL and model are invalid")
+    func savesAPIKeyIndependently() {
+        let settings = SettingsStoreStub()
+        let secrets = SecretStoreStub(secret: nil)
+        let viewModel = makeViewModel(
+            settings: settings,
+            catalog: ModelCatalogStub(result: .success(refreshedOptions)),
+            secretStore: secrets
+        )
+        viewModel.serverURL = "not a URL"
+        viewModel.modelIdentifier = "invalid"
+        viewModel.replacementAPIKey = "  phone-key  "
+
+        let completed = viewModel.finishEditing()
+
+        #expect(!completed)
+        #expect(secrets.storedSecret == "phone-key")
+        #expect(viewModel.replacementAPIKey.isEmpty)
+        #expect(viewModel.hasStoredAPIKey)
     }
 
     @Test("Failed refresh does not postpone the next automatic attempt")
@@ -184,8 +216,7 @@ struct OpenRouterSettingsViewModelTests {
         #expect(viewModel.isAutoRouterSelected)
         #expect(viewModel.costTier == .high)
 
-        viewModel.costTier = .max
-        viewModel.save()
+        viewModel.updateCostTier(.max)
 
         #expect(settings.costTier == .max)
     }
@@ -207,18 +238,18 @@ struct OpenRouterSettingsViewModelTests {
         viewModel.load()
         #expect(viewModel.providerPreference == .lowLatency)
 
-        viewModel.providerPreference = .balanced
-        viewModel.save()
+        viewModel.updateProviderPreference(.balanced)
 
         #expect(settings.providerPreference == .balanced)
     }
 
     private func makeViewModel(
         settings: SettingsStoreStub,
-        catalog: ModelCatalogStub
+        catalog: ModelCatalogStub,
+        secretStore: SecretStoreStub = SecretStoreStub()
     ) -> OpenRouterSettingsViewModel {
         let viewModel = OpenRouterSettingsViewModel(
-            secretStore: SecretStoreStub(),
+            secretStore: secretStore,
             settingsStore: settings,
             configurationChecker: ConfigurationCheckerStub(),
             modelCatalog: catalog,
@@ -253,10 +284,20 @@ private final class ModelCatalogStub: OpenRouterModelCatalogProviding {
     }
 }
 
-private struct SecretStoreStub: SecretStoring {
-    func secret(for identifier: SecretIdentifier) throws -> String? { "test-key" }
-    func setSecret(_ secret: String, for identifier: SecretIdentifier) throws {}
-    func removeSecret(for identifier: SecretIdentifier) throws {}
+private final class SecretStoreStub: SecretStoring {
+    private(set) var storedSecret: String?
+
+    init(secret: String? = "test-key") {
+        storedSecret = secret
+    }
+
+    func secret(for identifier: SecretIdentifier) throws -> String? { storedSecret }
+    func setSecret(_ secret: String, for identifier: SecretIdentifier) throws {
+        storedSecret = secret
+    }
+    func removeSecret(for identifier: SecretIdentifier) throws {
+        storedSecret = nil
+    }
 }
 
 private struct ConfigurationCheckerStub: OpenRouterConfigurationChecking {

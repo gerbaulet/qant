@@ -2,6 +2,12 @@ import SwiftData
 import SwiftUI
 
 struct OpenRouterSettingsView: View {
+    private enum ConfigurationField: Hashable {
+        case serverURL
+        case apiKey
+        case manualModel
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var viewModel: OpenRouterSettingsViewModel
@@ -16,6 +22,7 @@ struct OpenRouterSettingsView: View {
     @State private var hasFileBackedImages = false
     @State private var hasLoadedInitialSettings = false
     @State private var showsAdvancedModelOptions = false
+    @FocusState private var focusedConfigurationField: ConfigurationField?
     private let isActive: Bool
     private let onClose: (() -> Void)?
     private let weeklyReminderScheduler = WeeklySummaryNotificationScheduler()
@@ -75,6 +82,15 @@ struct OpenRouterSettingsView: View {
                         .textContentType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .focused($focusedConfigurationField, equals: .serverURL)
+                        .onSubmit {
+                            viewModel.saveServerURL()
+                            focusedConfigurationField = nil
+                        }
+                        .onChange(of: viewModel.serverURL) {
+                            viewModel.persistServerURLIfValid()
+                        }
                         .accessibilityLabel("Quant-Serveradresse")
                         .accessibilityIdentifier("settings.quantServerURL")
 
@@ -96,6 +112,12 @@ struct OpenRouterSettingsView: View {
 
                     SecureField("Neuen API-Schlüssel eingeben", text: $viewModel.replacementAPIKey)
                         .textContentType(.password)
+                        .submitLabel(.done)
+                        .focused($focusedConfigurationField, equals: .apiKey)
+                        .onSubmit {
+                            viewModel.saveAPIKey()
+                            focusedConfigurationField = nil
+                        }
                         .accessibilityIdentifier("settings.openRouterAPIKey")
 
                     LabeledContent("Modell") {
@@ -105,7 +127,7 @@ struct OpenRouterSettingsView: View {
                             }
                             ForEach(viewModel.modelOptions) { model in
                                 Button(model.name) {
-                                    viewModel.modelIdentifier = model.id
+                                    viewModel.selectModel(model.id)
                                 }
                             }
                         } label: {
@@ -136,6 +158,12 @@ struct OpenRouterSettingsView: View {
                         TextField("anbieter/modell", text: $viewModel.modelIdentifier)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
+                            .submitLabel(.done)
+                            .focused($focusedConfigurationField, equals: .manualModel)
+                            .onSubmit {
+                                viewModel.saveModelIdentifier()
+                                focusedConfigurationField = nil
+                            }
                             .accessibilityLabel("Manuelle Modell-ID")
                             .accessibilityIdentifier("settings.openRouterManualModelIdentifier")
 
@@ -145,7 +173,10 @@ struct OpenRouterSettingsView: View {
                     }
 
                     if viewModel.isAutoRouterSelected {
-                        Picker("Kostenstufe", selection: $viewModel.costTier) {
+                        Picker("Kostenstufe", selection: Binding(
+                            get: { viewModel.costTier },
+                            set: viewModel.updateCostTier
+                        )) {
                             ForEach(OpenRouterCostTier.allCases) { tier in
                                 Text(tier.title).tag(tier)
                             }
@@ -157,7 +188,10 @@ struct OpenRouterSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Picker("Provider-Auswahl", selection: $viewModel.providerPreference) {
+                    Picker("Provider-Auswahl", selection: Binding(
+                        get: { viewModel.providerPreference },
+                        set: viewModel.updateProviderPreference
+                    )) {
                         ForEach(OpenRouterProviderPreference.allCases) { preference in
                             Text(preference.title).tag(preference)
                         }
@@ -182,10 +216,6 @@ struct OpenRouterSettingsView: View {
                     .disabled(viewModel.isLoadingModels || !viewModel.canLoadModels)
                     .accessibilityIdentifier("settings.loadOpenRouterModels")
 
-                    Button("Konfiguration speichern") {
-                        viewModel.save()
-                    }
-
                     Button {
                         Task { await viewModel.testConfiguration() }
                     } label: {
@@ -208,7 +238,7 @@ struct OpenRouterSettingsView: View {
                 } header: {
                     Text("Quant Server und OpenRouter")
                 } footer: {
-                    Text("Der API-Schlüssel wird dauerhaft nur im iOS-Schlüsselbund gespeichert. Quant überträgt ihn für den jeweiligen Auftrag verschlüsselt an deinen Server; dieser verwendet ihn für OpenRouter und speichert ihn nicht. Normalerweise fällt ein KI-Aufruf an. Bei Tellerfotos ohne erkanntes Etikett oder genaue Mengenangabe werden drei Schätzungen erstellt; eine fehlerhafte Antwort kann einmalig korrigiert werden.")
+                    Text("Änderungen werden automatisch gespeichert. Der API-Schlüssel bleibt dauerhaft nur im iOS-Schlüsselbund. Quant überträgt ihn für den jeweiligen Auftrag verschlüsselt an deinen Server; dieser verwendet ihn für OpenRouter und speichert ihn nicht. Normalerweise fällt ein KI-Aufruf an. Bei Tellerfotos ohne erkanntes Etikett oder genaue Mengenangabe werden drei Schätzungen erstellt; eine fehlerhafte Antwort kann einmalig korrigiert werden.")
                 }
 
                 statusSection
@@ -260,7 +290,11 @@ struct OpenRouterSettingsView: View {
             .toolbar {
                 if let onClose {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Fertig", action: onClose)
+                        Button("Fertig") {
+                            focusedConfigurationField = nil
+                            viewModel.finishEditing()
+                            onClose()
+                        }
                             .accessibilityIdentifier("settings.close")
                     }
                 }
@@ -281,6 +315,22 @@ struct OpenRouterSettingsView: View {
         }
         .sheet(isPresented: $showsTrafficLog) {
             OpenRouterTrafficLogView()
+        }
+        .onChange(of: focusedConfigurationField) { oldValue, newValue in
+            guard oldValue != newValue else { return }
+            switch oldValue {
+            case .serverURL:
+                viewModel.saveServerURL()
+            case .apiKey:
+                viewModel.saveAPIKey()
+            case .manualModel:
+                viewModel.saveModelIdentifier()
+            case nil:
+                break
+            }
+        }
+        .onDisappear {
+            viewModel.persistPendingChangesSilently()
         }
     }
 
