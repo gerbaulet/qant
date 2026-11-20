@@ -404,7 +404,7 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
-    func testShowsLiveAnalysisRequestsAndPartialResults() throws {
+    func testHidesLiveAnalysisDetails() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--ui-testing", "--ui-testing-review-progress"]
         app.launch()
@@ -413,25 +413,15 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(mealName.waitForExistence(timeout: 3))
         mealName.tap()
         XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 3))
-        let counts = app.staticTexts["meal.analysisProgress.counts"]
-        XCTAssertTrue(counts.waitForExistence(timeout: 3))
-        XCTAssertEqual(counts.label, "3 Anfragen gestartet · 1 laufen · 1 erfolgreich · 1 fehlgeschlagen")
-        XCTAssertTrue(app.staticTexts["Anfrage 1 · Erfolgreich"].exists)
-        app.swipeUp()
-        XCTAssertTrue(app.staticTexts["Anfrage 2 · Fehlgeschlagen"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["Fehler: Die Ernährungsanalyse konnte nicht gelesen werden."].exists)
-        app.swipeUp()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Anfrage 3 · Antwort steht aus")).firstMatch.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["meal.analysisProgress.status.3"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["meal.analysisProgress.status.3"].label.contains("JSON wird empfangen"))
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Antwort begonnen:")).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Erstes JSON:")).firstMatch.exists)
-        XCTAssertTrue(app.scrollViews["meal.analysisProgress.stream.3"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "estimatedTotalWeightGrams")).firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["meal.status.analyzing"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Laufende Analyse"].exists)
+        XCTAssertFalse(app.staticTexts["meal.analysisProgress.counts"].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "JSON wird empfangen")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "estimatedTotalWeightGrams")).firstMatch.exists)
     }
 
     @MainActor
-    func testSwitchesTabsWhileMealAnalysisIsVisible() throws {
+    func testSwitchesTabsWhileMealIsAnalyzing() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--ui-testing", "--ui-testing-review-progress"]
         app.launch()
@@ -439,7 +429,7 @@ final class QuantUITests: XCTestCase {
         let mealName = app.staticTexts["Chicken Curry mit Reis"]
         XCTAssertTrue(mealName.waitForExistence(timeout: 3))
         mealName.tap()
-        XCTAssertTrue(app.staticTexts["meal.analysisProgress.counts"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["meal.status.analyzing"].waitForExistence(timeout: 3))
 
         let trendsTab = app.tabBars.buttons["Auswertung"]
         XCTAssertTrue(trendsTab.waitForExistence(timeout: 2))
@@ -450,7 +440,8 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(todayTab.waitForExistence(timeout: 2))
         todayTab.tap()
         XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["meal.analysisProgress.counts"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["meal.status.analyzing"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Laufende Analyse"].exists)
     }
 
     @MainActor

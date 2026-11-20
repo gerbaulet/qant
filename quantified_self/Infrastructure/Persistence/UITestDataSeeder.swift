@@ -78,44 +78,6 @@ enum UITestDataSeeder {
         )
         context.insert(meal)
         try context.save()
-        if wantsProgress {
-            let store = MealAnalysisProgressStore.shared
-            store.begin(meal.id)
-            let now = Date.now
-            for number in 1...3 {
-                _ = store.startCall(
-                    for: meal.id,
-                    sampleNumber: number,
-                    attemptNumber: 1,
-                    at: now.addingTimeInterval(-20)
-                )
-            }
-            store.recordStreamEvent(.requestStarted, to: 3, for: meal.id, at: now.addingTimeInterval(-18))
-            store.recordStreamEvent(.responseStarted, to: 3, for: meal.id, at: now.addingTimeInterval(-7))
-            store.recordStreamEvent(
-                .contentDelta(
-                    """
-                    {"mealName":"Chicken Curry mit Reis","estimatedTotalWeightGrams":440,
-                    "confidence":"medium","uncertaintySummary":"Die genaue Menge der Sauce",
-                    "components":[{"name":"Chicken Curry","estimatedWeightGrams":280}],
-                    "nutrients":[{"identifier":"energy","value":785,"unit":"kcal"}]}
-                    """
-                ),
-                to: 3,
-                for: meal.id,
-                at: now.addingTimeInterval(-5)
-            )
-            store.finishCall(AnalysisCallSummary(
-                callNumber: 1, sampleNumber: 1, attemptNumber: 1, status: .succeeded,
-                modelIdentifier: "example/vision-model", providerIdentifier: "Example Provider",
-                energyKilocalories: 785, errorMessage: nil
-            ), for: meal.id)
-            store.finishCall(AnalysisCallSummary(
-                callNumber: 2, sampleNumber: 2, attemptNumber: 1, status: .failed,
-                modelIdentifier: nil, providerIdentifier: nil, energyKilocalories: nil,
-                errorMessage: "Die Ernährungsanalyse konnte nicht gelesen werden."
-            ), for: meal.id)
-        }
     }
 
     private static func component(

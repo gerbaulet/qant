@@ -32,14 +32,12 @@ struct MealAnalysisQueueTests {
         #expect(pending.first?.mealID == meal.id)
         #expect(pending.first?.trigger == .initial)
         #expect(meal.analysisState == .analyzing)
-        #expect(MealAnalysisProgressStore.shared.analyses[meal.id] != nil)
 
         provider.resume()
         await task.value
 
         #expect(try context.fetch(FetchDescriptor<PendingMealAnalysis>()).isEmpty)
         #expect(meal.analysisState == .confirmed)
-        #expect(MealAnalysisProgressStore.shared.analyses[meal.id] == nil)
     }
 
     @Test("App launch resumes a persisted clarification with its answer")

@@ -27,7 +27,6 @@ final class MealAnalysisCoordinator {
     private let retryDelaySleeper: any RetryDelaySleeping
     private let backgroundExecutionManager: any BackgroundExecutionManaging
     private let textRecognizer: any NutritionLabelTextRecognizing
-    private let progressStore: MealAnalysisProgressStore
     private let now: () -> Date
 
     init(
@@ -38,8 +37,7 @@ final class MealAnalysisCoordinator {
         retryDelaySleeper: (any RetryDelaySleeping)? = nil,
         backgroundExecutionManager: (any BackgroundExecutionManaging)? = nil,
         textRecognizer: any NutritionLabelTextRecognizing = VisionNutritionLabelTextRecognizer(),
-        now: @escaping () -> Date = Date.init,
-        progressStore: MealAnalysisProgressStore = .shared
+        now: @escaping () -> Date = Date.init
     ) {
         self.context = context
         self.provider = provider
@@ -48,7 +46,6 @@ final class MealAnalysisCoordinator {
         self.retryDelaySleeper = retryDelaySleeper ?? SystemRetryDelaySleeper()
         self.backgroundExecutionManager = backgroundExecutionManager ?? SystemBackgroundExecutionManager.shared
         self.textRecognizer = textRecognizer
-        self.progressStore = progressStore
         self.now = now
     }
 
@@ -146,11 +143,7 @@ final class MealAnalysisCoordinator {
         let previousMealState = meal.analysisState
         let preservedPortionMultiplier = meal.activeRevision?.normalizedPortionMultiplier ?? 1
         let previousAnalysis = meal.activeRevision.map(makeBaselineAnalysisResult)
-        progressStore.begin(meal.id)
-        defer { progressStore.end(meal.id) }
         let callRecorder = AnalysisCallRecorder(
-            mealID: meal.id,
-            progressStore: progressStore,
             clarificationQuestion: trigger == .clarification
                 ? meal.activeRevision?.clarificationQuestion
                 : nil,
@@ -268,12 +261,10 @@ final class MealAnalysisCoordinator {
         var usedCorrectionAttempt = false
         while true {
             attempt += 1
-            let callNumber = callRecorder.start(sampleNumber: sampleNumber, attemptNumber: attempt)
+            callRecorder.start(sampleNumber: sampleNumber, attemptNumber: attempt)
             var candidate: NutritionAnalysisResult?
             do {
-                let rawResult = try await provider.analyze(nextRequest) { event in
-                    callRecorder.recordStreamEvent(event, to: callNumber)
-                }
+                let rawResult = try await provider.analyze(nextRequest)
                 candidate = rawResult
                 try NutritionAnalysisValidator.validate(rawResult)
                 let consumedAmounts = NutritionAnalysisCalculator
@@ -312,10 +303,8 @@ final class MealAnalysisCoordinator {
                 guard transientFailureCount < Self.maximumTransientAttemptCount else { throw error }
                 if Self.isTransportFailure(error) {
                     AppLogger.nutritionAnalysis.info("Waiting for network before retrying analysis")
-                    callRecorder.waitForNetwork()
                     try await networkAvailabilityWaiter.waitUntilAvailable()
                 } else {
-                    callRecorder.waitBeforeRetry(attempt: attempt + 1)
                     try await retryDelaySleeper.sleep(beforeAttempt: attempt + 1)
                 }
             }
@@ -608,47 +597,29 @@ private enum ValidatedAnalysisOutcome {
 @MainActor
 private final class AnalysisCallRecorder {
     private(set) var calls: [AnalysisCallSummary] = []
-    private let mealID: UUID
-    private let progressStore: MealAnalysisProgressStore
+    private var nextCallNumber = 0
     private var startedCalls: [String: (number: Int, date: Date)] = [:]
 
-    func start(sampleNumber: Int?, attemptNumber: Int) -> Int {
+    func start(sampleNumber: Int?, attemptNumber: Int) {
         let date = now()
-        let number = progressStore.startCall(for: mealID, sampleNumber: sampleNumber, attemptNumber: attemptNumber, at: date)
+        nextCallNumber += 1
+        let number = nextCallNumber
         startedCalls["\(sampleNumber ?? 0)-\(attemptNumber)"] = (number, date)
-        return number
-    }
-
-    func recordStreamEvent(_ event: NutritionAnalysisStreamEvent, to callNumber: Int) {
-        progressStore.recordStreamEvent(event, to: callNumber, for: mealID, at: now())
-    }
-
-    func waitForNetwork() {
-        progressStore.setPhase("Verbindung unterbrochen. Auf Netzwerk für den nächsten Versuch warten …", for: mealID)
-    }
-
-    func waitBeforeRetry(attempt: Int) {
-        progressStore.setPhase("Temporärer Fehler. Automatischer Versuch \(attempt) von \(MealAnalysisCoordinator.maximumTransientAttemptCount) …", for: mealID)
     }
 
     private func record(_ summary: AnalysisCallSummary) {
         calls.append(summary)
         calls.sort { $0.callNumber < $1.callNumber }
-        progressStore.finishCall(summary, for: mealID)
     }
     private let clarificationQuestion: String?
     private let clarificationAnswer: String?
     private let now: () -> Date
 
     init(
-        mealID: UUID,
-        progressStore: MealAnalysisProgressStore,
         clarificationQuestion: String?,
         clarificationAnswer: String?,
         now: @escaping () -> Date
     ) {
-        self.mealID = mealID
-        self.progressStore = progressStore
         self.clarificationQuestion = clarificationQuestion
         self.clarificationAnswer = clarificationAnswer
         self.now = now

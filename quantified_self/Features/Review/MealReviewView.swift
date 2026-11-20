@@ -14,7 +14,6 @@ struct MealReviewView: View {
 
     private let analysisProvider: any NutritionAnalysisProviding
     private let imageStorage: any ImageStorageProviding
-    private let isActive: Bool
     private let onDelete: ((Meal) -> Void)?
     private let onDuplicate: (@MainActor (Meal) async throws -> Void)?
 
@@ -42,7 +41,6 @@ struct MealReviewView: View {
         meal: Meal,
         analysisProvider: any NutritionAnalysisProviding = OpenRouterNutritionAnalysisService(),
         imageStorage: any ImageStorageProviding = FileImageStorage(),
-        isActive: Bool = true,
         showsDuplicateConfirmation: Bool = false,
         onDelete: ((Meal) -> Void)? = nil,
         onDuplicate: (@MainActor (Meal) async throws -> Void)? = nil
@@ -50,7 +48,6 @@ struct MealReviewView: View {
         self.meal = meal
         self.analysisProvider = analysisProvider
         self.imageStorage = imageStorage
-        self.isActive = isActive
         self.onDelete = onDelete
         self.onDuplicate = onDuplicate
         _editedTimestamp = State(initialValue: meal.timestamp)
@@ -77,7 +74,6 @@ struct MealReviewView: View {
                 }
 
                 failureSection
-                liveAnalysisSection
 
                 if let revision = meal.activeRevision {
                     confidenceSection(revision)
@@ -485,61 +481,6 @@ struct MealReviewView: View {
             }
         }
         .padding(.vertical, 10)
-    }
-
-    @ViewBuilder
-    private var liveAnalysisSection: some View {
-        if isActive && meal.analysisState == .analyzing {
-            let progress = MealAnalysisProgressStore.shared.analyses[meal.id] ?? MealAnalysisProgress()
-            VStack(alignment: .leading, spacing: 12) {
-                Label("Laufende Analyse", systemImage: "sparkles")
-                    .font(.headline)
-                Text(progress.phase)
-                    .font(.subheadline)
-                Text("\(progress.calls.count) Anfragen gestartet · \(progress.runningCount) laufen · \(progress.succeededCount) erfolgreich · \(progress.failedCount) fehlgeschlagen")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("meal.analysisProgress.counts")
-                ForEach(progress.calls) { call in
-                    if let result = call.result {
-                        analysisRunRow(
-                            title: "Anfrage \(call.id) · \(result.status == .succeeded ? "Erfolgreich" : "Fehlgeschlagen")",
-                            subtitle: call.sampleNumber.map { "Schätzung \($0) · Versuch \(call.attemptNumber)" } ?? "Versuch \(call.attemptNumber)",
-                            status: result.status,
-                            modelIdentifier: result.modelIdentifier,
-                            providerIdentifier: result.providerIdentifier,
-                            requestedAt: result.requestedAt ?? call.requestedAt,
-                            clarificationQuestion: result.clarificationQuestion,
-                            clarificationAnswer: result.clarificationAnswer,
-                            energyKilocalories: result.energyKilocalories,
-                            inputTokens: result.inputTokens,
-                            outputTokens: result.outputTokens,
-                            costUSD: result.costUSD,
-                            errorMessage: result.errorMessage
-                        )
-                    } else {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                ProgressView()
-                                Text("Anfrage \(call.id) · Antwort steht aus")
-                                    .font(.subheadline.bold())
-                            }
-                            Text(call.sampleNumber.map { "Schätzung \($0) · Versuch \(call.attemptNumber)" } ?? "Versuch \(call.attemptNumber)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            LiveAnalysisStatusView(call: call)
-                            LiveJSONStreamView(text: call.streamedJSON, callID: call.id)
-                        }
-                    }
-                }
-            }
-            .padding(QuantLayout.cardPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                .background,
-                in: .rect(cornerRadius: QuantLayout.cardCornerRadius)
-            )
-        }
     }
 
     private func analysisRunRow(
@@ -954,102 +895,6 @@ struct MealReviewView: View {
         } catch {
             alertMessage = "Die angepasste Menge konnte nicht gespeichert werden."
             return false
-        }
-    }
-}
-
-private struct LiveAnalysisStatusView: View {
-    let call: LiveAnalysisCall
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { timeline in
-            VStack(alignment: .leading, spacing: 3) {
-                Text(statusText)
-                    .font(.caption.bold())
-                    .accessibilityIdentifier("meal.analysisProgress.status.\(call.id)")
-                Text("Bisher: \(durationText(from: call.requestedAt, to: endDate(at: timeline.date)))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                timestamp("Gestartet", date: call.requestedAt)
-                if let date = call.requestStartedAt {
-                    timestamp("Übertragung gestartet", date: date)
-                }
-                if let date = call.responseStartedAt {
-                    timestamp("Antwort begonnen", date: date)
-                }
-                if let date = call.firstContentAt {
-                    timestamp("Erstes JSON", date: date)
-                }
-                if let date = call.responseCompletedAt {
-                    timestamp("Antwort vollständig", date: date)
-                }
-            }
-        }
-    }
-
-    private var statusText: String {
-        if call.responseCompletedAt != nil {
-            return "Antwort vollständig · Ergebnis wird geprüft …"
-        }
-        if call.firstContentAt != nil {
-            return "JSON wird empfangen …"
-        }
-        if call.responseStartedAt != nil {
-            return "Antwort begonnen · warte auf JSON …"
-        }
-        if call.requestStartedAt != nil {
-            return "Anfrage und Bilder werden übertragen oder verarbeitet …"
-        }
-        return "Anfrage wird vorbereitet …"
-    }
-
-    private func timestamp(_ label: String, date: Date) -> some View {
-        Text("\(label): \(date.formatted(.dateTime.hour().minute().second())) (+\(durationText(from: call.requestedAt, to: date)))")
-            .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
-    }
-
-    private func endDate(at currentDate: Date) -> Date {
-        call.responseCompletedAt ?? currentDate
-    }
-
-    private func durationText(from startDate: Date, to endDate: Date) -> String {
-        let seconds = max(0, Int(endDate.timeIntervalSince(startDate).rounded()))
-        if seconds < 60 {
-            return "\(seconds) s"
-        }
-        return "\(seconds / 60):\(String(format: "%02d", seconds % 60)) min"
-    }
-}
-
-private struct LiveJSONStreamView: View {
-    private static let visibleLineCount: CGFloat = 10
-    private static let lineHeight: CGFloat = 15
-
-    let text: String
-    let callID: Int
-
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(text.isEmpty ? "Warte auf erste JSON-Daten …" : text)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(text.isEmpty ? .secondary : .primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                    Color.clear
-                        .frame(height: 1)
-                        .id("stream-end-\(callID)")
-                }
-            }
-            .frame(height: Self.visibleLineCount * Self.lineHeight)
-            .padding(8)
-            .background(Color.black.opacity(0.06), in: .rect(cornerRadius: 8))
-            .accessibilityIdentifier("meal.analysisProgress.stream.\(callID)")
-            .onChange(of: text) {
-                proxy.scrollTo("stream-end-\(callID)", anchor: .bottom)
-            }
         }
     }
 }
