@@ -117,8 +117,10 @@ scripts/deploy-server.sh \
 
 The deployment accepts only a full private `.ts.net` host name, verifies
 key-only access, uploads the source, starts the container, runs its health check,
-and enables Tailscale Serve. Enter the resulting `https://...ts.net/` root URL
-in Quant. Never enable Tailscale Funnel for this service.
+and enables Tailscale Serve. An encrypted local SSH key may ask for its
+passphrase during this process; server password authentication remains disabled.
+Enter the resulting `https://...ts.net/` root URL in Quant. Never enable
+Tailscale Funnel for this service.
 
 Useful commands on the server are:
 

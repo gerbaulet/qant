@@ -57,7 +57,11 @@ TARGET="${REMOTE_USER}@${HOST}"
 [ -f "$SOURCE_DIR/compose.yaml" ] || die "compose.yaml not found beside scripts/"
 
 printf 'Checking key-only Tailscale SSH access to %s...\n' "$TARGET"
-ssh -o BatchMode=yes -o PasswordAuthentication=no "$TARGET" 'command -v sudo >/dev/null && command -v rsync >/dev/null && command -v docker >/dev/null'
+ssh \
+    -o PasswordAuthentication=no \
+    -o KbdInteractiveAuthentication=no \
+    "$TARGET" \
+    'command -v sudo >/dev/null && command -v rsync >/dev/null && command -v docker >/dev/null'
 
 printf 'Uploading Quant Server source...\n'
 rsync -az --delete \
