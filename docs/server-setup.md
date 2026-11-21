@@ -11,10 +11,17 @@ This avoids turning a key-copy mistake into a server lockout.
 ## 1. Create or select a key on the Mac
 
 Do not overwrite an existing key. The following commands create one only when
-the default Ed25519 key is absent:
+the default private Ed25519 key is absent; if only its public file is missing,
+they reconstruct that public file from the private key:
 
 ```sh
-test -f "$HOME/.ssh/id_ed25519.pub" || ssh-keygen -t ed25519 -a 100 -f "$HOME/.ssh/id_ed25519"
+if [ ! -f "$HOME/.ssh/id_ed25519.pub" ]; then
+  if [ -f "$HOME/.ssh/id_ed25519" ]; then
+    ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >"$HOME/.ssh/id_ed25519.pub"
+  else
+    ssh-keygen -t ed25519 -a 100 -f "$HOME/.ssh/id_ed25519"
+  fi
+fi
 ssh-keygen -lf "$HOME/.ssh/id_ed25519.pub"
 ```
 
