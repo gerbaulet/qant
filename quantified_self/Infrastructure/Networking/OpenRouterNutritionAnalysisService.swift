@@ -2,6 +2,8 @@ import CryptoKit
 import Foundation
 
 struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
+    private static let maximumCompletionTokens = 16_384
+
     private struct ChatResponse: Decodable {
         struct Choice: Decodable {
             struct Message: Decodable {
@@ -160,6 +162,7 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
 
         var body: [String: Any] = [
             "model": modelIdentifier,
+            "max_completion_tokens": Self.maximumCompletionTokens,
             "temperature": 0,
             "stream": true,
             "stream_options": [

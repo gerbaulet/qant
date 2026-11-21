@@ -50,6 +50,7 @@ struct OpenRouterNutritionAnalysisServiceTests {
         #expect(streamOptions["include_usage"] as? Bool == true)
         #expect(json["model"] as? String == "example/vision-model")
         #expect(json["temperature"] as? Int == 0)
+        #expect(json["max_completion_tokens"] as? Int == 16_384)
         let responseFormat = try #require(json["response_format"] as? [String: Any])
         let jsonSchema = try #require(responseFormat["json_schema"] as? [String: Any])
         #expect(jsonSchema["strict"] as? Bool == true)
