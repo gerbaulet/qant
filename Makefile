@@ -5,7 +5,7 @@ TAILSCALE ?= tailscale
 TAILSCALE_TARGET ?= 8080
 TAILSCALE_HTTPS_PORT ?= 443
 
-.PHONY: help test build docker-build config up start stop restart down status logs health run tailscale-up tailscale-down tailscale-status
+.PHONY: help test build docker-build config up start stop restart down status logs health run tailscale-up tailscale-down tailscale-status host-status
 
 help: ## Show available commands.
 	@awk 'BEGIN { FS = ":.*## " } /^[a-z-]+:.*## / { printf "  %-18s %s\n", $$1, $$2 }' "$(firstword $(MAKEFILE_LIST))"
@@ -57,3 +57,6 @@ tailscale-down: ## Disable Tailscale Serve on HTTPS port 443.
 
 tailscale-status: ## Show the active Tailscale Serve configuration.
 	$(TAILSCALE) serve status
+
+host-status: ## Show host security and service status (run on the server).
+	sudo quant-provision status

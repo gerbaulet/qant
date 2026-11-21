@@ -20,6 +20,12 @@ shared key in the Compose configuration or on the server.
 - Tailscale on the host and on every iPhone
 - Tailscale HTTPS and MagicDNS enabled for the tailnet
 
+For a fresh Debian 13 server, follow the automated, two-phase
+[host setup and deployment runbook](docs/server-setup.md). It configures an
+administrator SSH key, updates, automatic security patches, swap, Docker,
+Tailscale, fail2ban, nftables, and SSH hardening without risking an immediate
+lockout.
+
 ## Start the server
 
 ```sh
