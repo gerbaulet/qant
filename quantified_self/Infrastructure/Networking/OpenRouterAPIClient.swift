@@ -73,6 +73,8 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
     case serverError
     case invalidResponse
     case transportFailure
+    case networkFailure(code: Int, message: String)
+    case serverJobFailure(code: String?, message: String, jobIdentifier: String)
     case apiError(statusCode: Int, message: String)
 
     var errorDescription: String? {
@@ -104,7 +106,11 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
         case .invalidResponse:
             "OpenRouter hat eine unerwartete Antwort geliefert."
         case .transportFailure:
-            "Quant Server oder OpenRouter konnte nicht erreicht werden. Prüfe deine Internetverbindung und Tailscale."
+            "Verbindung zum Quant Server fehlgeschlagen.\nUrsache: nicht verfügbar.\nPrüfe Internetverbindung, Tailscale und Serveradresse."
+        case let .networkFailure(code, message):
+            "Verbindung zum Quant Server fehlgeschlagen.\nUrsache: \(message)\nDiagnose: NSURLErrorDomain (\(code)).\nPrüfe Internetverbindung, Tailscale und Serveradresse."
+        case let .serverJobFailure(code, message, jobIdentifier):
+            "Der Quant Server konnte den Analyseauftrag nicht abschließen.\nUrsache: \(message)\nDiagnose: Servercode \(code ?? "nicht angegeben"), Auftrag \(jobIdentifier)."
         case let .apiError(statusCode, message):
             "OpenRouter-Fehler \(statusCode): \(message)"
         }
@@ -332,16 +338,13 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
                 await trafficLog.recordFailure(id: requestID, description: "Anfrage abgebrochen")
                 throw CancellationError()
             }
-            if error.code == .timedOut {
-                await trafficLog.recordFailure(id: requestID, description: "Zeitüberschreitung")
-                throw OpenRouterClientError.timedOut
-            }
+            let clientError = Self.networkFailure(from: error)
             await trafficLog.recordFailure(
                 id: requestID,
-                description: "Transportfehler: \(error.localizedDescription)"
+                description: clientError.localizedDescription
             )
             AppLogger.nutritionAnalysis.error("OpenRouter transport request failed")
-            throw OpenRouterClientError.transportFailure
+            throw clientError
         } catch {
             await trafficLog.recordFailure(
                 id: requestID,
@@ -443,16 +446,13 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
                 await trafficLog.recordFailure(id: requestID, description: "Anfrage abgebrochen")
                 throw CancellationError()
             }
-            if error.code == .timedOut {
-                await trafficLog.recordFailure(id: requestID, description: "Zeitüberschreitung")
-                throw OpenRouterClientError.timedOut
-            }
+            let clientError = Self.networkFailure(from: error)
             await trafficLog.recordFailure(
                 id: requestID,
-                description: "Transportfehler: \(error.localizedDescription)"
+                description: clientError.localizedDescription
             )
             AppLogger.nutritionAnalysis.error("Quant Server transport request failed")
-            throw OpenRouterClientError.transportFailure
+            throw clientError
         } catch {
             await trafficLog.recordFailure(
                 id: requestID,
@@ -498,12 +498,14 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
                 )
                 return try validatedResponseData(responseBody, statusCode: upstreamStatus)
             }
-            let description = job.failureMessage ?? "Quant Server konnte den Auftrag nicht abschließen."
+            let description = Self.nonemptyDiagnostic(job.failureMessage)
+                ?? "Keine weitere Fehlermeldung wurde übermittelt."
             await trafficLog.recordFailure(id: requestID, description: description)
-            if job.failureCode == "upstream_timeout" {
-                throw OpenRouterClientError.timedOut
-            }
-            throw OpenRouterClientError.transportFailure
+            throw OpenRouterClientError.serverJobFailure(
+                code: Self.nonemptyDiagnostic(job.failureCode),
+                message: description,
+                jobIdentifier: String(job.id.prefix(200))
+            )
         }
         guard job.status == .succeeded, !responseBody.isEmpty else {
             throw OpenRouterClientError.invalidResponse
@@ -541,6 +543,21 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         response.allHeaderFields.reduce(into: [String: String]()) { result, item in
             result[String(describing: item.key)] = String(describing: item.value)
         }
+    }
+
+    private nonisolated static func networkFailure(from error: URLError) -> OpenRouterClientError {
+        .networkFailure(
+            code: error.code.rawValue,
+            message: nonemptyDiagnostic(error.localizedDescription)
+                ?? "Keine weitere Fehlermeldung wurde übermittelt."
+        )
+    }
+
+    private nonisolated static func nonemptyDiagnostic(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(500))
     }
 
     private nonisolated func validatedResponseData(_ data: Data, statusCode: Int) throws -> Data {

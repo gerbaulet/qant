@@ -186,6 +186,58 @@ struct OpenRouterAPIClientTests {
         }
     }
 
+    @Test("Network failures expose the concrete URL error")
+    func networkFailureDiagnostic() async {
+        let underlyingError = URLError(.cannotConnectToHost)
+        let client = OpenRouterAPIClient(session: makeFailingSession(error: underlyingError))
+
+        do {
+            _ = try await client.sendChatCompletion(
+                apiKey: "test-secret",
+                body: Data(#"{"model":"example/model"}"#.utf8),
+                idempotencyKey: "analysis-request-network-failure",
+                serverBaseURL: serverBaseURL
+            )
+            Issue.record("Expected the request to fail")
+        } catch let error as OpenRouterClientError {
+            guard case let .networkFailure(code, message) = error else {
+                Issue.record("Unexpected client error: \(error)")
+                return
+            }
+            #expect(code == URLError.Code.cannotConnectToHost.rawValue)
+            #expect(message == underlyingError.localizedDescription)
+            #expect(error.localizedDescription.contains("Quant Server"))
+            #expect(error.localizedDescription.contains("-1004"))
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test("A failed server job exposes its diagnostic code and identifier")
+    func failedServerJobDiagnostic() async {
+        let session = makeSession { request in
+            Self.response(
+                for: request,
+                status: 200,
+                json: #"{"id":"job-diagnostic-123","status":"failed","failure_code":"upstream_transport_error","failure_message":"OpenRouter DNS lookup failed"}"#
+            )
+        }
+        let client = OpenRouterAPIClient(session: session, pollIntervalNanoseconds: 0)
+
+        await #expect(throws: OpenRouterClientError.serverJobFailure(
+            code: "upstream_transport_error",
+            message: "OpenRouter DNS lookup failed",
+            jobIdentifier: "job-diagnostic-123"
+        )) {
+            try await client.sendChatCompletion(
+                apiKey: "test-secret",
+                body: Data(#"{"model":"example/model"}"#.utf8),
+                idempotencyKey: "analysis-request-server-failure",
+                serverBaseURL: serverBaseURL
+            )
+        }
+    }
+
     @Test("Model catalog returns image models with structured output")
     func compatibleModelCatalog() async throws {
         let session = makeSession { request in
@@ -214,6 +266,13 @@ struct OpenRouterAPIClientTests {
         URLProtocolStub.handler = handler
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [URLProtocolStub.self]
+        return URLSession(configuration: configuration)
+    }
+
+    private func makeFailingSession(error: URLError) -> URLSession {
+        FailingURLProtocolStub.error = error
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FailingURLProtocolStub.self]
         return URLSession(configuration: configuration)
     }
 
@@ -292,6 +351,19 @@ private final class URLProtocolStub: URLProtocol, @unchecked Sendable {
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
         client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+private final class FailingURLProtocolStub: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var error = URLError(.unknown)
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: Self.error)
     }
 
     override func stopLoading() {}

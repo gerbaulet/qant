@@ -376,7 +376,13 @@ final class MealAnalysisCoordinator {
     }
 
     private static func isTransportFailure(_ error: Error) -> Bool {
-        (error as? OpenRouterClientError) == .transportFailure
+        guard let clientError = error as? OpenRouterClientError else { return false }
+        switch clientError {
+        case .transportFailure, .networkFailure:
+            return true
+        default:
+            return false
+        }
     }
 
     private static func isCorrectableResponseFailure(_ error: Error) -> Bool {
@@ -400,7 +406,8 @@ final class MealAnalysisCoordinator {
         }
         guard let clientError = error as? OpenRouterClientError else { return false }
         switch clientError {
-        case .transportFailure, .timedOut, .serverError, .rateLimited, .invalidResponse:
+        case .transportFailure, .networkFailure, .serverJobFailure, .timedOut, .serverError,
+                .rateLimited, .invalidResponse:
             return true
         case let .apiError(statusCode, _):
             return statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)

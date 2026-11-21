@@ -560,7 +560,10 @@ struct MealAnalysisCoordinatorTests {
         context.insert(meal)
         try context.save()
         let provider = SequencedAnalysisProviderStub(outcomes: Array(
-            repeating: .failure(OpenRouterClientError.transportFailure),
+            repeating: .failure(OpenRouterClientError.networkFailure(
+                code: URLError.Code.notConnectedToInternet.rawValue,
+                message: "Keine Internetverbindung."
+            )),
             count: 5
         ))
         let waiter = NetworkAvailabilityWaiterStub()
@@ -576,7 +579,8 @@ struct MealAnalysisCoordinatorTests {
         #expect(waiter.waitCount == 4)
         #expect(provider.requestCount == 5)
         #expect(meal.analysisState == .failed)
-        #expect(meal.analysisRevisions.first?.failureMessage?.contains("Internetverbindung") == true)
+        #expect(meal.analysisRevisions.first?.failureMessage?.contains("Keine Internetverbindung.") == true)
+        #expect(meal.analysisRevisions.first?.failureMessage?.contains("-1009") == true)
     }
 
     @Test("Legacy confirmation states finalize on app launch")
