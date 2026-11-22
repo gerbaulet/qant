@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -41,21 +42,23 @@ type Job struct {
 }
 
 type JobStore struct {
-	mu    sync.Mutex
-	dir   string
-	ttl   time.Duration
-	now   func() time.Time
-	jobs  map[string]*Job
-	byKey map[string]string
+	mu      sync.Mutex
+	dir     string
+	ttl     time.Duration
+	now     func() time.Time
+	jobs    map[string]*Job
+	byKey   map[string]string
+	waiters map[string][]chan struct{}
 }
 
 func NewJobStore(dir string, ttl time.Duration) (*JobStore, error) {
 	store := &JobStore{
-		dir:   dir,
-		ttl:   ttl,
-		now:   time.Now,
-		jobs:  make(map[string]*Job),
-		byKey: make(map[string]string),
+		dir:     dir,
+		ttl:     ttl,
+		now:     time.Now,
+		jobs:    make(map[string]*Job),
+		byKey:   make(map[string]string),
+		waiters: make(map[string][]chan struct{}),
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data directory: %w", err)
@@ -135,6 +138,45 @@ func (s *JobStore) Get(id, ownerHash string) (Job, bool) {
 	return cloneJob(job), true
 }
 
+func (s *JobStore) Wait(ctx context.Context, id, ownerHash string) (Job, bool) {
+	s.mu.Lock()
+	job := s.jobs[id]
+	if job == nil || job.OwnerHash != ownerHash || !job.ExpiresAt.After(s.now().UTC()) {
+		s.mu.Unlock()
+		return Job{}, false
+	}
+	if job.Status != JobRunning {
+		result := cloneJob(job)
+		s.mu.Unlock()
+		return result, true
+	}
+	waiter := make(chan struct{})
+	s.waiters[id] = append(s.waiters[id], waiter)
+	s.mu.Unlock()
+
+	select {
+	case <-ctx.Done():
+	case <-waiter:
+	}
+	return s.Get(id, ownerHash)
+}
+
+func (s *JobStore) Acknowledge(id, ownerHash string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job := s.jobs[id]
+	if job == nil || job.OwnerHash != ownerHash {
+		return false, nil
+	}
+	delete(s.jobs, id)
+	delete(s.byKey, job.OwnerHash+"\x00"+job.IdempotencyKey)
+	s.notifyLocked(id)
+	if err := os.Remove(s.path(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *JobStore) Succeed(id string, status int, body []byte) error {
 	return s.finish(id, func(job *Job) {
 		job.Status = JobSucceeded
@@ -163,7 +205,11 @@ func (s *JobStore) finish(id string, update func(*Job)) error {
 	}
 	update(job)
 	job.UpdatedAt = s.now().UTC()
-	return s.persistLocked(job)
+	if err := s.persistLocked(job); err != nil {
+		return err
+	}
+	s.notifyLocked(id)
+	return nil
 }
 
 func (s *JobStore) Cleanup() error {
@@ -176,11 +222,19 @@ func (s *JobStore) Cleanup() error {
 		}
 		delete(s.jobs, id)
 		delete(s.byKey, job.OwnerHash+"\x00"+job.IdempotencyKey)
+		s.notifyLocked(id)
 		if err := os.Remove(s.path(job.ID)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
 	return nil
+}
+
+func (s *JobStore) notifyLocked(id string) {
+	for _, waiter := range s.waiters[id] {
+		close(waiter)
+	}
+	delete(s.waiters, id)
 }
 
 func (s *JobStore) load() error {

@@ -17,11 +17,13 @@ import (
 )
 
 type Server struct {
-	config    Config
-	store     *JobStore
-	client    *http.Client
-	semaphore chan struct{}
-	jobs      sync.WaitGroup
+	config            Config
+	store             *JobStore
+	client            *http.Client
+	semaphore         chan struct{}
+	upstreamSemaphore chan struct{}
+	retryDelay        func(context.Context, int) error
+	jobs              sync.WaitGroup
 }
 
 type publicJob struct {
@@ -46,10 +48,12 @@ func New(config Config) (*Server, error) {
 		return nil, err
 	}
 	return &Server{
-		config:    config,
-		store:     store,
-		client:    &http.Client{Timeout: config.UpstreamTimeout},
-		semaphore: make(chan struct{}, config.MaxConcurrentJobs),
+		config:            config,
+		store:             store,
+		client:            &http.Client{Timeout: config.UpstreamTimeout},
+		semaphore:         make(chan struct{}, config.MaxConcurrentJobs),
+		upstreamSemaphore: make(chan struct{}, config.MaxConcurrentJobs),
+		retryDelay:        defaultAnalysisRetryDelay,
 	}, nil
 }
 
@@ -61,6 +65,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/key", s.handleProxyGET)
 	mux.HandleFunc("/api/v1/models", s.handleProxyGET)
 	mux.HandleFunc("/api/v1/model/", s.handleProxyGET)
+	mux.HandleFunc("/api/v2/analysis-jobs", s.handleAnalysisJobs)
+	mux.HandleFunc("/api/v2/analysis-jobs/", s.handleAnalysisJob)
 	return securityHeaders(mux)
 }
 
@@ -258,6 +264,13 @@ func (s *Server) runJob(id, apiKey string, body []byte) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.config.UpstreamTimeout)
 	defer cancel()
+	select {
+	case s.upstreamSemaphore <- struct{}{}:
+		defer func() { <-s.upstreamSemaphore }()
+	case <-ctx.Done():
+		s.failJob(id, 0, nil, "upstream_timeout", "OpenRouter hat nicht rechtzeitig geantwortet.", true)
+		return
+	}
 	upstreamURL := *s.config.OpenRouterBaseURL
 	upstreamURL.Path = strings.TrimRight(upstreamURL.Path, "/") + "/chat/completions"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL.String(), bytes.NewReader(body))

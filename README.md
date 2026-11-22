@@ -113,6 +113,9 @@ additive and can still provide access.
 - `GET /api/v1/key` — fixed OpenRouter metadata proxy
 - `GET /api/v1/models` — fixed OpenRouter model-catalog proxy
 - `GET /api/v1/model/{provider}/{model}` — fixed model metadata proxy
+- `POST /api/v2/analysis-jobs` — create or resume a complete Quant nutrition-analysis job
+- `GET /api/v2/analysis-jobs/{id}?wait=25` — wait for or retrieve the final structured result
+- `DELETE /api/v2/analysis-jobs/{id}` — acknowledge durable local storage and delete the server result
 
 Chat requests require:
 
@@ -134,7 +137,7 @@ OpenRouter base URL.
 | `QUANT_MAX_CONCURRENT_JOBS` | `3` | Maximum simultaneous OpenRouter calls |
 | `QUANT_MAX_REQUEST_BYTES` | `26214400` | Maximum request body size |
 | `QUANT_MAX_RESPONSE_BYTES` | `10485760` | Maximum upstream response size |
-| `QUANT_JOB_TTL` | `1h` | Result retention period |
+| `QUANT_JOB_TTL` | `168h` | Maximum result retention period; acknowledged v2 results are deleted earlier |
 | `QUANT_UPSTREAM_TIMEOUT` | `2m` | Timeout for one OpenRouter call |
 
 `QUANT_ALLOW_UNAUTHENTICATED=true` is only for local development. It accepts

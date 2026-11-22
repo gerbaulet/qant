@@ -48,7 +48,7 @@ func LoadConfig() (Config, error) {
 	if err != nil || maxResponseBytes < 1024 {
 		return Config{}, fmt.Errorf("QUANT_MAX_RESPONSE_BYTES must be at least 1024")
 	}
-	jobTTL, err := envDuration("QUANT_JOB_TTL", time.Hour)
+	jobTTL, err := envDuration("QUANT_JOB_TTL", 7*24*time.Hour)
 	if err != nil || jobTTL < time.Minute {
 		return Config{}, fmt.Errorf("QUANT_JOB_TTL must be at least one minute")
 	}
