@@ -13,7 +13,6 @@ struct TodayDashboardView: View {
     let onRetryMeal: (UUID) -> Void
     let onOpenMeal: (UUID) -> Void
     let onOpenSettings: () -> Void
-    @State private var showsAverageIntake = false
     @State private var energyChartWidth: CGFloat = 0
 
     init(
@@ -178,10 +177,7 @@ struct TodayDashboardView: View {
     }
 
     private func energyTrendChart(_ trend: TodayEnergyTrend) -> some View {
-        let scale = TodayEnergyChartScaleBuilder.makeScale(
-            for: trend,
-            includesAverageIntake: showsAverageIntake
-        )
+        let scale = TodayEnergyChartScaleBuilder.makeScale(for: trend)
         return VStack(alignment: .leading, spacing: 10) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 14) {
@@ -261,17 +257,15 @@ struct TodayDashboardView: View {
                     .foregroundStyle(.green)
                     .lineStyle(StrokeStyle(lineWidth: 3, dash: [7, 5]))
                 }
-                if showsAverageIntake {
-                    ForEach(trend.averageIntakePoints) { point in
-                        LineMark(
-                            x: .value("Uhrzeit", point.hour),
-                            y: .value("Typische Aufnahme", point.value),
-                            series: .value("Reihe", "Typischer Aufnahmetag")
-                        )
-                        .interpolationMethod(.stepEnd)
-                        .foregroundStyle(.orange)
-                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [3, 5]))
-                    }
+                ForEach(trend.averageIntakePoints) { point in
+                    LineMark(
+                        x: .value("Uhrzeit", point.hour),
+                        y: .value("Typische Aufnahme", point.value),
+                        series: .value("Reihe", "Typischer Aufnahmetag")
+                    )
+                    .interpolationMethod(.stepEnd)
+                    .foregroundStyle(.orange)
+                    .lineStyle(StrokeStyle(lineWidth: 2, dash: [3, 5]))
                 }
                 if let endpoint = trend.balanceForecastPoints.last {
                     PointMark(
@@ -331,25 +325,10 @@ struct TodayDashboardView: View {
             .foregroundStyle(.secondary)
 
             if !trend.averageIntakePoints.isEmpty {
-                Button {
-                    showsAverageIntake.toggle()
-                } label: {
-                    Label(
-                        showsAverageIntake
-                            ? "Typischen Aufnahmetag ausblenden"
-                            : "Typischen Aufnahmetag einblenden",
-                        systemImage: "chart.line.uptrend.xyaxis"
-                    )
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Orange gepunktet: durchschnittliche Aufnahme aus \(trend.intakeHistoricalDayCount) erfassten Tagen.")
+                    Text(forecastSourceText(trend))
                 }
-                .buttonStyle(.plain)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.blue)
-                .accessibilityIdentifier("today.energyTrendAverage")
-                Text(
-                    showsAverageIntake
-                        ? "Orange gepunktet: durchschnittliche Aufnahme aus \(trend.intakeHistoricalDayCount) erfassten Tagen."
-                        : forecastSourceText(trend)
-                )
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }

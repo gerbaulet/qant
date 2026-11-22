@@ -10,23 +10,16 @@ enum TodayEnergyChartScaleBuilder {
     private static let minimumStep = 100.0
     private static let stepFactors = [1.0, 1.25, 1.5, 2.0, 2.5, 5.0]
 
-    static func makeScale(
-        for trend: TodayEnergyTrend,
-        includesAverageIntake: Bool
-    ) -> TodayEnergyChartScale {
-        var values = [
+    static func makeScale(for trend: TodayEnergyTrend) -> TodayEnergyChartScale {
+        let values = [
             trend.intakeActualPoints.map(\.value),
             trend.intakeForecastPoints.map(\.value),
+            trend.averageIntakePoints.map(\.value),
             trend.expenditureActualPoints.map { -$0.value },
             trend.expenditureForecastPoints.map { -$0.value },
             trend.balanceActualPoints.map(\.value),
             trend.balanceForecastPoints.map(\.value),
-        ].flatMap { $0 }
-
-        if includesAverageIntake {
-            values.append(contentsOf: trend.averageIntakePoints.map(\.value))
-        }
-        values = values.filter(\.isFinite)
+        ].flatMap { $0 }.filter(\.isFinite)
 
         guard let dataMinimum = values.min(),
               let dataMaximum = values.max() else {

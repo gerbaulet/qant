@@ -11,10 +11,7 @@ struct TodayEnergyChartScaleBuilderTests {
             balance: [0, -300]
         )
 
-        let scale = TodayEnergyChartScaleBuilder.makeScale(
-            for: trend,
-            includesAverageIntake: false
-        )
+        let scale = TodayEnergyChartScaleBuilder.makeScale(for: trend)
 
         #expect(scale.domain == -3_000...3_000)
         #expect(scale.axisValues == [-3_000, -1_500, 0, 1_500, 3_000])
@@ -24,17 +21,14 @@ struct TodayEnergyChartScaleBuilderTests {
     func positiveValuesStartAtZero() {
         let trend = makeTrend(intake: [0, 2_300])
 
-        let scale = TodayEnergyChartScaleBuilder.makeScale(
-            for: trend,
-            includesAverageIntake: false
-        )
+        let scale = TodayEnergyChartScaleBuilder.makeScale(for: trend)
 
         #expect(scale.domain == 0...2_500)
         #expect(scale.axisValues == [0, 500, 1_000, 1_500, 2_000, 2_500])
     }
 
-    @Test("The typical intake only affects the scale while it is visible")
-    func averageIntakeAffectsVisibleScale() {
+    @Test("The always-visible typical intake affects the scale")
+    func averageIntakeAlwaysAffectsScale() {
         let trend = makeTrend(
             intake: [0, 2_300],
             expenditure: [0, 2_600],
@@ -42,28 +36,17 @@ struct TodayEnergyChartScaleBuilderTests {
             averageIntake: [0, 4_000]
         )
 
-        let hiddenScale = TodayEnergyChartScaleBuilder.makeScale(
-            for: trend,
-            includesAverageIntake: false
-        )
-        let visibleScale = TodayEnergyChartScaleBuilder.makeScale(
-            for: trend,
-            includesAverageIntake: true
-        )
+        let scale = TodayEnergyChartScaleBuilder.makeScale(for: trend)
 
-        #expect(hiddenScale.domain == -3_000...3_000)
-        #expect(visibleScale.domain == -3_000...4_500)
-        #expect(visibleScale.axisValues == [-3_000, -1_500, 0, 1_500, 3_000, 4_500])
+        #expect(scale.domain == -3_000...4_500)
+        #expect(scale.axisValues == [-3_000, -1_500, 0, 1_500, 3_000, 4_500])
     }
 
     @Test("A flat trend receives a stable fallback scale")
     func flatValuesUseFallback() {
         let trend = makeTrend(intake: [0, 0])
 
-        let scale = TodayEnergyChartScaleBuilder.makeScale(
-            for: trend,
-            includesAverageIntake: false
-        )
+        let scale = TodayEnergyChartScaleBuilder.makeScale(for: trend)
 
         #expect(scale.domain == -500...500)
         #expect(scale.axisValues == [-500, -250, 0, 250, 500])
