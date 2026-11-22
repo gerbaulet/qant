@@ -27,6 +27,18 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Verbrauch"].exists)
         XCTAssertTrue(app.staticTexts["Tagesende"].exists)
         XCTAssertFalse(app.staticTexts["ZWISCHENSTAND"].exists)
+        XCTAssertEqual(
+            app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label BEGINSWITH %@", "Ruhe "))
+                .count,
+            0
+        )
+        XCTAssertEqual(
+            app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label BEGINSWITH %@", "Aktiv "))
+                .count,
+            0
+        )
     }
 
     @MainActor

@@ -120,10 +120,6 @@ struct TodayDashboardView: View {
                 Divider()
                 energyBalanceTable(balance)
 
-                expenditureBreakdown(balance)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
                 if balance?.isCurrentDay ?? true,
                    intakeForecast == nil || expenditureForecast == nil {
                     Label("Für die Hochrechnung fehlen noch Verlaufsdaten.", systemImage: "clock.arrow.circlepath")
@@ -483,39 +479,6 @@ struct TodayDashboardView: View {
             .minimumScaleFactor(0.75)
     }
 
-    private func expenditureBreakdown(_ balance: DailyEnergyBalance?) -> some View {
-        let resting = Label(
-            expenditureComponentText(
-                title: "Ruhe",
-                current: balance?.restingKilocalories,
-                forecast: (balance?.isCurrentDay ?? true)
-                    ? expenditureForecast?.restingKilocalories
-                    : nil
-            ),
-            systemImage: "bed.double"
-        )
-        let active = Label(
-            expenditureComponentText(
-                title: "Aktiv",
-                current: balance?.activeKilocalories,
-                forecast: (balance?.isCurrentDay ?? true)
-                    ? expenditureForecast?.activeKilocalories
-                    : nil
-            ),
-            systemImage: "figure.walk"
-        )
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 16) {
-                resting
-                active
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                resting
-                active
-            }
-        }
-    }
-
     @ViewBuilder
     private var healthStatusCard: some View {
         switch healthStatus {
@@ -777,21 +740,6 @@ struct TodayDashboardView: View {
     private func energyAccessibilityText(_ title: String, value: Double?) -> String? {
         guard let value else { return nil }
         return "\(title) \(TodayEnergyValueFormatter.text(value, showsSign: true)) Kilokalorien"
-    }
-
-    private func expenditureComponentText(
-        title: String,
-        current: Double?,
-        forecast: Double?
-    ) -> String {
-        let currentText = current.map {
-            TodayEnergyValueFormatter.text(-$0, showsSign: true)
-        } ?? "—"
-        guard let forecast else {
-            return "\(title) \(currentText)"
-        }
-        let forecastText = TodayEnergyValueFormatter.text(-forecast, showsSign: true)
-        return "\(title) \(currentText) → \(forecastText)"
     }
 
     private func progressText(_ progress: NutrientProgress) -> String {
