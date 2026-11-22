@@ -310,6 +310,7 @@ struct TodayDashboardPresentation {
     let snapshot: TodayDashboardSnapshot
     let weeklySummary: WeeklyNutritionSummary?
     let intakeForecast: TodayIntakeForecast?
+    let intakeTrend: DailyCumulativeNutritionTrend
 }
 
 @MainActor
@@ -350,7 +351,8 @@ enum TodayDashboardPresentationBuilder {
                     energyKilocalories: $0.value,
                     historicalDayCount: intakeTrend.forecastDayCount
                 )
-            }
+            },
+            intakeTrend: intakeTrend
         )
     }
 }

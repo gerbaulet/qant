@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 
 struct TodayDashboardView: View {
@@ -6,11 +7,13 @@ struct TodayDashboardView: View {
     let intakeForecast: TodayIntakeForecast?
     let energyBalance: DailyEnergyBalance?
     let expenditureForecast: EnergyExpenditureForecast?
+    let energyTrend: TodayEnergyTrend?
     let healthStatus: HealthDataStatus
     let onAddFood: () -> Void
     let onRetryMeal: (UUID) -> Void
     let onOpenMeal: (UUID) -> Void
     let onOpenSettings: () -> Void
+    @State private var showsAverageIntake = false
 
     init(
         snapshot: TodayDashboardSnapshot,
@@ -18,6 +21,7 @@ struct TodayDashboardView: View {
         intakeForecast: TodayIntakeForecast? = nil,
         energyBalance: DailyEnergyBalance? = nil,
         expenditureForecast: EnergyExpenditureForecast? = nil,
+        energyTrend: TodayEnergyTrend? = nil,
         healthStatus: HealthDataStatus = .notRequested,
         onAddFood: @escaping () -> Void,
         onRetryMeal: @escaping (UUID) -> Void = { _ in },
@@ -29,6 +33,7 @@ struct TodayDashboardView: View {
         self.intakeForecast = intakeForecast
         self.energyBalance = energyBalance
         self.expenditureForecast = expenditureForecast
+        self.energyTrend = energyTrend
         self.healthStatus = healthStatus
         self.onAddFood = onAddFood
         self.onRetryMeal = onRetryMeal
@@ -104,6 +109,12 @@ struct TodayDashboardView: View {
                     }
                 }
 
+                energyForecastSummary(balance)
+
+                if let energyTrend, energyTrend.hasChartData {
+                    energyTrendChart(energyTrend)
+                }
+
                 Divider()
                 energyBalanceTable(balance)
 
@@ -137,8 +148,211 @@ struct TodayDashboardView: View {
                 }
             }
         }
-        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("today.energyBalance")
+    }
+
+    @ViewBuilder
+    private func energyForecastSummary(_ balance: DailyEnergyBalance?) -> some View {
+        if let projectedBalance {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Voraussichtlich zum Tagesende")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("≈ \(wholeNumber(abs(projectedBalance))) kcal")
+                        .font(.system(.title, design: .rounded, weight: .bold))
+                        .foregroundStyle(balanceColor(projectedBalance))
+                    Text(balanceDirection(projectedBalance))
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+                if let currentBalance = balance?.balanceKilocalories {
+                    Text("Jetzt: \(TodayEnergyValueFormatter.text(currentBalance, showsSign: true)) kcal")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("today.balanceSummary")
+        }
+    }
+
+    private func energyTrendChart(_ trend: TodayEnergyTrend) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) {
+                    energyChartLegend(title: "+ Aufnahme", color: .blue)
+                    energyChartLegend(title: "− Verbrauch", color: .purple)
+                    energyChartLegend(title: "= Bilanz", color: .green)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    energyChartLegend(title: "+ Aufnahme", color: .blue)
+                    energyChartLegend(title: "− Verbrauch", color: .purple)
+                    energyChartLegend(title: "= Bilanz", color: .green)
+                }
+            }
+            .font(.caption)
+
+            Chart {
+                RuleMark(y: .value("Ausgeglichen", 0))
+                    .foregroundStyle(.secondary)
+
+                ForEach(trend.intakeActualPoints) { point in
+                    LineMark(
+                        x: .value("Uhrzeit", point.hour),
+                        y: .value("Aufnahme", point.value),
+                        series: .value("Reihe", "Aufnahme bisher")
+                    )
+                    .interpolationMethod(.stepEnd)
+                    .foregroundStyle(.blue)
+                    .lineStyle(StrokeStyle(lineWidth: 3))
+                }
+                ForEach(trend.intakeForecastPoints) { point in
+                    LineMark(
+                        x: .value("Uhrzeit", point.hour),
+                        y: .value("Aufnahme", point.value),
+                        series: .value("Reihe", "Aufnahme Prognose")
+                    )
+                    .interpolationMethod(.stepEnd)
+                    .foregroundStyle(.blue)
+                    .lineStyle(StrokeStyle(lineWidth: 3, dash: [7, 5]))
+                }
+                ForEach(trend.expenditureActualPoints) { point in
+                    LineMark(
+                        x: .value("Uhrzeit", point.hour),
+                        y: .value("Verbrauch", -point.value),
+                        series: .value("Reihe", "Verbrauch bisher")
+                    )
+                    .interpolationMethod(.stepEnd)
+                    .foregroundStyle(.purple)
+                    .lineStyle(StrokeStyle(lineWidth: 3))
+                }
+                ForEach(trend.expenditureForecastPoints) { point in
+                    LineMark(
+                        x: .value("Uhrzeit", point.hour),
+                        y: .value("Verbrauch", -point.value),
+                        series: .value("Reihe", "Verbrauch Prognose")
+                    )
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(.purple)
+                    .lineStyle(StrokeStyle(lineWidth: 3, dash: [7, 5]))
+                }
+                ForEach(trend.balanceActualPoints) { point in
+                    LineMark(
+                        x: .value("Uhrzeit", point.hour),
+                        y: .value("Bilanz", point.value),
+                        series: .value("Reihe", "Bilanz bisher")
+                    )
+                    .interpolationMethod(.stepEnd)
+                    .foregroundStyle(.green)
+                    .lineStyle(StrokeStyle(lineWidth: 3))
+                }
+                ForEach(trend.balanceForecastPoints) { point in
+                    LineMark(
+                        x: .value("Uhrzeit", point.hour),
+                        y: .value("Bilanz", point.value),
+                        series: .value("Reihe", "Bilanz Prognose")
+                    )
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(.green)
+                    .lineStyle(StrokeStyle(lineWidth: 3, dash: [7, 5]))
+                }
+                if showsAverageIntake {
+                    ForEach(trend.averageIntakePoints) { point in
+                        LineMark(
+                            x: .value("Uhrzeit", point.hour),
+                            y: .value("Typische Aufnahme", point.value),
+                            series: .value("Reihe", "Typischer Aufnahmetag")
+                        )
+                        .interpolationMethod(.stepEnd)
+                        .foregroundStyle(.orange)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [3, 5]))
+                    }
+                }
+                if let endpoint = trend.balanceForecastPoints.last {
+                    PointMark(
+                        x: .value("Uhrzeit", endpoint.hour),
+                        y: .value("Bilanz", endpoint.value)
+                    )
+                    .foregroundStyle(.green)
+                    .annotation(
+                        position: endpoint.value >= 0 ? .top : .bottom,
+                        alignment: .trailing
+                    ) {
+                        Text("≈ \(TodayEnergyValueFormatter.text(endpoint.value, showsSign: true))")
+                            .font(.caption.bold().monospacedDigit())
+                            .foregroundStyle(.green)
+                    }
+                }
+            }
+            .chartXScale(domain: 0...24)
+            .chartXAxis {
+                AxisMarks(values: [0, 6, 12, 18, 24]) { value in
+                    AxisGridLine()
+                    AxisTick()
+                    AxisValueLabel {
+                        if let hour = value.as(Int.self) {
+                            Text("\(hour)")
+                        }
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading) { value in
+                    AxisGridLine()
+                    AxisValueLabel {
+                        if let number = value.as(Double.self) {
+                            Text(number.formatted(.number.precision(.fractionLength(0))))
+                        }
+                    }
+                }
+            }
+            .frame(height: 300)
+            .accessibilityLabel("Tagesverlauf von Aufnahme, Verbrauch und Bilanz")
+            .accessibilityValue(energyTrendAccessibilityValue(trend))
+            .accessibilityIdentifier("today.energyTrendChart")
+
+            HStack {
+                Text("Durchgezogen: bisher")
+                Spacer()
+                Text("Gestrichelt: Prognose")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+
+            if !trend.averageIntakePoints.isEmpty {
+                Button {
+                    showsAverageIntake.toggle()
+                } label: {
+                    Label(
+                        showsAverageIntake
+                            ? "Typischen Aufnahmetag ausblenden"
+                            : "Typischen Aufnahmetag einblenden",
+                        systemImage: "chart.line.uptrend.xyaxis"
+                    )
+                }
+                .buttonStyle(.plain)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.blue)
+                .accessibilityIdentifier("today.energyTrendAverage")
+                Text(
+                    showsAverageIntake
+                        ? "Orange gepunktet: durchschnittliche Aufnahme aus \(trend.intakeHistoricalDayCount) erfassten Tagen."
+                        : forecastSourceText(trend)
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func energyChartLegend(title: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Capsule()
+                .fill(color)
+                .frame(width: 18, height: 3)
+            Text(title)
+                .foregroundStyle(color)
+        }
     }
 
     private func energyBalanceTable(_ balance: DailyEnergyBalance?) -> some View {
@@ -162,14 +376,18 @@ struct TodayDashboardView: View {
                 currentIsProvisional: snapshot.hasProvisionalValues,
                 forecast: showsForecastColumn ? intakeForecast?.energyKilocalories : nil,
                 forecastIdentifier: "today.intakeForecast",
-                showsForecastColumn: showsForecastColumn
+                showsForecastColumn: showsForecastColumn,
+                showsSign: true,
+                color: .blue
             )
             energyTableRow(
                 title: "Verbrauch",
-                current: balance?.expenditureKilocalories,
-                forecast: showsForecastColumn ? expenditureForecast?.totalKilocalories : nil,
+                current: balance?.expenditureKilocalories.map { -$0 },
+                forecast: showsForecastColumn ? expenditureForecast.map { -$0.totalKilocalories } : nil,
                 forecastIdentifier: "today.expenditureForecast",
-                showsForecastColumn: showsForecastColumn
+                showsForecastColumn: showsForecastColumn,
+                showsSign: true,
+                color: .purple
             )
             energyTableRow(
                 title: "Bilanz",
@@ -177,7 +395,8 @@ struct TodayDashboardView: View {
                 forecast: showsForecastColumn ? projectedBalance : nil,
                 forecastIdentifier: "today.balanceForecast",
                 showsForecastColumn: showsForecastColumn,
-                showsSign: true
+                showsSign: true,
+                color: .green
             )
         }
     }
@@ -189,7 +408,8 @@ struct TodayDashboardView: View {
         forecast: Double?,
         forecastIdentifier: String,
         showsForecastColumn: Bool,
-        showsSign: Bool = false
+        showsSign: Bool = false,
+        color: Color? = nil
     ) -> some View {
         GridRow {
             Text(title)
@@ -200,10 +420,10 @@ struct TodayDashboardView: View {
                 showsSign: showsSign,
                 isProvisional: currentIsProvisional
             )
-                .foregroundStyle(showsSign ? balanceColor(current ?? 0) : .primary)
+                .foregroundStyle(color ?? .primary)
             if showsForecastColumn {
                 energyTableValue(forecast, showsSign: showsSign)
-                    .foregroundStyle(showsSign ? balanceColor(forecast ?? 0) : .primary)
+                    .foregroundStyle(color ?? .primary)
                     .accessibilityIdentifier(forecastIdentifier)
             }
         }
@@ -492,16 +712,55 @@ struct TodayDashboardView: View {
         return intakeForecast.energyKilocalories - expenditureForecast.totalKilocalories
     }
 
+    private func balanceDirection(_ value: Double) -> String {
+        if abs(value) < 100 { return "ausgeglichen" }
+        return value < 0 ? "Defizit" : "Überschuss"
+    }
+
+    private func forecastSourceText(_ trend: TodayEnergyTrend) -> String {
+        guard trend.expenditureHistoricalDayCount > 0 else {
+            return "Die Aufnahmeprognose verwendet deinen bisherigen Tagesverlauf und ähnliche Tage."
+        }
+        return "Prognose aus deinem bisherigen Tagesverlauf sowie \(trend.expenditureHistoricalDayCount) Verbrauchstagen."
+    }
+
+    private func energyTrendAccessibilityValue(_ trend: TodayEnergyTrend) -> String {
+        let currentIntake = trend.intakeActualPoints.last?.value
+        let currentExpenditure = trend.expenditureActualPoints.last?.value
+        let currentBalance = trend.balanceActualPoints.last?.value
+        let forecastIntake = trend.intakeForecastPoints.last?.value
+        let forecastExpenditure = trend.expenditureForecastPoints.last?.value
+        let forecastBalance = trend.balanceForecastPoints.last?.value
+        return [
+            energyAccessibilityText("Aufnahme jetzt", value: currentIntake),
+            energyAccessibilityText("Verbrauch jetzt", value: currentExpenditure.map { -$0 }),
+            energyAccessibilityText("Bilanz jetzt", value: currentBalance),
+            energyAccessibilityText("Aufnahme Tagesende", value: forecastIntake),
+            energyAccessibilityText("Verbrauch Tagesende", value: forecastExpenditure.map { -$0 }),
+            energyAccessibilityText("Bilanz Tagesende", value: forecastBalance),
+        ]
+        .compactMap { $0 }
+        .joined(separator: ", ")
+    }
+
+    private func energyAccessibilityText(_ title: String, value: Double?) -> String? {
+        guard let value else { return nil }
+        return "\(title) \(TodayEnergyValueFormatter.text(value, showsSign: true)) Kilokalorien"
+    }
+
     private func expenditureComponentText(
         title: String,
         current: Double?,
         forecast: Double?
     ) -> String {
-        let currentText = current.map(wholeNumber) ?? "—"
+        let currentText = current.map {
+            TodayEnergyValueFormatter.text(-$0, showsSign: true)
+        } ?? "—"
         guard let forecast else {
             return "\(title) \(currentText)"
         }
-        return "\(title) \(currentText) → \(wholeNumber(forecast))"
+        let forecastText = TodayEnergyValueFormatter.text(-forecast, showsSign: true)
+        return "\(title) \(currentText) → \(forecastText)"
     }
 
     private func progressText(_ progress: NutrientProgress) -> String {
@@ -585,6 +844,50 @@ private extension NutrientIdentifier {
                 restingKilocalories: 1_580,
                 historicalDayCount: 42,
                 method: .historicalRemainder
+            ),
+            energyTrend: TodayEnergyTrend(
+                intakeActualPoints: [
+                    .init(hour: 0, value: 0),
+                    .init(hour: 8, value: 420),
+                    .init(hour: 12, value: 1_180),
+                    .init(hour: 18, value: 1_640),
+                ],
+                intakeForecastPoints: [
+                    .init(hour: 18, value: 1_640),
+                    .init(hour: 20, value: 1_940),
+                    .init(hour: 24, value: 2_100),
+                ],
+                averageIntakePoints: [
+                    .init(hour: 0, value: 0),
+                    .init(hour: 8, value: 380),
+                    .init(hour: 12, value: 1_020),
+                    .init(hour: 18, value: 1_610),
+                    .init(hour: 24, value: 2_080),
+                ],
+                expenditureActualPoints: [
+                    .init(hour: 0, value: 0),
+                    .init(hour: 8, value: 620),
+                    .init(hour: 12, value: 1_140),
+                    .init(hour: 18, value: 1_640),
+                ],
+                expenditureForecastPoints: [
+                    .init(hour: 18, value: 1_640),
+                    .init(hour: 20, value: 1_860),
+                    .init(hour: 24, value: 2_300),
+                ],
+                balanceActualPoints: [
+                    .init(hour: 0, value: 0),
+                    .init(hour: 8, value: -200),
+                    .init(hour: 12, value: 40),
+                    .init(hour: 18, value: 0),
+                ],
+                balanceForecastPoints: [
+                    .init(hour: 18, value: 0),
+                    .init(hour: 20, value: 80),
+                    .init(hour: 24, value: -200),
+                ],
+                intakeHistoricalDayCount: 18,
+                expenditureHistoricalDayCount: 42
             ),
             healthStatus: .available,
             onAddFood: {}

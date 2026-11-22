@@ -131,6 +131,7 @@ private struct TodayDashboardContainer: View {
     @State private var intakeForecast: TodayIntakeForecast?
     @State private var energyBalance: DailyEnergyBalance?
     @State private var expenditureForecast: EnergyExpenditureForecast?
+    @State private var energyTrend: TodayEnergyTrend?
     @State private var lastRefreshID: RefreshID?
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
     private let widgetSynchronizer = WidgetCalorieSnapshotSynchronizer()
@@ -181,6 +182,7 @@ private struct TodayDashboardContainer: View {
                 intakeForecast: intakeForecast,
                 energyBalance: energyBalance,
                 expenditureForecast: expenditureForecast,
+                energyTrend: energyTrend,
                 healthStatus: healthMetrics.energyStatus,
                 onAddFood: onAddFood,
                 onRetryMeal: retryAnalysis,
@@ -230,28 +232,42 @@ private struct TodayDashboardContainer: View {
             calendar: calendar
         )
         guard !Task.isCancelled else { return }
-        snapshot = presentation.snapshot
-        weeklySummary = presentation.weeklySummary
-        intakeForecast = presentation.intakeForecast
         let currentExpenditure = healthMetrics.expenditure(for: date, calendar: calendar)
-        energyBalance = EnergyBalanceBuilder.makeBalance(
+        let nextEnergyBalance = EnergyBalanceBuilder.makeBalance(
             for: date,
             meals: meals,
             expenditure: currentExpenditure,
             now: date,
             calendar: calendar
         )
+        let nextExpenditureForecast: EnergyExpenditureForecast?
+        let hourlyExpenditures: [HourlyEnergyExpenditure]
         if let forecastInterval {
-            expenditureForecast = EnergyExpenditureForecastBuilder.makeForecast(
+            hourlyExpenditures = healthMetrics.hourlyExpenditures(within: forecastInterval)
+            nextExpenditureForecast = EnergyExpenditureForecastBuilder.makeForecast(
                 for: date,
                 current: currentExpenditure,
                 dailyExpenditures: healthMetrics.expenditures(within: forecastInterval),
-                hourlyExpenditures: healthMetrics.hourlyExpenditures(within: forecastInterval),
+                hourlyExpenditures: hourlyExpenditures,
                 calendar: calendar
             )
         } else {
-            expenditureForecast = nil
+            hourlyExpenditures = []
+            nextExpenditureForecast = nil
         }
+        snapshot = presentation.snapshot
+        weeklySummary = presentation.weeklySummary
+        intakeForecast = presentation.intakeForecast
+        energyBalance = nextEnergyBalance
+        expenditureForecast = nextExpenditureForecast
+        energyTrend = TodayEnergyTrendBuilder.makeTrend(
+            intakeTrend: presentation.intakeTrend,
+            currentExpenditure: currentExpenditure,
+            expenditureForecast: nextExpenditureForecast,
+            hourlyExpenditures: hourlyExpenditures,
+            now: date,
+            calendar: calendar
+        )
         lastRefreshID = refreshID
     }
 

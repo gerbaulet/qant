@@ -21,9 +21,9 @@ final class QuantUITests: XCTestCase {
 
         let energyBalance = app.descendants(matching: .any)["today.energyBalance"]
         XCTAssertTrue(energyBalance.waitForExistence(timeout: 3))
-        XCTAssertTrue(energyBalance.label.contains("Aufnahme"))
-        XCTAssertTrue(energyBalance.label.contains("Verbrauch"))
-        XCTAssertTrue(energyBalance.label.contains("Tagesende"))
+        XCTAssertTrue(app.staticTexts["Aufnahme"].exists)
+        XCTAssertTrue(app.staticTexts["Verbrauch"].exists)
+        XCTAssertTrue(app.staticTexts["Tagesende"].exists)
     }
 
     @MainActor
