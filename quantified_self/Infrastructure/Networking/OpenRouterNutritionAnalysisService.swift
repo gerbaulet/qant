@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
+struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding, NutritionAnalysisOperationProviding {
     private static let maximumCompletionTokens = 16_384
 
     private struct ChatResponse: Decodable {
@@ -39,6 +39,54 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
         let clarificationQuestion: String?
         let nutrients: [AnalyzedNutrient]
         let components: [AnalyzedFoodComponent]
+    }
+
+    private struct ServerAnalysisImage: Encodable {
+        let data: Data
+        let mediaType: String
+
+        private enum CodingKeys: String, CodingKey {
+            case data
+            case mediaType = "media_type"
+        }
+    }
+
+    private struct ServerAnalysisRequest: Encodable {
+        let protocolVersion: Int
+        let requestGroupIdentifier: UUID
+        let trigger: AnalysisTrigger
+        let modelIdentifier: String
+        let costTier: OpenRouterCostTier
+        let providerPreference: OpenRouterProviderPreference
+        let preferredLanguageIdentifier: String
+        let images: [ServerAnalysisImage]
+        let userComment: String?
+        let previousAnalysis: NutritionAnalysisResult?
+        let clarificationHistory: [NutritionClarificationExchange]
+        let clarificationAnswer: String?
+        let userCorrection: String?
+        let requestsBestEstimate: Bool
+        let allowsClarification: Bool
+        let recognizedLabelText: [String]
+
+        private enum CodingKeys: String, CodingKey {
+            case protocolVersion = "protocol_version"
+            case requestGroupIdentifier = "request_group_identifier"
+            case trigger
+            case modelIdentifier = "model_identifier"
+            case costTier = "cost_tier"
+            case providerPreference = "provider_preference"
+            case preferredLanguageIdentifier = "preferred_language_identifier"
+            case images
+            case userComment = "user_comment"
+            case previousAnalysis = "previous_analysis"
+            case clarificationHistory = "clarification_history"
+            case clarificationAnswer = "clarification_answer"
+            case userCorrection = "user_correction"
+            case requestsBestEstimate = "requests_best_estimate"
+            case allowsClarification = "allows_clarification"
+            case recognizedLabelText = "recognized_label_text"
+        }
     }
 
     private let secretStore: any SecretStoring
@@ -125,6 +173,87 @@ struct OpenRouterNutritionAnalysisService: NutritionAnalysisProviding {
                 costUSD: response.usage?.cost
             )
         ))
+    }
+
+    func analyzeOperation(
+        _ request: NutritionAnalysisRequest,
+        trigger: AnalysisTrigger,
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
+    ) async throws -> NutritionAnalysisOperationResult {
+        let apiKey = try secretStore.secret(for: .openRouterAPIKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelIdentifier = settingsStore.modelIdentifier
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let serverURL = settingsStore.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let apiKey, !apiKey.isEmpty, !modelIdentifier.isEmpty, !serverURL.isEmpty else {
+            throw NutritionAnalysisError.missingConfiguration
+        }
+        let serverBaseURL = try QuantServerEndpoint.parse(serverURL)
+        let serverRequest = ServerAnalysisRequest(
+            protocolVersion: 1,
+            requestGroupIdentifier: request.requestGroupIdentifier,
+            trigger: trigger,
+            modelIdentifier: modelIdentifier,
+            costTier: settingsStore.costTier,
+            providerPreference: settingsStore.providerPreference,
+            preferredLanguageIdentifier: preferredLanguageIdentifier,
+            images: request.images.map {
+                ServerAnalysisImage(data: $0.data, mediaType: $0.mediaType)
+            },
+            userComment: request.userComment,
+            previousAnalysis: request.previousAnalysis,
+            clarificationHistory: request.clarificationHistory,
+            clarificationAnswer: request.clarificationAnswer,
+            userCorrection: request.userCorrection,
+            requestsBestEstimate: request.requestsBestEstimate,
+            allowsClarification: request.allowsClarification,
+            recognizedLabelText: request.recognizedLabelText
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let body: Data
+        do {
+            body = try encoder.encode(serverRequest)
+        } catch {
+            throw NutritionAnalysisError.malformedResponse
+        }
+        let job = try await client.sendNutritionAnalysis(
+            apiKey: apiKey,
+            body: body,
+            idempotencyKey: idempotencyKey(for: request, body: body),
+            serverBaseURL: serverBaseURL,
+            onStreamEvent: onStreamEvent
+        )
+        guard let payload = job.result, payload.policyVersion == 1, payload.promptVersion > 0 else {
+            throw OpenRouterClientError.invalidResponse
+        }
+        guard job.status == .succeeded, let result = payload.result else {
+            throw NutritionAnalysisOperationFailure(
+                message: payload.errorMessage
+                    ?? job.failureMessage
+                    ?? "Der Quant Server konnte die Ernährungsanalyse nicht abschließen.",
+                calls: payload.calls,
+                promptVersion: payload.promptVersion,
+                jobIdentifier: job.id
+            )
+        }
+        return NutritionAnalysisOperationResult(
+            result: result,
+            calls: payload.calls,
+            promptVersion: payload.promptVersion,
+            policyVersion: payload.policyVersion,
+            jobIdentifier: job.id
+        )
+    }
+
+    func acknowledgeAnalysis(jobIdentifier: String) async throws {
+        let serverURL = settingsStore.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !serverURL.isEmpty else { throw NutritionAnalysisError.missingConfiguration }
+        try await client.acknowledgeNutritionAnalysis(
+            jobIdentifier: jobIdentifier,
+            serverBaseURL: try QuantServerEndpoint.parse(serverURL)
+        )
     }
 
     private func idempotencyKey(for request: NutritionAnalysisRequest, body: Data) -> String {

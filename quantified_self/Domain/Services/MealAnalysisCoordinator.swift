@@ -143,6 +143,7 @@ final class MealAnalysisCoordinator {
         let previousMealState = meal.analysisState
         let preservedPortionMultiplier = meal.activeRevision?.normalizedPortionMultiplier ?? 1
         let previousAnalysis = meal.activeRevision.map(makeBaselineAnalysisResult)
+        let operationProvider = provider as? any NutritionAnalysisOperationProviding
         let callRecorder = AnalysisCallRecorder(
             clarificationQuestion: trigger == .clarification
                 ? meal.activeRevision?.clarificationQuestion
@@ -185,6 +186,53 @@ final class MealAnalysisCoordinator {
                 allowsClarification: allowsClarification,
                 recognizedLabelText: recognizedLabelText
             )
+            if let operationProvider {
+                let operation = try await requestServerAnalysis(
+                    request,
+                    trigger: trigger,
+                    provider: operationProvider
+                )
+                do {
+                    try NutritionAnalysisValidator.validate(operation.result)
+                    try NutritionAnalysisConsistencyValidator.validate(operation.result)
+                    if trigger == .clarification {
+                        try NutritionAnalysisDriftValidator.validate(
+                            previous: request.previousAnalysis,
+                            revised: operation.result
+                        )
+                    }
+                } catch {
+                    throw NutritionAnalysisOperationFailure(
+                        message: error.localizedDescription,
+                        calls: operation.calls,
+                        promptVersion: operation.promptVersion,
+                        jobIdentifier: operation.jobIdentifier
+                    )
+                }
+                persist(
+                    operation.result,
+                    requestedAt: requestDate,
+                    trigger: trigger,
+                    clarificationAnswer: clarificationAnswer,
+                    userCorrection: userCorrection,
+                    initialResults: [],
+                    calls: operation.calls,
+                    promptVersion: operation.promptVersion,
+                    portionMultiplier: preservedPortionMultiplier,
+                    for: meal
+                )
+                meal.clarificationCount = nextClarificationCount
+                try context.save()
+                do {
+                    try await operationProvider.acknowledgeAnalysis(
+                        jobIdentifier: operation.jobIdentifier
+                    )
+                } catch {
+                    AppLogger.nutritionAnalysis.error("Could not acknowledge persisted analysis job")
+                }
+                AppLogger.nutritionAnalysis.info("Nutrition analysis completed")
+                return
+            }
             let (firstResult, initialResults) = try await requestValidAnalysis(
                 request,
                 trigger: trigger,
@@ -206,6 +254,7 @@ final class MealAnalysisCoordinator {
                 userCorrection: userCorrection,
                 initialResults: sampledResults,
                 calls: callRecorder.calls,
+                promptVersion: NutritionAnalysisPrompt.currentVersion,
                 portionMultiplier: preservedPortionMultiplier,
                 for: meal
             )
@@ -218,18 +267,68 @@ final class MealAnalysisCoordinator {
             try? context.save()
             AppLogger.nutritionAnalysis.info("Nutrition analysis cancelled")
         } catch {
+            let operationFailure = error as? NutritionAnalysisOperationFailure
             persistFailure(
                 requestedAt: requestDate,
                 trigger: trigger,
                 userCorrection: userCorrection,
                 error: error,
-                calls: callRecorder.calls,
+                calls: operationFailure?.calls ?? callRecorder.calls,
+                promptVersion: operationFailure?.promptVersion
+                    ?? NutritionAnalysisPrompt.currentVersion,
                 for: meal
             )
             meal.analysisState = .failed
             meal.modifiedAt = now()
-            try? context.save()
+            var didPersistFailure = false
+            do {
+                try context.save()
+                didPersistFailure = true
+            } catch {
+                AppLogger.nutritionAnalysis.error("Could not persist failed nutrition analysis")
+            }
+            if didPersistFailure,
+               let jobIdentifier = operationFailure?.jobIdentifier,
+               let operationProvider {
+                do {
+                    try await operationProvider.acknowledgeAnalysis(
+                        jobIdentifier: jobIdentifier
+                    )
+                } catch {
+                    AppLogger.nutritionAnalysis.error("Could not acknowledge persisted failed analysis job")
+                }
+            }
             AppLogger.nutritionAnalysis.error("Nutrition analysis failed")
+        }
+    }
+
+    private func requestServerAnalysis(
+        _ request: NutritionAnalysisRequest,
+        trigger: AnalysisTrigger,
+        provider: any NutritionAnalysisOperationProviding
+    ) async throws -> NutritionAnalysisOperationResult {
+        var attempt = 0
+        var transientFailureCount = 0
+        while true {
+            attempt += 1
+            do {
+                return try await provider.analyzeOperation(
+                    request,
+                    trigger: trigger
+                ) { _ in }
+            } catch let error as NutritionAnalysisOperationFailure {
+                throw error
+            } catch {
+                guard Self.isRetryable(error) else { throw error }
+                transientFailureCount += 1
+                guard transientFailureCount < Self.maximumTransientAttemptCount else { throw error }
+                if Self.isTransportFailure(error) {
+                    AppLogger.nutritionAnalysis.info("Waiting for network before retrying server analysis")
+                    try await networkAvailabilityWaiter.waitUntilAvailable()
+                } else {
+                    try await retryDelaySleeper.sleep(beforeAttempt: attempt + 1)
+                }
+            }
         }
     }
 
@@ -411,7 +510,8 @@ final class MealAnalysisCoordinator {
             return true
         case let .apiError(statusCode, _):
             return statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)
-        case .invalidServerURL, .serverAuthenticationRequired, .invalidAPIKey, .accessForbidden,
+        case .invalidServerURL, .serverUpdateRequired, .serverAuthenticationRequired,
+                .invalidAPIKey, .accessForbidden,
                 .invalidModelIdentifier, .modelUnavailable, .modelNotFound,
                 .invalidRequest, .insufficientCredits:
             return false
@@ -432,6 +532,7 @@ final class MealAnalysisCoordinator {
         userCorrection: String?,
         error: Error,
         calls: [AnalysisCallSummary],
+        promptVersion: Int,
         for meal: Meal
     ) {
         meal.analysisRevisions.append(Self.failureRevision(
@@ -441,7 +542,8 @@ final class MealAnalysisCoordinator {
             userCorrection: userCorrection,
             message: error.localizedDescription,
             previousRevision: meal.activeRevision,
-            providerMetadata: InitialAnalysisRunMetadata.encodeCalls(calls)
+            providerMetadata: InitialAnalysisRunMetadata.encodeCalls(calls),
+            promptVersion: promptVersion
         ))
     }
 
@@ -452,7 +554,8 @@ final class MealAnalysisCoordinator {
         userCorrection: String? = nil,
         message: String,
         previousRevision: MealAnalysisRevision?,
-        providerMetadata: String? = nil
+        providerMetadata: String? = nil,
+        promptVersion: Int
     ) -> MealAnalysisRevision {
         MealAnalysisRevision(
             createdAt: createdAt,
@@ -460,7 +563,7 @@ final class MealAnalysisCoordinator {
             modelIdentifier: previousRevision?.modelIdentifier ?? "Nicht verfügbar",
             providerIdentifier: previousRevision?.providerIdentifier,
             providerMetadata: providerMetadata,
-            promptVersion: NutritionAnalysisPrompt.currentVersion,
+            promptVersion: promptVersion,
             trigger: trigger,
             status: .failed,
             mealName: previousRevision?.mealName ?? "Analyse fehlgeschlagen",
@@ -480,6 +583,7 @@ final class MealAnalysisCoordinator {
         userCorrection: String?,
         initialResults: [NutritionAnalysisResult],
         calls: [AnalysisCallSummary],
+        promptVersion: Int,
         portionMultiplier: Double,
         for meal: Meal
     ) {
@@ -494,7 +598,7 @@ final class MealAnalysisCoordinator {
                 calls,
                 selectedNutrients: result.nutrients
             ) ?? InitialAnalysisRunMetadata.encode(initialResults),
-            promptVersion: NutritionAnalysisPrompt.currentVersion,
+            promptVersion: promptVersion,
             trigger: trigger,
             status: status,
             mealName: result.mealName.trimmingCharacters(in: .whitespacesAndNewlines),

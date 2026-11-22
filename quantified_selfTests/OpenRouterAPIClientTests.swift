@@ -238,6 +238,86 @@ struct OpenRouterAPIClientTests {
         }
     }
 
+    @Test("Nutrition analysis uses long polling and is acknowledged explicitly")
+    func nutritionAnalysisJob() async throws {
+        let privateBody = Data(#"{"user_comment":"private-meal-comment"}"#.utf8)
+        let terminalJob = try analysisJobJSON()
+        let trafficLog = RecordingOpenRouterTrafficLog()
+        let session = makeSession { request in
+            switch request.httpMethod {
+            case "POST":
+                #expect(request.url?.path == "/api/v2/analysis-jobs")
+                #expect(Self.bodyData(for: request) == privateBody)
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-secret")
+                #expect(request.value(forHTTPHeaderField: "Idempotency-Key") == "analysis-v2-1")
+                return Self.response(
+                    for: request,
+                    status: 202,
+                    json: #"{"id":"analysis-job-123","status":"running"}"#
+                )
+            case "GET":
+                #expect(request.url?.path == "/api/v2/analysis-jobs/analysis-job-123")
+                #expect(
+                    URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                        .queryItems == [URLQueryItem(name: "wait", value: "25")]
+                )
+                #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+                return Self.response(for: request, status: 200, json: terminalJob)
+            case "DELETE":
+                #expect(request.url?.path == "/api/v2/analysis-jobs/analysis-job-123")
+                #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+                return Self.response(for: request, status: 204, json: "")
+            default:
+                Issue.record("Unexpected request: \(request)")
+                return Self.response(for: request, status: 405, json: "{}")
+            }
+        }
+        let client = OpenRouterAPIClient(session: session, trafficLog: trafficLog)
+
+        var receivedEvents: [NutritionAnalysisStreamEvent] = []
+        let job = try await client.sendNutritionAnalysis(
+            apiKey: "test-secret",
+            body: privateBody,
+            idempotencyKey: "analysis-v2-1",
+            serverBaseURL: serverBaseURL
+        ) { event in
+            receivedEvents.append(event)
+        }
+        try await client.acknowledgeNutritionAnalysis(
+            jobIdentifier: job.id,
+            serverBaseURL: serverBaseURL
+        )
+
+        #expect(job.status == .succeeded)
+        #expect(job.result?.promptVersion == 12)
+        #expect(job.result?.policyVersion == 1)
+        #expect(job.result?.result?.mealName == "Gemüsecurry mit Reis")
+        #expect(job.result?.calls.first?.requestedAt == Date(timeIntervalSince1970: 1_788_115_200))
+        #expect(receivedEvents == [.requestStarted, .responseStarted, .responseCompleted])
+        let entries = await trafficLog.snapshot()
+        #expect(entries.count == 2)
+        #expect(entries.allSatisfy { !$0.contains("private-meal-comment") })
+        #expect(entries.allSatisfy { !$0.contains("Gemüsecurry mit Reis") })
+        #expect(entries.allSatisfy { !$0.contains("test-secret") })
+    }
+
+    @Test("A server without the analysis endpoint requires an update")
+    func missingNutritionAnalysisEndpoint() async {
+        let session = makeSession { request in
+            Self.response(for: request, status: 404, json: #"{"error":{"message":"not found"}}"#)
+        }
+        let client = OpenRouterAPIClient(session: session)
+
+        await #expect(throws: OpenRouterClientError.serverUpdateRequired) {
+            try await client.sendNutritionAnalysis(
+                apiKey: "test-secret",
+                body: Data("{}".utf8),
+                idempotencyKey: "analysis-v2-missing",
+                serverBaseURL: serverBaseURL
+            ) { _ in }
+        }
+    }
+
     @Test("Model catalog returns image models with structured output")
     func compatibleModelCatalog() async throws {
         let session = makeSession { request in
@@ -267,6 +347,36 @@ struct OpenRouterAPIClientTests {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [URLProtocolStub.self]
         return URLSession(configuration: configuration)
+    }
+
+    private func analysisJobJSON() throws -> String {
+        let encodedResult = try JSONEncoder().encode(
+            NutritionAnalysisValidatorTests.validResult()
+        )
+        let result = try #require(
+            JSONSerialization.jsonObject(with: encodedResult) as? [String: Any]
+        )
+        let payload: [String: Any] = [
+            "id": "analysis-job-123",
+            "status": "succeeded",
+            "result": [
+                "result": result,
+                "calls": [[
+                    "call_number": 1,
+                    "sample_number": 1,
+                    "attempt_number": 1,
+                    "status": "succeeded",
+                    "model_identifier": "example/vision-model",
+                    "provider_identifier": "Example",
+                    "energy_kilocalories": 640,
+                    "requested_at": "2026-08-30T18:40:00Z",
+                ]],
+                "prompt_version": 12,
+                "policy_version": 1,
+            ],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
     }
 
     private func makeFailingSession(error: URLError) -> URLSession {

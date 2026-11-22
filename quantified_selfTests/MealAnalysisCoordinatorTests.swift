@@ -5,6 +5,151 @@ import Testing
 
 @MainActor
 struct MealAnalysisCoordinatorTests {
+    @Test("Server orchestration persists its result before acknowledging the job")
+    func persistsServerOperationAndAcknowledgesJob() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let image = MealImage(
+            sortIndex: 0,
+            imageStorageKey: "server/image.jpg",
+            thumbnailStorageKey: "server/thumbnail.jpg",
+            pixelWidth: 1_000,
+            pixelHeight: 800
+        )
+        let meal = Meal(userComment: "Große Portion", images: [image])
+        context.insert(meal)
+        try context.save()
+        let result = NutritionAnalysisValidatorTests.validResult()
+        let call = AnalysisCallSummary(
+            callNumber: 1,
+            sampleNumber: 1,
+            attemptNumber: 1,
+            status: .succeeded,
+            modelIdentifier: result.modelIdentifier,
+            providerIdentifier: result.providerIdentifier,
+            energyKilocalories: 640,
+            errorMessage: nil
+        )
+        let provider = ServerOperationProviderStub(result: NutritionAnalysisOperationResult(
+            result: result,
+            calls: [call],
+            promptVersion: 12,
+            policyVersion: 1,
+            jobIdentifier: "analysis-job-1"
+        ))
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(
+                dataByKey: ["server/image.jpg": Data([1, 2, 3])]
+            ),
+            textRecognizer: NutritionLabelTextRecognizerStub(text: ["248 kcal pro 100 g"])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(meal.analysisState == .confirmed)
+        #expect(meal.activeRevision?.promptVersion == 12)
+        #expect(InitialAnalysisRunMetadata.decodeCalls(meal.activeRevision?.providerMetadata) == [call])
+        #expect(provider.legacyRequestCount == 0)
+        #expect(provider.operationRequestCount == 1)
+        #expect(provider.receivedTrigger == .initial)
+        #expect(provider.receivedRequest?.recognizedLabelText == ["248 kcal pro 100 g"])
+        #expect(provider.acknowledgedJobIdentifiers == ["analysis-job-1"])
+    }
+
+    @Test("Server analysis failures are acknowledged after preserving call history")
+    func persistsServerOperationFailure() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let failedCall = AnalysisCallSummary(
+            callNumber: 1,
+            sampleNumber: 1,
+            attemptNumber: 1,
+            status: .failed,
+            modelIdentifier: "example/vision-model",
+            providerIdentifier: nil,
+            energyKilocalories: nil,
+            errorMessage: "Nährwerte sind widersprüchlich."
+        )
+        let provider = ServerOperationProviderStub(error: NutritionAnalysisOperationFailure(
+            message: "Nährwerte sind widersprüchlich.",
+            calls: [failedCall],
+            promptVersion: 12,
+            jobIdentifier: "analysis-job-failed"
+        ))
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(meal.analysisState == .failed)
+        #expect(meal.analysisRevisions.first?.promptVersion == 12)
+        #expect(
+            InitialAnalysisRunMetadata.decodeCalls(meal.analysisRevisions.first?.providerMetadata)
+                == [failedCall]
+        )
+        #expect(provider.acknowledgedJobIdentifiers == ["analysis-job-failed"])
+    }
+
+    @Test("Defensive validation preserves and acknowledges the server outcome")
+    func persistsDefensiveServerValidationFailure() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let meal = Meal()
+        context.insert(meal)
+        try context.save()
+        let valid = NutritionAnalysisValidatorTests.validResult()
+        let invalid = NutritionAnalysisResult(
+            mealName: valid.mealName,
+            estimatedTotalWeightGrams: valid.estimatedTotalWeightGrams,
+            confidence: valid.confidence,
+            uncertaintySummary: valid.uncertaintySummary,
+            clarificationQuestion: valid.clarificationQuestion,
+            nutrients: Array(valid.nutrients.dropLast()),
+            components: valid.components,
+            modelIdentifier: valid.modelIdentifier,
+            providerIdentifier: valid.providerIdentifier
+        )
+        let call = AnalysisCallSummary(
+            callNumber: 1,
+            sampleNumber: 1,
+            attemptNumber: 1,
+            status: .succeeded,
+            modelIdentifier: valid.modelIdentifier,
+            providerIdentifier: valid.providerIdentifier,
+            energyKilocalories: 640,
+            errorMessage: nil
+        )
+        let provider = ServerOperationProviderStub(result: NutritionAnalysisOperationResult(
+            result: invalid,
+            calls: [call],
+            promptVersion: 12,
+            policyVersion: 1,
+            jobIdentifier: "analysis-job-invalid"
+        ))
+        let coordinator = MealAnalysisCoordinator(
+            context: context,
+            provider: provider,
+            imageStorage: AnalysisImageStorage(dataByKey: [:])
+        )
+
+        await coordinator.analyze(meal)
+
+        #expect(meal.analysisState == .failed)
+        #expect(
+            InitialAnalysisRunMetadata.decodeCalls(meal.analysisRevisions.first?.providerMetadata)
+                == [call]
+        )
+        #expect(provider.acknowledgedJobIdentifiers == ["analysis-job-invalid"])
+    }
+
     @Test("Successful analysis without questions is confirmed automatically")
     func persistsSuccessfulAnalysis() async throws {
         let container = try makeContainer()
@@ -1288,6 +1433,49 @@ private final class AnalysisProviderStub: NutritionAnalysisProviding {
         receivedRequest = request
         if let error { throw error }
         return result!
+    }
+}
+
+@MainActor
+private final class ServerOperationProviderStub: NutritionAnalysisOperationProviding {
+    let result: NutritionAnalysisOperationResult?
+    let error: Error?
+    private(set) var legacyRequestCount = 0
+    private(set) var operationRequestCount = 0
+    private(set) var receivedRequest: NutritionAnalysisRequest?
+    private(set) var receivedTrigger: AnalysisTrigger?
+    private(set) var acknowledgedJobIdentifiers: [String] = []
+
+    init(result: NutritionAnalysisOperationResult) {
+        self.result = result
+        self.error = nil
+    }
+
+    init(error: Error) {
+        self.result = nil
+        self.error = error
+    }
+
+    func analyze(_ request: NutritionAnalysisRequest) async throws -> NutritionAnalysisResult {
+        legacyRequestCount += 1
+        if let error { throw error }
+        return result!.result
+    }
+
+    func analyzeOperation(
+        _ request: NutritionAnalysisRequest,
+        trigger: AnalysisTrigger,
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
+    ) async throws -> NutritionAnalysisOperationResult {
+        operationRequestCount += 1
+        receivedRequest = request
+        receivedTrigger = trigger
+        if let error { throw error }
+        return result!
+    }
+
+    func acknowledgeAnalysis(jobIdentifier: String) async throws {
+        acknowledgedJobIdentifiers.append(jobIdentifier)
     }
 }
 

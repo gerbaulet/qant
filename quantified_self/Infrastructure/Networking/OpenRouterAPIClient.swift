@@ -13,6 +13,29 @@ struct OpenRouterModelOption: Codable, Identifiable, Sendable, Equatable {
     let name: String
 }
 
+struct QuantServerAnalysisPayload: Decodable, Sendable, Equatable {
+    let result: NutritionAnalysisResult?
+    let calls: [AnalysisCallSummary]
+    let promptVersion: Int
+    let policyVersion: Int
+    let errorMessage: String?
+}
+
+struct QuantServerAnalysisJob: Decodable, Sendable, Equatable {
+    enum Status: String, Decodable, Sendable {
+        case running
+        case succeeded
+        case failed
+    }
+
+    let id: String
+    let status: Status
+    let result: QuantServerAnalysisPayload?
+    let failureCode: String?
+    let failureMessage: String?
+    let retryable: Bool?
+}
+
 protocol OpenRouterConfigurationChecking {
     func checkConfiguration(
         apiKey: String,
@@ -39,6 +62,17 @@ protocol OpenRouterChatCompleting {
         serverBaseURL: URL,
         onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
     ) async throws -> Data
+    func sendNutritionAnalysis(
+        apiKey: String,
+        body: Data,
+        idempotencyKey: String,
+        serverBaseURL: URL,
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
+    ) async throws -> QuantServerAnalysisJob
+    func acknowledgeNutritionAnalysis(
+        jobIdentifier: String,
+        serverBaseURL: URL
+    ) async throws
 }
 
 extension OpenRouterChatCompleting {
@@ -56,10 +90,28 @@ extension OpenRouterChatCompleting {
             serverBaseURL: serverBaseURL
         )
     }
+
+    func sendNutritionAnalysis(
+        apiKey: String,
+        body: Data,
+        idempotencyKey: String,
+        serverBaseURL: URL,
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
+    ) async throws -> QuantServerAnalysisJob {
+        throw OpenRouterClientError.serverUpdateRequired
+    }
+
+    func acknowledgeNutritionAnalysis(
+        jobIdentifier: String,
+        serverBaseURL: URL
+    ) async throws {
+        throw OpenRouterClientError.serverUpdateRequired
+    }
 }
 
 enum OpenRouterClientError: Error, LocalizedError, Equatable {
     case invalidServerURL
+    case serverUpdateRequired
     case serverAuthenticationRequired
     case invalidAPIKey
     case accessForbidden
@@ -81,6 +133,8 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
         switch self {
         case .invalidServerURL:
             "Gib eine gültige HTTPS-Adresse für den Quant Server ein."
+        case .serverUpdateRequired:
+            "Aktualisiere zuerst den Quant Server, damit er vollständige Mahlzeitenanalysen unterstützt."
         case .serverAuthenticationRequired:
             "Der Quant Server hat keine Tailscale-Identität erhalten. Prüfe Tailscale und verwende die Serve-Adresse."
         case .invalidAPIKey:
@@ -120,6 +174,8 @@ enum OpenRouterClientError: Error, LocalizedError, Equatable {
 struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCatalogProviding, OpenRouterChatCompleting, Sendable {
     private static let requestTimeout: TimeInterval = 30
     private static let maximumJobWait: TimeInterval = 3 * 60
+    private static let maximumAnalysisJobWait: TimeInterval = 15 * 60
+    private static let analysisLongPollSeconds = 25
 
     private struct RelayJob: Decodable {
         enum Status: String, Decodable {
@@ -264,6 +320,64 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         )
     }
 
+    func sendNutritionAnalysis(
+        apiKey: String,
+        body: Data,
+        idempotencyKey: String,
+        serverBaseURL: URL,
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
+    ) async throws -> QuantServerAnalysisJob {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedIdempotencyKey = idempotencyKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { throw OpenRouterClientError.invalidAPIKey }
+        guard !trimmedIdempotencyKey.isEmpty else { throw OpenRouterClientError.invalidRequest }
+        return try await performAnalysisJob(
+            url: serverBaseURL.appending(path: "api/v2/analysis-jobs"),
+            apiKey: trimmedKey,
+            body: body,
+            idempotencyKey: trimmedIdempotencyKey,
+            onStreamEvent: onStreamEvent
+        )
+    }
+
+    func acknowledgeNutritionAnalysis(
+        jobIdentifier: String,
+        serverBaseURL: URL
+    ) async throws {
+        let trimmedIdentifier = jobIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedIdentifier.isEmpty else { throw OpenRouterClientError.invalidRequest }
+        var request = URLRequest(
+            url: serverBaseURL
+                .appending(path: "api/v2/analysis-jobs")
+                .appending(path: trimmedIdentifier),
+            timeoutInterval: Self.requestTimeout
+        )
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw OpenRouterClientError.invalidResponse
+            }
+            guard httpResponse.statusCode == 204 else {
+                if httpResponse.statusCode == 404 {
+                    return
+                }
+                _ = try validatedResponseData(data, statusCode: httpResponse.statusCode)
+                throw OpenRouterClientError.invalidResponse
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as OpenRouterClientError {
+            throw error
+        } catch let error as URLError {
+            if error.code == .cancelled { throw CancellationError() }
+            throw Self.networkFailure(from: error)
+        } catch {
+            throw OpenRouterClientError.transportFailure
+        }
+    }
+
     func compatibleModels(apiKey: String, serverBaseURL: URL) async throws -> [OpenRouterModelOption] {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else { throw OpenRouterClientError.invalidAPIKey }
@@ -377,6 +491,147 @@ struct OpenRouterAPIClient: OpenRouterConfigurationChecking, OpenRouterModelCata
         } catch {
             throw error
         }
+    }
+
+    private func performAnalysisJob(
+        url: URL,
+        apiKey: String,
+        body: Data,
+        idempotencyKey: String,
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
+    ) async throws -> QuantServerAnalysisJob {
+        var request = URLRequest(url: url, timeoutInterval: Self.requestTimeout)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let requestID = UUID()
+        await trafficLog.recordRequest(
+            id: requestID,
+            method: "POST",
+            url: url,
+            headers: [:],
+            body: nil
+        )
+
+        do {
+            onStreamEvent(.requestStarted)
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw OpenRouterClientError.invalidResponse
+            }
+            guard httpResponse.statusCode == 200 || httpResponse.statusCode == 202 else {
+                await trafficLog.recordResponse(
+                    id: requestID,
+                    statusCode: httpResponse.statusCode,
+                    headers: responseHeaders(httpResponse),
+                    body: Data()
+                )
+                if httpResponse.statusCode == 404 {
+                    throw OpenRouterClientError.serverUpdateRequired
+                }
+                _ = try validatedResponseData(data, statusCode: httpResponse.statusCode)
+                throw OpenRouterClientError.invalidResponse
+            }
+
+            var job = try decodeAnalysisJob(data)
+            onStreamEvent(.responseStarted)
+            let deadline = Date.now.addingTimeInterval(Self.maximumAnalysisJobWait)
+            while job.status == .running {
+                guard Date.now < deadline else { throw OpenRouterClientError.timedOut }
+                job = try await longPollAnalysisJob(id: job.id, jobsURL: url)
+            }
+            if job.status == .failed, job.result == nil {
+                let description = Self.nonemptyDiagnostic(job.failureMessage)
+                    ?? "Keine weitere Fehlermeldung wurde übermittelt."
+                throw OpenRouterClientError.serverJobFailure(
+                    code: Self.nonemptyDiagnostic(job.failureCode),
+                    message: description,
+                    jobIdentifier: String(job.id.prefix(200))
+                )
+            }
+            onStreamEvent(.responseCompleted)
+            await trafficLog.recordResponse(
+                id: requestID,
+                statusCode: httpResponse.statusCode,
+                headers: ["X-Quant-Job-ID": job.id],
+                body: Data()
+            )
+            return job
+        } catch is CancellationError {
+            await trafficLog.recordFailure(id: requestID, description: "Anfrage abgebrochen")
+            throw CancellationError()
+        } catch let error as OpenRouterClientError {
+            await trafficLog.recordFailure(id: requestID, description: error.localizedDescription)
+            throw error
+        } catch let error as URLError {
+            if error.code == .cancelled {
+                await trafficLog.recordFailure(id: requestID, description: "Anfrage abgebrochen")
+                throw CancellationError()
+            }
+            let clientError = Self.networkFailure(from: error)
+            await trafficLog.recordFailure(id: requestID, description: clientError.localizedDescription)
+            throw clientError
+        } catch {
+            await trafficLog.recordFailure(
+                id: requestID,
+                description: "Transportfehler: \(error.localizedDescription)"
+            )
+            throw OpenRouterClientError.transportFailure
+        }
+    }
+
+    private func longPollAnalysisJob(id: String, jobsURL: URL) async throws -> QuantServerAnalysisJob {
+        var components = URLComponents(
+            url: jobsURL.appending(path: id),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [
+            URLQueryItem(name: "wait", value: String(Self.analysisLongPollSeconds)),
+        ]
+        guard let url = components?.url else { throw OpenRouterClientError.invalidResponse }
+        var request = URLRequest(url: url, timeoutInterval: Self.requestTimeout)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenRouterClientError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            _ = try validatedResponseData(data, statusCode: httpResponse.statusCode)
+            throw OpenRouterClientError.invalidResponse
+        }
+        return try decodeAnalysisJob(data)
+    }
+
+    private func decodeAnalysisJob(_ data: Data) throws -> QuantServerAnalysisJob {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = fractional.date(from: value) {
+                return date
+            }
+            let standard = ISO8601DateFormatter()
+            standard.formatOptions = [.withInternetDateTime]
+            guard let date = standard.date(from: value) else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Invalid server date"
+                )
+            }
+            return date
+        }
+        guard let job = try? decoder.decode(QuantServerAnalysisJob.self, from: data) else {
+            throw OpenRouterClientError.invalidResponse
+        }
+        return job
     }
 
     private func performRelayJob(

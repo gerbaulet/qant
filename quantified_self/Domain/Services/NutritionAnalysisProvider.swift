@@ -191,6 +191,32 @@ protocol NutritionAnalysisProviding {
     ) async throws -> NutritionAnalysisResult
 }
 
+struct NutritionAnalysisOperationResult: Sendable, Equatable {
+    let result: NutritionAnalysisResult
+    let calls: [AnalysisCallSummary]
+    let promptVersion: Int
+    let policyVersion: Int
+    let jobIdentifier: String
+}
+
+struct NutritionAnalysisOperationFailure: Error, LocalizedError, Sendable, Equatable {
+    let message: String
+    let calls: [AnalysisCallSummary]
+    let promptVersion: Int?
+    let jobIdentifier: String?
+
+    var errorDescription: String? { message }
+}
+
+protocol NutritionAnalysisOperationProviding: NutritionAnalysisProviding {
+    func analyzeOperation(
+        _ request: NutritionAnalysisRequest,
+        trigger: AnalysisTrigger,
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
+    ) async throws -> NutritionAnalysisOperationResult
+    func acknowledgeAnalysis(jobIdentifier: String) async throws
+}
+
 extension NutritionAnalysisProviding {
     func analyze(
         _ request: NutritionAnalysisRequest,

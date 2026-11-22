@@ -4,6 +4,93 @@ import Testing
 
 @MainActor
 struct OpenRouterNutritionAnalysisServiceTests {
+    @Test("The server operation carries the full analysis context")
+    func sendsServerAnalysisOperation() async throws {
+        let result = NutritionAnalysisValidatorTests.validResult()
+        let call = AnalysisCallSummary(
+            callNumber: 1,
+            sampleNumber: 1,
+            attemptNumber: 1,
+            status: .succeeded,
+            modelIdentifier: result.modelIdentifier,
+            providerIdentifier: result.providerIdentifier,
+            energyKilocalories: 640,
+            errorMessage: nil
+        )
+        let client = ChatClientStub(analysisJob: QuantServerAnalysisJob(
+            id: "analysis-job-1",
+            status: .succeeded,
+            result: QuantServerAnalysisPayload(
+                result: result,
+                calls: [call],
+                promptVersion: 12,
+                policyVersion: 1,
+                errorMessage: nil
+            ),
+            failureCode: nil,
+            failureMessage: nil,
+            retryable: nil
+        ))
+        let settings = AnalysisSettingsStore(modelIdentifier: "example/vision-model")
+        settings.costTier = .high
+        settings.providerPreference = .lowLatency
+        let service = OpenRouterNutritionAnalysisService(
+            secretStore: AnalysisSecretStore(secret: "test-secret"),
+            settingsStore: settings,
+            client: client,
+            preferredLanguageIdentifier: "de-DE"
+        )
+        let requestGroupIdentifier = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+
+        let operation = try await service.analyzeOperation(
+            NutritionAnalysisRequest(
+                requestGroupIdentifier: requestGroupIdentifier,
+                images: [NutritionAnalysisImage(data: Data([1, 2, 3]), mediaType: "image/heic")],
+                userComment: "Private Mahlzeit",
+                previousAnalysis: result,
+                clarificationHistory: [NutritionClarificationExchange(
+                    question: "Wie viel?",
+                    answer: "Etwa 300 g"
+                )],
+                clarificationAnswer: "Etwa 300 g",
+                userCorrection: "Ohne Öl",
+                requestsBestEstimate: true,
+                allowsClarification: false,
+                recognizedLabelText: ["248 kcal pro 100 g"]
+            ),
+            trigger: .correction
+        ) { _ in }
+
+        #expect(operation.result == result)
+        #expect(operation.calls == [call])
+        #expect(operation.promptVersion == 12)
+        #expect(operation.policyVersion == 1)
+        #expect(operation.jobIdentifier == "analysis-job-1")
+        #expect(client.receivedAPIKey == "test-secret")
+        #expect(client.receivedServerBaseURL == URL(string: "https://quant-server.example"))
+        #expect(client.receivedIdempotencyKey?.hasPrefix(
+            "11111111-2222-3333-4444-555555555555-"
+        ) == true)
+
+        let body = try #require(client.receivedBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["protocol_version"] as? Int == 1)
+        #expect(json["trigger"] as? String == "correction")
+        #expect(json["model_identifier"] as? String == "example/vision-model")
+        #expect(json["cost_tier"] as? String == "high")
+        #expect(json["provider_preference"] as? String == "faster")
+        #expect(json["preferred_language_identifier"] as? String == "de-DE")
+        #expect(json["user_comment"] as? String == "Private Mahlzeit")
+        #expect(json["recognized_label_text"] as? [String] == ["248 kcal pro 100 g"])
+        #expect(json["allows_clarification"] as? Bool == false)
+        let images = try #require(json["images"] as? [[String: Any]])
+        #expect(images.first?["data"] as? String == "AQID")
+        #expect(images.first?["media_type"] as? String == "image/heic")
+
+        try await service.acknowledgeAnalysis(jobIdentifier: operation.jobIdentifier)
+        #expect(client.acknowledgedJobIdentifier == "analysis-job-1")
+    }
+
     @Test("The service sends every image and decodes structured nutrition data")
     func sendsMultimodalStructuredRequest() async throws {
         let client = ChatClientStub(responseData: try Self.chatResponseData())
@@ -526,14 +613,23 @@ struct OpenRouterNutritionAnalysisServiceTests {
 private final class ChatClientStub: OpenRouterChatCompleting {
     let responseData: Data
     let contentDeltas: [String]
+    let analysisJob: QuantServerAnalysisJob?
     var receivedAPIKey: String?
     var receivedBody: Data?
     var receivedIdempotencyKey: String?
     var receivedServerBaseURL: URL?
+    var acknowledgedJobIdentifier: String?
 
     init(responseData: Data, contentDeltas: [String] = []) {
         self.responseData = responseData
         self.contentDeltas = contentDeltas
+        self.analysisJob = nil
+    }
+
+    init(analysisJob: QuantServerAnalysisJob) {
+        self.responseData = Data()
+        self.contentDeltas = []
+        self.analysisJob = analysisJob
     }
 
     func sendChatCompletion(
@@ -565,6 +661,28 @@ private final class ChatClientStub: OpenRouterChatCompleting {
             idempotencyKey: idempotencyKey,
             serverBaseURL: serverBaseURL
         )
+    }
+
+    func sendNutritionAnalysis(
+        apiKey: String,
+        body: Data,
+        idempotencyKey: String,
+        serverBaseURL: URL,
+        onStreamEvent: @escaping @MainActor (NutritionAnalysisStreamEvent) -> Void
+    ) async throws -> QuantServerAnalysisJob {
+        receivedAPIKey = apiKey
+        receivedBody = body
+        receivedIdempotencyKey = idempotencyKey
+        receivedServerBaseURL = serverBaseURL
+        return try #require(analysisJob)
+    }
+
+    func acknowledgeNutritionAnalysis(
+        jobIdentifier: String,
+        serverBaseURL: URL
+    ) async throws {
+        acknowledgedJobIdentifier = jobIdentifier
+        receivedServerBaseURL = serverBaseURL
     }
 }
 
