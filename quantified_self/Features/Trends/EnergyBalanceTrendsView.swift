@@ -1,97 +1,30 @@
 import Charts
 import SwiftUI
 
-private enum EnergyBalancePresentation: String, CaseIterable, Identifiable {
-    case recorded
-    case personal
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .recorded: "Erfasst"
-        case .personal: "Persönlich"
-        }
-    }
-}
-
 struct EnergyBalanceTrendsView: View {
     let balances: [DailyEnergyBalance]
-    @Binding var range: NutritionTrendRange
     let healthStatus: HealthDataStatus
     let weightStatus: HealthDataStatus
     let weightComparison: WeightBalanceComparison?
     let onOpenSettings: () -> Void
-    @State private var selectedPresentation: EnergyBalancePresentation?
 
     private var displayedBalances: [DailyEnergyBalance] {
         balances.filter(\.canDescribeBalance)
-    }
-
-    private var completedBalances: [DailyEnergyBalance] {
-        balances.filter { $0.completeness == .complete && !$0.isCurrentDay }
     }
 
     private var personalDailyAdjustment: Double? {
         weightComparison?.dailyBalanceAdjustmentKilocalories
     }
 
-    private var balancePresentation: EnergyBalancePresentation {
-        guard personalDailyAdjustment != nil else { return .recorded }
-        return selectedPresentation ?? .personal
-    }
-
-    private var appliedDailyAdjustment: Double? {
-        balancePresentation == .personal ? personalDailyAdjustment : nil
-    }
-
     private var averageBalance: Double? {
         PersonalEnergyBalanceCalculator.averageBalanceKilocalories(
             for: balances,
-            dailyAdjustmentKilocalories: appliedDailyAdjustment
+            dailyAdjustmentKilocalories: personalDailyAdjustment
         )
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
-                rangePicker
-                balancePresentationPicker
-                content
-            }
-            .padding(.horizontal, QuantLayout.pageInset)
-            .padding(.vertical, QuantLayout.sectionSpacing)
-        }
-        .background(Color(.systemGroupedBackground))
-    }
-
-    private var rangePicker: some View {
-        Picker("Zeitraum", selection: $range) {
-            Text("Woche").tag(NutritionTrendRange.week)
-            Text("Monat").tag(NutritionTrendRange.month)
-            Text("Jahr").tag(NutritionTrendRange.year)
-        }
-        .pickerStyle(.segmented)
-        .accessibilityIdentifier("balance.range")
-    }
-
-    @ViewBuilder
-    private var balancePresentationPicker: some View {
-        if personalDailyAdjustment != nil {
-            Picker(
-                "Bilanzmodell",
-                selection: Binding(
-                    get: { balancePresentation },
-                    set: { selectedPresentation = $0 }
-                )
-            ) {
-                ForEach(EnergyBalancePresentation.allCases) { presentation in
-                    Text(presentation.title).tag(presentation)
-                }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("balance.model")
-        }
+        content
     }
 
     @ViewBuilder
@@ -100,8 +33,10 @@ struct EnergyBalanceTrendsView: View {
         case .notRequested:
             setupCard
         case .loading where displayedBalances.isEmpty:
-            ProgressView("Apple-Health-Daten werden geladen …")
-                .frame(maxWidth: .infinity, minHeight: 240)
+            QuantCard(style: .hero) {
+                ProgressView("Apple-Health-Daten werden geladen …")
+                    .frame(maxWidth: .infinity, minHeight: 180)
+            }
         case .unavailable:
             unavailableCard(
                 title: "Apple Health ist nicht verfügbar",
@@ -119,11 +54,8 @@ struct EnergyBalanceTrendsView: View {
                     description: emptyDescription
                 )
             } else {
-                summaryCard
-                chartCard
-                interpretationCard
-                weightComparisonCard
-                completenessCard
+                overviewCard
+                detailsCard
             }
         }
     }
@@ -133,7 +65,7 @@ struct EnergyBalanceTrendsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Label("Energiebilanz mit Apple Health", systemImage: "heart.text.square")
                     .font(.title3.bold())
-                Text("Quant verrechnet deine geschätzte Aufnahme mit Aktivitäts- und Ruheenergie. Alle Health-Daten bleiben lokal auf deinem Gerät.")
+                Text("Quant vergleicht deine geschätzte Aufnahme mit Aktivitäts- und Ruheenergie. Alle Health-Daten bleiben lokal auf deinem Gerät.")
                     .foregroundStyle(.secondary)
                 Button("Apple Health einrichten", action: onOpenSettings)
                     .buttonStyle(.borderedProminent)
@@ -149,15 +81,27 @@ struct EnergyBalanceTrendsView: View {
                 systemImage: "chart.bar.xaxis",
                 description: Text(description)
             )
-            .frame(minHeight: 220)
+            .frame(minHeight: 180)
         }
     }
 
-    private var summaryCard: some View {
+    private var overviewCard: some View {
         QuantCard(style: .hero) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Durchschnittliche Tagesbilanz")
-                    .font(.headline)
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Deine Energiebilanz")
+                        .font(.headline)
+                    Spacer()
+                    if personalDailyAdjustment != nil {
+                        Text("PERSÖNLICH ANGEPASST")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.blue.opacity(0.12), in: .capsule)
+                    }
+                }
+
                 if let averageBalance {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text("≈ \(wholeNumber(abs(averageBalance))) kcal")
@@ -167,38 +111,13 @@ struct EnergyBalanceTrendsView: View {
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(summarySourceText)
-                        if let adjustment = appliedDailyAdjustment {
-                            Text("Persönliche Korrektur: \(signedKilocalories(adjustment))/Tag")
-                        }
-                        if personalDailyAdjustment != nil {
-                            Text("Die erfassten Rohdaten bleiben unverändert und sind oben jederzeit auswählbar.")
-                        }
-                    }
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    Text("durchschnittlich pro vollständigem Tag")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 } else {
                     Text("Für einen Durchschnitt braucht Quant mindestens einen vollständigen abgeschlossenen Tag.")
                         .foregroundStyle(.secondary)
                 }
-            }
-        }
-        .accessibilityIdentifier("balance.summary")
-    }
-
-    private var chartCard: some View {
-        QuantCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Defizit und Überschuss")
-                    .font(.headline)
-                HStack(spacing: 16) {
-                    Label("Defizit", systemImage: "square.fill")
-                        .foregroundStyle(.blue)
-                    Label("Überschuss", systemImage: "square.fill")
-                        .foregroundStyle(.orange)
-                }
-                .font(.caption)
 
                 Chart {
                     RuleMark(y: .value("Ausgeglichen", 0))
@@ -224,367 +143,124 @@ struct EnergyBalanceTrendsView: View {
                         }
                     }
                 }
-                .frame(height: 250)
+                .frame(height: 220)
                 .accessibilityLabel("Energiebilanz im gewählten Zeitraum")
                 .accessibilityValue(chartAccessibilityValue)
+                .accessibilityIdentifier("balance.chart")
 
-                if balancePresentation == .personal {
-                    Text("Die persönliche Korrektur gilt nur für vollständige, abgeschlossene Tage. Helle Zwischenstände bleiben unverändert erfasst.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if displayedBalances.contains(where: { $0.isCurrentDay || $0.completeness != .complete }) {
-                    Text("Hell dargestellte Werte sind Zwischenstände oder enthalten vorläufige Mahlzeitenschätzungen.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .accessibilityIdentifier("balance.chart")
-    }
-
-    private var interpretationCard: some View {
-        QuantCard {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Einordnung", systemImage: "lightbulb")
-                    .font(.headline)
-                Text(interpretationText)
-                if let personalInterpretation {
-                    Text(personalInterpretation)
+                if let comparison = readyWeightComparison {
+                    Divider()
+                    HStack(spacing: 24) {
+                        weightValue(
+                            title: "Gewichtstrend",
+                            value: comparison.observedChangeKilograms
+                        )
+                        weightValue(
+                            title: "Aus Bilanz erwartet",
+                            value: comparison.expectedChangeKilograms
+                        )
+                    }
+                    Text(weightInterpretation(comparison))
                         .font(.subheadline)
-                    Text("Die Korrektur kann unter anderem Unterschiede bei Mahlzeitenschätzungen, Health-Verbrauchswerten sowie längerfristige Veränderungen abbilden.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-                Text("Die Werte sind Schätzungen und keine medizinische Beratung.")
-                    .font(.caption)
+
+                Text(interpretationText)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
+        .accessibilityIdentifier("balance.summary")
+    }
+
+    private var detailsCard: some View {
+        QuantCard {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 10) {
+                    LabeledContent("Auswertbare Tage", value: "\(displayedBalances.count) von \(balances.count)")
+                    LabeledContent(
+                        "Darstellung",
+                        value: personalDailyAdjustment == nil ? "Erfasste Schätzung" : "Persönlich angepasst"
+                    )
+                    if let adjustment = personalDailyAdjustment {
+                        LabeledContent(
+                            "Persönliche Korrektur",
+                            value: "\(signedKilocalories(adjustment))/Tag"
+                        )
+                        Text("Die erfassten Mahlzeiten und Health-Werte bleiben unverändert. Die Korrektur wird nur für die dargestellte Bilanz angewendet.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    weightDetails
+                    Text("Tage ohne Mahlzeit oder ohne vollständige Aktivitäts- und Ruheenergie werden nicht gewertet. Die Werte sind Schätzungen und keine medizinische Beratung.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 10)
+            } label: {
+                Label("Berechnung & Datenqualität", systemImage: "info.circle")
+                    .font(.headline)
+            }
+        }
+        .accessibilityIdentifier("balance.details")
     }
 
     @ViewBuilder
-    private var weightComparisonCard: some View {
+    private var weightDetails: some View {
         switch weightStatus {
         case .notRequested:
-            QuantCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("Bilanz mit Gewichtstrend prüfen", systemImage: "scalemass")
-                        .font(.headline)
-                    Text("Mit Gewichtsdaten aus Apple Health kann Quant vergleichen, ob die längerfristige Veränderung ungefähr zur berechneten Energiebilanz passt.")
-                        .foregroundStyle(.secondary)
-                    Button("Gewichtsdaten verbinden", action: onOpenSettings)
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("balance.setupWeight")
-                }
-            }
+            Button("Gewichtsdaten für persönliche Einordnung verbinden", action: onOpenSettings)
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("balance.setupWeight")
         case .loading:
-            QuantCard {
-                ProgressView("Gewichtsdaten werden geladen …")
-                    .frame(maxWidth: .infinity, minHeight: 120)
-            }
+            ProgressView("Gewichtsdaten werden geladen …")
         case .noData:
-            weightUnavailableCard(
-                title: "Keine Gewichtsdaten verfügbar",
-                description: "Prüfe den Zugriff und deine Gewichtseinträge in Apple Health."
-            )
+            Text("Keine Gewichtsdaten verfügbar.")
+                .foregroundStyle(.secondary)
         case .unavailable:
-            weightUnavailableCard(
-                title: "Gewichtsdaten nicht verfügbar",
-                description: "Apple Health ist auf diesem Gerät nicht verfügbar."
-            )
+            Text("Gewichtsdaten sind auf diesem Gerät nicht verfügbar.")
+                .foregroundStyle(.secondary)
         case .failed:
-            weightUnavailableCard(
-                title: "Gewichtsdaten konnten nicht geladen werden",
-                description: "Versuche es später erneut oder aktualisiere die Daten in den Einstellungen."
-            )
+            Text("Gewichtsdaten konnten nicht geladen werden.")
+                .foregroundStyle(.secondary)
         default:
-            if let weightComparison {
-                switch weightComparison.readiness {
+            if let comparison = weightComparison {
+                switch comparison.readiness {
                 case .ready:
-                    readyWeightComparisonCard(weightComparison)
+                    if comparison.usesPersonalCalibration {
+                        Text("Persönliche Kalibrierung aus deinem längerfristigen Gewichts- und Bilanzverlauf ist aktiv.")
+                            .foregroundStyle(.secondary)
+                    }
                 case let .needsWeights(current, required, spanDays, requiredSpanDays):
-                    weightCollectingCard(
-                        title: "Gewichtstrend wird aufgebaut",
-                        description: "\(current) von \(required) Gewichtstagen · \(spanDays) von \(requiredSpanDays) Tagen abgedeckt"
-                    )
+                    Text("Gewichtstrend wird aufgebaut: \(current)/\(required) Gewichtstage, \(spanDays)/\(requiredSpanDays) Tage abgedeckt.")
+                        .foregroundStyle(.secondary)
                 case let .needsBalanceDays(current, required):
-                    weightCollectingCard(
-                        title: "Bilanzvergleich wird aufgebaut",
-                        description: "\(current) von \(required) vollständigen Bilanztagen im gewählten Zeitraum"
-                    )
+                    Text("Bilanzvergleich wird aufgebaut: \(current)/\(required) vollständige Tage.")
+                        .foregroundStyle(.secondary)
                 }
-            } else {
-                weightCollectingCard(
-                    title: "Gewichtstrend wird vorbereitet",
-                    description: "Quant lädt die Daten für den gewählten Zeitraum."
-                )
             }
         }
     }
 
-    private func readyWeightComparisonCard(
-        _ comparison: WeightBalanceComparison
-    ) -> some View {
-        QuantCard(style: .hero) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Label("Bilanz und Gewicht", systemImage: "scalemass")
-                        .font(.headline)
-                    Spacer()
-                    Text(comparison.usesPersonalCalibration ? "PERSÖNLICH" : "STANDARD")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(comparison.usesPersonalCalibration ? .blue : .secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.secondary.opacity(0.12), in: .capsule)
-                }
+    private var readyWeightComparison: WeightBalanceComparison? {
+        guard let weightComparison, weightComparison.readiness == .ready else { return nil }
+        return weightComparison
+    }
 
-                HStack(spacing: 18) {
-                    chartLegend(title: "Gewichtstrend", color: .primary, dashed: false)
-                    chartLegend(
-                        title: comparison.usesPersonalCalibration ? "Persönlich erwartet" : "Aus Bilanz erwartet",
-                        color: .blue,
-                        dashed: true
-                    )
-                }
+    private func weightValue(title: String, value: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
-                Chart {
-                    ForEach(comparison.dailyWeights) { measurement in
-                        PointMark(
-                            x: .value("Tag", measurement.date),
-                            y: .value("Gewicht", measurement.kilograms)
-                        )
-                        .foregroundStyle(.secondary.opacity(0.55))
-                    }
-                    ForEach(comparison.observedTrend) { point in
-                        LineMark(
-                            x: .value("Tag", point.date),
-                            y: .value("Gewicht", point.kilograms),
-                            series: .value("Reihe", "Gewichtstrend")
-                        )
-                        .foregroundStyle(.primary)
-                        .lineStyle(StrokeStyle(lineWidth: 3))
-                    }
-                    ForEach(comparison.expectedTrend) { point in
-                        LineMark(
-                            x: .value("Tag", point.date),
-                            y: .value("Gewicht", point.kilograms),
-                            series: .value("Reihe", "Erwartung")
-                        )
-                        .foregroundStyle(.blue)
-                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [7, 5]))
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading) { value in
-                        AxisGridLine()
-                        AxisValueLabel {
-                            if let number = value.as(Double.self) {
-                                Text(number.formatted(.number.precision(.fractionLength(1))))
-                            }
-                        }
-                    }
-                }
-                .chartYScale(domain: weightChartYDomain(comparison))
-                .frame(height: 250)
-                .accessibilityLabel("Gewichtstrend im Vergleich zur Energiebilanz")
-                .accessibilityValue(weightComparisonAccessibilityValue(comparison))
-
-                HStack(spacing: 20) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Beobachtet")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(signedKilograms(comparison.observedChangeKilograms))
-                            .font(.title3.bold().monospacedDigit())
-                    }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Erwartet")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(signedKilograms(comparison.expectedChangeKilograms))
-                            .font(.title3.bold().monospacedDigit())
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Label("So wird „Erwartet“ berechnet", systemImage: "info.circle")
-                        .font(.footnote.weight(.semibold))
-                    Text(expectedWeightExplanation(comparison))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Text(weightInterpretation(comparison))
-                    .font(.subheadline)
-
-                calibrationStatusView(comparison.calibrationStatus)
-
-                Text("Kurzfristige Wasser- und Verdauungsschwankungen können den Gewichtstrend deutlich verschieben. Quant bewertet deshalb keine einzelnen Messungen.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(signedKilograms(value))
+                .font(.title3.bold().monospacedDigit())
         }
-        .accessibilityIdentifier("balance.weightComparison")
-    }
-
-    private func weightUnavailableCard(title: String, description: String) -> some View {
-        QuantCard {
-            ContentUnavailableView(
-                title,
-                systemImage: "scalemass",
-                description: Text(description)
-            )
-            .frame(minHeight: 150)
-        }
-    }
-
-    private func weightCollectingCard(title: String, description: String) -> some View {
-        QuantCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Label(title, systemImage: "scalemass")
-                    .font(.headline)
-                Text(description)
-                Text("Quant beginnt am ersten Tag mit erfassten Nährwerten. Es benötigt vier Gewichtstage sowie – abhängig vom verfügbaren Zeitraum – bis zu 19 Tage Abdeckung und 19 vollständige Bilanztage.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func calibrationStatusView(_ status: PersonalCalibrationStatus) -> some View {
-        switch status {
-        case .disabled:
-            Label("Persönliche Kalibrierung ist ausgeschaltet.", systemImage: "person.crop.circle.badge.xmark")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        case let .collecting(weightCount, requiredWeightCount, balanceDayCount, requiredBalanceDayCount, spanDays, requiredSpanDays):
-            VStack(alignment: .leading, spacing: 4) {
-                Label("Persönliches Modell lernt noch", systemImage: "person.crop.circle.badge.clock")
-                    .font(.footnote.weight(.semibold))
-                Text("\(weightCount)/\(requiredWeightCount) Gewichtstage · \(balanceDayCount)/\(requiredBalanceDayCount) Bilanztage · \(spanDays)/\(requiredSpanDays) Tage Zeitraum")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        case let .unavailable(reason):
-            Label(reason, systemImage: "person.crop.circle.badge.questionmark")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        case let .ready(
-            _,
-            dailyBalanceAdjustmentKilocalories,
-            uncappedDailyBalanceAdjustmentKilocalories
-        ):
-            VStack(alignment: .leading, spacing: 4) {
-                Label("Persönliches Modell aus mindestens sechs Wochen Verlauf aktiv", systemImage: "person.crop.circle.badge.checkmark")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.blue)
-                Text("Verwendete Korrektur: \(signedKilocalories(dailyBalanceAdjustmentKilocalories))/Tag")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if abs(
-                    uncappedDailyBalanceAdjustmentKilocalories -
-                        dailyBalanceAdjustmentKilocalories
-                ) >= 0.5 {
-                    Text("Modellwert vor Sicherheitsgrenze: \(signedKilocalories(uncappedDailyBalanceAdjustmentKilocalories))/Tag")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("Nur zur Einordnung; dieser Wert wird nicht für die Bilanz verwendet.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    private func chartLegend(title: String, color: Color, dashed: Bool) -> some View {
-        HStack(spacing: 6) {
-            Capsule()
-                .stroke(color, style: StrokeStyle(lineWidth: 2, dash: dashed ? [5, 4] : []))
-                .frame(width: 24, height: 2)
-            Text(title)
-        }
-    }
-
-    private var summarySourceText: String {
-        if appliedDailyAdjustment != nil {
-            return "Persönlich kalibriert aus \(completedBalances.count) vollständigen, abgeschlossenen Tagen"
-        }
-        return "Erfasst aus \(completedBalances.count) vollständigen, abgeschlossenen Tagen"
     }
 
     private func displayedBalanceKilocalories(for balance: DailyEnergyBalance) -> Double? {
         PersonalEnergyBalanceCalculator.balanceKilocalories(
             for: balance,
-            dailyAdjustmentKilocalories: appliedDailyAdjustment
+            dailyAdjustmentKilocalories: personalDailyAdjustment
         )
-    }
-
-    private func signedKilocalories(_ value: Double) -> String {
-        "\(value.formatted(.number.sign(strategy: .always()).precision(.fractionLength(0)))) kcal"
-    }
-
-    private func signedKilograms(_ value: Double?) -> String {
-        guard let value else { return "— kg" }
-        return "\(value.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1)))) kg"
-    }
-
-    private func expectedWeightExplanation(_ comparison: WeightBalanceComparison) -> String {
-        let base = "Quant addiert \(comparison.evaluableBalanceDayCount) vollständige, abgeschlossene Tagesbilanzen. Die Summe wird mit ungefähr 7.700 kcal pro Kilogramm umgerechnet: Defizite senken, Überschüsse erhöhen den Erwartungswert."
-        if case let .ready(factor, _, _) = comparison.calibrationStatus {
-            let formattedFactor = factor.formatted(.number.precision(.fractionLength(2)))
-            return "\(base) Dein aus früheren Verläufen kalibrierter Faktor ×\(formattedFactor) wird anschließend berücksichtigt."
-        }
-        return "\(base) Solange kein persönlicher Faktor aktiv ist, verwendet Quant die Standardumrechnung."
-    }
-
-    private func weightInterpretation(_ comparison: WeightBalanceComparison) -> String {
-        guard let observed = comparison.observedChangeKilograms,
-              let expected = comparison.expectedChangeKilograms else {
-            return "Für eine Einordnung fehlen noch auswertbare Daten."
-        }
-        let difference = observed - expected
-        if abs(difference) <= 0.5 {
-            return "Der geglättete Gewichtstrend passt im gewählten Zeitraum grob zur berechneten Bilanz."
-        }
-        if difference < 0 {
-            return "Das Gewicht sank stärker beziehungsweise stieg weniger als aus der Bilanz erwartet. Prüfe vor allem, ob Mahlzeiten regelmäßig und vollständig erfasst wurden."
-        }
-        return "Das Gewicht sank weniger beziehungsweise stieg stärker als aus der Bilanz erwartet. Kurzfristige Schwankungen und unvollständige Erfassung können die Abweichung erklären."
-    }
-
-    private func weightComparisonAccessibilityValue(
-        _ comparison: WeightBalanceComparison
-    ) -> String {
-        "Beobachtete Änderung \(signedKilograms(comparison.observedChangeKilograms)), erwartete Änderung \(signedKilograms(comparison.expectedChangeKilograms))"
-    }
-
-    private func weightChartYDomain(
-        _ comparison: WeightBalanceComparison
-    ) -> ClosedRange<Double> {
-        WeightChartScaleCalculator.yDomain(for: comparison) ?? 0 ... 1
-    }
-
-    private var completenessCard: some View {
-        QuantCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Datenqualität")
-                    .font(.headline)
-                LabeledContent("Auswertbare Tage", value: "\(displayedBalances.count) von \(balances.count)")
-                if case let .limited(since) = healthStatus {
-                    Text("Apple Health stellt Quant Daten ab \(since.formatted(date: .abbreviated, time: .omitted)) bereit.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Tage ohne Mahlzeit oder ohne vollständige Aktivitäts- und Ruheenergie werden nicht als Defizit oder Überschuss gewertet.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
     }
 
     private var emptyDescription: String {
@@ -596,34 +272,46 @@ struct EnergyBalanceTrendsView: View {
 
     private var interpretationText: String {
         guard let averageBalance else {
-            return "Einzelne Tageswerte schwanken stark. Quant zeigt eine verlässlichere Einordnung, sobald mehrere vollständige Tage vorliegen."
+            return "Einzelne Tageswerte schwanken stark. Quant ordnet den Verlauf ein, sobald mehrere vollständige Tage vorliegen."
         }
         if abs(averageBalance) < 100 {
             return "Aufnahme und Verbrauch liegen im Mittel ungefähr auf demselben Niveau."
         }
         if averageBalance < 0 {
-            return "Im betrachteten Zeitraum lag im Mittel ein geschätztes Defizit vor. Entscheidend ist der längerfristige Verlauf, nicht ein einzelner Tag."
+            return "Im gewählten Zeitraum lag im Mittel ein geschätztes Defizit vor. Entscheidend ist der längerfristige Verlauf."
         }
-        return "Im betrachteten Zeitraum lag im Mittel ein geschätzter Überschuss vor. Einzelne Tage sind normal; beobachte den längerfristigen Verlauf."
+        return "Im gewählten Zeitraum lag im Mittel ein geschätzter Überschuss vor. Entscheidend ist der längerfristige Verlauf."
     }
 
-    private var personalInterpretation: String? {
-        guard let adjustment = appliedDailyAdjustment else { return nil }
-        let amount = wholeNumber(abs(adjustment))
-        if adjustment > 50 {
-            return "Dein längerfristiger Gewichtstrend spricht für eine um etwa \(amount) kcal pro Tag höhere Bilanz als erfasst. Das tatsächliche Defizit könnte daher kleiner beziehungsweise der Überschuss größer sein."
+    private func weightInterpretation(_ comparison: WeightBalanceComparison) -> String {
+        guard let observed = comparison.observedChangeKilograms,
+              let expected = comparison.expectedChangeKilograms else {
+            return "Für eine Einordnung fehlen noch auswertbare Gewichtsdaten."
         }
-        if adjustment < -50 {
-            return "Dein längerfristiger Gewichtstrend spricht für eine um etwa \(amount) kcal pro Tag niedrigere Bilanz als erfasst. Das tatsächliche Defizit könnte daher größer beziehungsweise der Überschuss kleiner sein."
+        let difference = observed - expected
+        if abs(difference) <= 0.5 {
+            return "Dein Gewichtstrend passt ungefähr zur berechneten Bilanz."
         }
-        return "Dein längerfristiger Gewichtstrend passt bereits gut zur erfassten Tagesbilanz; die persönliche Korrektur ist gering."
+        if difference < 0 {
+            return "Dein Gewicht sank stärker beziehungsweise stieg weniger als aus der Bilanz erwartet."
+        }
+        return "Dein Gewicht sank weniger beziehungsweise stieg stärker als aus der Bilanz erwartet."
     }
 
     private var chartAccessibilityValue: String {
         guard let averageBalance else { return "Keine vollständigen abgeschlossenen Tage" }
         let direction = averageBalance <= 0 ? "Defizit" : "Überschuss"
-        let source = appliedDailyAdjustment == nil ? "Erfasst" : "Persönlich kalibriert"
+        let source = personalDailyAdjustment == nil ? "Erfasste Schätzung" : "Persönlich angepasst"
         return "\(source), durchschnittlich \(wholeNumber(abs(averageBalance))) Kilokalorien \(direction) pro vollständigem Tag"
+    }
+
+    private func signedKilocalories(_ value: Double) -> String {
+        "\(value.formatted(.number.sign(strategy: .always()).precision(.fractionLength(0)))) kcal"
+    }
+
+    private func signedKilograms(_ value: Double?) -> String {
+        guard let value else { return "— kg" }
+        return "\(value.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1)))) kg"
     }
 
     private func balanceColor(_ value: Double) -> Color {

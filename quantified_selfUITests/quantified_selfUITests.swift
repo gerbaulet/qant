@@ -123,7 +123,7 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
-    func testTrendsUsesSharedCardLayout() throws {
+    func testInsightsCombinesBalanceAndNutrientsOnOnePage() throws {
         let app = XCUIApplication()
         app.launchArguments.append("--ui-testing")
         app.launch()
@@ -133,11 +133,11 @@ final class QuantUITests: XCTestCase {
         trendsTab.tap()
 
         XCTAssertTrue(app.navigationBars["Auswertung"].waitForExistence(timeout: 3))
-        let nutrientsSection = app.buttons["Nährwerte"]
-        XCTAssertTrue(nutrientsSection.waitForExistence(timeout: 2))
-        nutrientsSection.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["trends.chartCard"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["insights.range"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["balance.setupHealth"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["trends.comparisonCard"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["insights.section"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["balance.model"].exists)
     }
 
     @MainActor
