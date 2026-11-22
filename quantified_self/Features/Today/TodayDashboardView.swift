@@ -94,20 +94,8 @@ struct TodayDashboardView: View {
     private func energyBalanceCard(_ balance: DailyEnergyBalance?) -> some View {
         QuantCard(style: .hero) {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Energiebilanz")
-                        .font(.headline)
-                    Spacer()
-                    if let balance,
-                       balance.isCurrentDay || balance.completeness == .provisionalIntake {
-                        Text(balance.isCurrentDay ? "ZWISCHENSTAND" : "VORLÄUFIG")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.orange.opacity(0.12), in: .capsule)
-                    }
-                }
+                Text("Energiebilanz")
+                    .font(.headline)
 
                 energyForecastSummary(balance)
 

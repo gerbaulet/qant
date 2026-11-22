@@ -24,6 +24,7 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Aufnahme"].exists)
         XCTAssertTrue(app.staticTexts["Verbrauch"].exists)
         XCTAssertTrue(app.staticTexts["Tagesende"].exists)
+        XCTAssertFalse(app.staticTexts["ZWISCHENSTAND"].exists)
     }
 
     @MainActor
