@@ -108,7 +108,7 @@ struct TodayDashboardView: View {
     private func energyBalanceCard(_ balance: DailyEnergyBalance?) -> some View {
         QuantCard(style: .hero) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Energiebilanz")
+                Text("Energiebilanz am Tagesende")
                     .font(.headline)
 
                 energyForecastSummary(balance)
@@ -157,9 +157,6 @@ struct TodayDashboardView: View {
     private func energyForecastSummary(_ balance: DailyEnergyBalance?) -> some View {
         if let projectedBalance {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Voraussichtlich zum Tagesende")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("≈ \(wholeNumber(abs(projectedBalance))) kcal")
                         .font(.system(.title, design: .rounded, weight: .bold))
