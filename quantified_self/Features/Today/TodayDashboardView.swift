@@ -154,19 +154,19 @@ struct TodayDashboardView: View {
     @ViewBuilder
     private func energyForecastSummary(_ balance: DailyEnergyBalance?) -> some View {
         if let projectedBalance {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("≈ \(wholeNumber(abs(projectedBalance))) kcal")
-                        .font(.system(.title, design: .rounded, weight: .bold))
-                        .foregroundStyle(balanceColor(projectedBalance))
-                    Text(balanceDirection(projectedBalance))
-                        .font(.headline)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("≈ \(wholeNumber(abs(projectedBalance))) kcal")
+                    .font(.system(.title, design: .rounded, weight: .bold))
+                    .foregroundStyle(balanceColor(projectedBalance))
+                Text(balanceDirection(projectedBalance))
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                if let currentBalance = currentDisplayedBalance(balance) {
+                    Text("Jetzt \(TodayEnergyValueFormatter.text(currentBalance, showsSign: true)) kcal")
+                        .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
-                }
-                if let currentBalance = balance?.balanceKilocalories {
-                    Text("Jetzt: \(TodayEnergyValueFormatter.text(currentBalance, showsSign: true)) kcal")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
             .accessibilityIdentifier("today.balanceSummary")
@@ -330,7 +330,7 @@ struct TodayDashboardView: View {
             HStack(spacing: 14) {
                 energyChartLegend(title: "+ Aufnahme", color: .blue)
                 energyChartLegend(title: "− Verbrauch", color: .purple)
-                energyChartLegend(title: "= Bilanz", color: .green)
+                energyChartLegend(title: legend.balanceTitle, color: .green)
                 if let typicalIntakeTitle = legend.typicalIntakeTitle {
                     energyChartLegend(
                         title: typicalIntakeTitle,
@@ -345,7 +345,7 @@ struct TodayDashboardView: View {
                     energyChartLegend(title: "− Verbrauch", color: .purple)
                 }
                 HStack(spacing: 14) {
-                    energyChartLegend(title: "= Bilanz", color: .green)
+                    energyChartLegend(title: legend.balanceTitle, color: .green)
                     if let typicalIntakeTitle = legend.typicalIntakeTitle {
                         energyChartLegend(
                             title: typicalIntakeTitle,
@@ -358,7 +358,7 @@ struct TodayDashboardView: View {
             VStack(alignment: .leading, spacing: 6) {
                 energyChartLegend(title: "+ Aufnahme", color: .blue)
                 energyChartLegend(title: "− Verbrauch", color: .purple)
-                energyChartLegend(title: "= Bilanz", color: .green)
+                energyChartLegend(title: legend.balanceTitle, color: .green)
                 if let typicalIntakeTitle = legend.typicalIntakeTitle {
                     energyChartLegend(
                         title: typicalIntakeTitle,
@@ -426,8 +426,10 @@ struct TodayDashboardView: View {
                 color: .purple
             )
             energyTableRow(
-                title: "Bilanz",
-                current: balance?.balanceKilocalories,
+                title: energyTrend?.dailyBalanceAdjustmentKilocalories == nil
+                    ? "Bilanz"
+                    : "Bilanz · persönlich",
+                current: currentDisplayedBalance(balance),
                 forecast: showsForecastColumn ? projectedBalance : nil,
                 forecastIdentifier: "today.balanceForecast",
                 showsForecastColumn: showsForecastColumn,
@@ -709,8 +711,15 @@ struct TodayDashboardView: View {
     }
 
     private var projectedBalance: Double? {
+        if let adjustedBalance = energyTrend?.balanceForecastPoints.last?.value {
+            return adjustedBalance
+        }
         guard let intakeForecast, let expenditureForecast else { return nil }
         return intakeForecast.energyKilocalories - expenditureForecast.totalKilocalories
+    }
+
+    private func currentDisplayedBalance(_ balance: DailyEnergyBalance?) -> Double? {
+        energyTrend?.balanceActualPoints.last?.value ?? balance?.balanceKilocalories
     }
 
     private func balanceDirection(_ value: Double) -> String {

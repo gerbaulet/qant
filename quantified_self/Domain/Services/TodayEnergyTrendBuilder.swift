@@ -17,6 +17,31 @@ struct TodayEnergyTrend: Sendable, Equatable {
     let balanceForecastPoints: [TodayEnergyTrendPoint]
     let intakeHistoricalDayCount: Int
     let expenditureHistoricalDayCount: Int
+    let dailyBalanceAdjustmentKilocalories: Double?
+
+    init(
+        intakeActualPoints: [TodayEnergyTrendPoint],
+        intakeForecastPoints: [TodayEnergyTrendPoint],
+        averageIntakePoints: [TodayEnergyTrendPoint],
+        expenditureActualPoints: [TodayEnergyTrendPoint],
+        expenditureForecastPoints: [TodayEnergyTrendPoint],
+        balanceActualPoints: [TodayEnergyTrendPoint],
+        balanceForecastPoints: [TodayEnergyTrendPoint],
+        intakeHistoricalDayCount: Int,
+        expenditureHistoricalDayCount: Int,
+        dailyBalanceAdjustmentKilocalories: Double? = nil
+    ) {
+        self.intakeActualPoints = intakeActualPoints
+        self.intakeForecastPoints = intakeForecastPoints
+        self.averageIntakePoints = averageIntakePoints
+        self.expenditureActualPoints = expenditureActualPoints
+        self.expenditureForecastPoints = expenditureForecastPoints
+        self.balanceActualPoints = balanceActualPoints
+        self.balanceForecastPoints = balanceForecastPoints
+        self.intakeHistoricalDayCount = intakeHistoricalDayCount
+        self.expenditureHistoricalDayCount = expenditureHistoricalDayCount
+        self.dailyBalanceAdjustmentKilocalories = dailyBalanceAdjustmentKilocalories
+    }
 
     var hasChartData: Bool {
         intakeActualPoints.count > 1 || expenditureActualPoints.count > 1
@@ -29,6 +54,7 @@ enum TodayEnergyTrendBuilder {
         currentExpenditure: DailyEnergyExpenditure?,
         expenditureForecast: EnergyExpenditureForecast?,
         hourlyExpenditures: [HourlyEnergyExpenditure],
+        dailyBalanceAdjustmentKilocalories: Double? = nil,
         now: Date,
         calendar: Calendar
     ) -> TodayEnergyTrend {
@@ -54,6 +80,9 @@ enum TodayEnergyTrendBuilder {
             now: now,
             calendar: calendar
         )
+        let appliedDailyAdjustment = expenditureForecast == nil
+            ? nil
+            : dailyBalanceAdjustmentKilocalories
 
         return TodayEnergyTrend(
             intakeActualPoints: intakeActual,
@@ -63,14 +92,19 @@ enum TodayEnergyTrendBuilder {
             expenditureForecastPoints: expenditureForecastPoints,
             balanceActualPoints: makeBalancePoints(
                 intake: intakeActual,
-                expenditure: expenditureActual
+                expenditure: expenditureActual,
+                dailyBalanceAdjustmentKilocalories: appliedDailyAdjustment,
+                forecastExpenditureKilocalories: expenditureForecast?.totalKilocalories
             ),
             balanceForecastPoints: makeBalancePoints(
                 intake: intakeForecast,
-                expenditure: expenditureForecastPoints
+                expenditure: expenditureForecastPoints,
+                dailyBalanceAdjustmentKilocalories: appliedDailyAdjustment,
+                forecastExpenditureKilocalories: expenditureForecast?.totalKilocalories
             ),
             intakeHistoricalDayCount: intakeTrend.averageDayCount,
-            expenditureHistoricalDayCount: expenditureForecast?.historicalDayCount ?? 0
+            expenditureHistoricalDayCount: expenditureForecast?.historicalDayCount ?? 0,
+            dailyBalanceAdjustmentKilocalories: appliedDailyAdjustment
         )
     }
 
@@ -195,18 +229,40 @@ enum TodayEnergyTrendBuilder {
 
     private static func makeBalancePoints(
         intake: [TodayEnergyTrendPoint],
-        expenditure: [TodayEnergyTrendPoint]
+        expenditure: [TodayEnergyTrendPoint],
+        dailyBalanceAdjustmentKilocalories: Double?,
+        forecastExpenditureKilocalories: Double?
     ) -> [TodayEnergyTrendPoint] {
         guard !intake.isEmpty, !expenditure.isEmpty else { return [] }
         let hours = Set(intake.map(\.hour)).union(expenditure.map(\.hour)).sorted()
         return hours.compactMap { hour in
             guard let intakeValue = value(at: hour, in: intake),
                   let expenditureValue = value(at: hour, in: expenditure) else { return nil }
+            let adjustment = progressiveAdjustment(
+                expenditureKilocalories: expenditureValue,
+                dailyBalanceAdjustmentKilocalories: dailyBalanceAdjustmentKilocalories,
+                forecastExpenditureKilocalories: forecastExpenditureKilocalories
+            )
             return TodayEnergyTrendPoint(
                 hour: hour,
-                value: intakeValue - expenditureValue
+                value: intakeValue - expenditureValue + adjustment
             )
         }
+    }
+
+    private static func progressiveAdjustment(
+        expenditureKilocalories: Double,
+        dailyBalanceAdjustmentKilocalories: Double?,
+        forecastExpenditureKilocalories: Double?
+    ) -> Double {
+        guard let dailyBalanceAdjustmentKilocalories,
+              let forecastExpenditureKilocalories,
+              forecastExpenditureKilocalories > 0 else { return 0 }
+        let expenditureShare = min(
+            max(expenditureKilocalories / forecastExpenditureKilocalories, 0),
+            1
+        )
+        return dailyBalanceAdjustmentKilocalories * expenditureShare
     }
 
     private static func value(

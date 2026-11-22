@@ -114,14 +114,62 @@ struct TodayEnergyTrendBuilderTests {
             ),
             expenditureForecast: nil,
             hourlyExpenditures: [],
+            dailyBalanceAdjustmentKilocalories: 200,
             now: now,
             calendar: calendar
         )
 
+        #expect(trend.dailyBalanceAdjustmentKilocalories == nil)
         #expect(trend.expenditureActualPoints.last?.value == 1_100)
         #expect(trend.balanceActualPoints.last?.value == -200)
         #expect(trend.expenditureForecastPoints.isEmpty)
         #expect(trend.balanceForecastPoints.isEmpty)
+    }
+
+    @Test("Personal adjustment follows cumulative expenditure and is complete at day end")
+    func appliesPersonalAdjustmentProgressively() throws {
+        let now = date(2026, 11, 22, 18, 30)
+        let intake = DailyCumulativeNutritionTrend(
+            actualPoints: [
+                .init(hour: 0, value: 0),
+                .init(hour: 18.5, value: 1_680),
+            ],
+            averagePoints: [],
+            forecastPoints: [
+                .init(hour: 18.5, value: 1_680),
+                .init(hour: 24, value: 2_330),
+            ],
+            hasActualData: true,
+            averageDayCount: 0,
+            forecastDayCount: 42,
+            hasProvisionalValues: false
+        )
+
+        let trend = TodayEnergyTrendBuilder.makeTrend(
+            intakeTrend: intake,
+            currentExpenditure: DailyEnergyExpenditure(
+                date: now,
+                activeKilocalories: 720,
+                restingKilocalories: 1_270
+            ),
+            expenditureForecast: EnergyExpenditureForecast(
+                activeKilocalories: 950,
+                restingKilocalories: 1_750,
+                historicalDayCount: 42,
+                method: .historicalRemainder
+            ),
+            hourlyExpenditures: [],
+            dailyBalanceAdjustmentKilocalories: 270,
+            now: now,
+            calendar: calendar
+        )
+
+        #expect(trend.dailyBalanceAdjustmentKilocalories == 270)
+        #expect(trend.expenditureActualPoints.last?.value == 1_990)
+        #expect(trend.expenditureForecastPoints.last?.value == 2_700)
+        #expect(trend.balanceActualPoints.first?.value == 0)
+        #expect(trend.balanceActualPoints.last?.value == -111)
+        #expect(trend.balanceForecastPoints.last?.value == -100)
     }
 
     @Test("A forecast starting on a full hour has unique chart points")

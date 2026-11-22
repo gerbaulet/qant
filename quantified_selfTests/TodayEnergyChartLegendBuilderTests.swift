@@ -14,6 +14,7 @@ struct TodayEnergyChartLegendBuilderTests {
 
         #expect(legend.typicalIntakeTitle == "Typisch · 18 Tage")
         #expect(legend.forecastTitle == "Prognose · Verlauf + 42 Tage")
+        #expect(legend.balanceTitle == "= Bilanz")
     }
 
     @Test("Legend omits unavailable typical intake and keeps forecast source concise")
@@ -28,12 +29,28 @@ struct TodayEnergyChartLegendBuilderTests {
 
         #expect(legend.typicalIntakeTitle == nil)
         #expect(legend.forecastTitle == "Prognose · Tagesverlauf")
+        #expect(legend.balanceTitle == "= Bilanz")
+    }
+
+    @Test("Legend identifies a personal daily balance adjustment")
+    func identifiesPersonalAdjustment() {
+        let legend = TodayEnergyChartLegendBuilder.makeLegend(
+            for: makeTrend(
+                averageIntake: [],
+                intakeDayCount: 0,
+                expenditureDayCount: 42,
+                dailyBalanceAdjustment: 180
+            )
+        )
+
+        #expect(legend.balanceTitle == "= Bilanz · persönlich (+180/Tag)")
     }
 
     private func makeTrend(
         averageIntake: [Double],
         intakeDayCount: Int,
-        expenditureDayCount: Int
+        expenditureDayCount: Int,
+        dailyBalanceAdjustment: Double? = nil
     ) -> TodayEnergyTrend {
         TodayEnergyTrend(
             intakeActualPoints: [
@@ -49,7 +66,8 @@ struct TodayEnergyChartLegendBuilderTests {
             balanceActualPoints: [],
             balanceForecastPoints: [],
             intakeHistoricalDayCount: intakeDayCount,
-            expenditureHistoricalDayCount: expenditureDayCount
+            expenditureHistoricalDayCount: expenditureDayCount,
+            dailyBalanceAdjustmentKilocalories: dailyBalanceAdjustment
         )
     }
 }

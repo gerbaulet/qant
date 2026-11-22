@@ -213,9 +213,15 @@ private struct TodayDashboardContainer: View {
         await Task.yield()
         let calendar = Calendar.autoupdatingCurrent
         let forecastInterval = energyForecastInterval(for: date, calendar: calendar)
+        let calibrationInterval = healthMetrics.personalCalibrationEnabled
+            ? WeightBalanceComparisonBuilder.calibrationInterval(
+                endingAt: date,
+                calendar: calendar
+            )
+            : nil
         if healthMetrics.hasRequestedEnergyAccess, let forecastInterval {
             await healthMetrics.loadEnergy(
-                from: forecastInterval.start,
+                from: min(calibrationInterval?.start ?? forecastInterval.start, forecastInterval.start),
                 to: forecastInterval.end,
                 calendar: calendar
             )
@@ -223,6 +229,12 @@ private struct TodayDashboardContainer: View {
                 from: forecastInterval.start,
                 to: forecastInterval.end,
                 calendar: calendar
+            )
+        }
+        if healthMetrics.hasRequestedWeightAccess, let calibrationInterval {
+            await healthMetrics.loadWeights(
+                from: calibrationInterval.start,
+                to: calibrationInterval.end
             )
         }
         let presentation = TodayDashboardPresentationBuilder.makePresentation(
@@ -255,6 +267,13 @@ private struct TodayDashboardContainer: View {
             hourlyExpenditures = []
             nextExpenditureForecast = nil
         }
+        let personalDailyBalanceAdjustment = calibrationInterval.flatMap {
+            personalDailyBalanceAdjustment(
+                within: $0,
+                now: date,
+                calendar: calendar
+            )
+        }
         snapshot = presentation.snapshot
         weeklySummary = presentation.weeklySummary
         intakeForecast = presentation.intakeForecast
@@ -265,6 +284,7 @@ private struct TodayDashboardContainer: View {
             currentExpenditure: currentExpenditure,
             expenditureForecast: nextExpenditureForecast,
             hourlyExpenditures: hourlyExpenditures,
+            dailyBalanceAdjustmentKilocalories: personalDailyBalanceAdjustment,
             now: date,
             calendar: calendar
         )
@@ -302,6 +322,29 @@ private struct TodayDashboardContainer: View {
             return nil
         }
         return DateInterval(start: start, end: dayInterval.end)
+    }
+
+    private func personalDailyBalanceAdjustment(
+        within calibrationInterval: DateInterval,
+        now: Date,
+        calendar: Calendar
+    ) -> Double? {
+        let balances = EnergyBalanceBuilder.makeBalances(
+            within: calibrationInterval,
+            meals: meals,
+            expenditures: healthMetrics.expenditures(within: calibrationInterval),
+            now: now,
+            calendar: calendar
+        )
+        return WeightBalanceComparisonBuilder.makeComparison(
+            measurements: healthMetrics.weights(within: calibrationInterval),
+            balances: balances,
+            comparisonStart: calibrationInterval.start,
+            now: now,
+            calendar: calendar,
+            calibrationEnabled: healthMetrics.personalCalibrationEnabled
+        )
+        .dailyBalanceAdjustmentKilocalories
     }
 
     private func widgetSnapshot(for snapshot: TodayDashboardSnapshot) -> WidgetCalorieSnapshot {
