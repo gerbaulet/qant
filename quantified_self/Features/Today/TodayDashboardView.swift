@@ -14,6 +14,7 @@ struct TodayDashboardView: View {
     let onOpenMeal: (UUID) -> Void
     let onOpenSettings: () -> Void
     @State private var showsAverageIntake = false
+    @State private var energyChartWidth: CGFloat = 0
 
     init(
         snapshot: TodayDashboardSnapshot,
@@ -177,7 +178,11 @@ struct TodayDashboardView: View {
     }
 
     private func energyTrendChart(_ trend: TodayEnergyTrend) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let scale = TodayEnergyChartScaleBuilder.makeScale(
+            for: trend,
+            includesAverageIntake: showsAverageIntake
+        )
+        return VStack(alignment: .leading, spacing: 10) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 14) {
                     energyChartLegend(title: "+ Aufnahme", color: .blue)
@@ -285,6 +290,7 @@ struct TodayDashboardView: View {
                 }
             }
             .chartXScale(domain: 0...24)
+            .chartYScale(domain: scale.domain)
             .chartXAxis {
                 AxisMarks(values: [0, 6, 12, 18, 24]) { value in
                     AxisGridLine()
@@ -297,7 +303,7 @@ struct TodayDashboardView: View {
                 }
             }
             .chartYAxis {
-                AxisMarks(position: .leading) { value in
+                AxisMarks(position: .leading, values: scale.axisValues) { value in
                     AxisGridLine()
                     AxisValueLabel {
                         if let number = value.as(Double.self) {
@@ -306,7 +312,12 @@ struct TodayDashboardView: View {
                     }
                 }
             }
-            .frame(height: 300)
+            .frame(height: TodayEnergyChartLayout.height(for: energyChartWidth))
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { width in
+                energyChartWidth = width
+            }
             .accessibilityLabel("Tagesverlauf von Aufnahme, Verbrauch und Bilanz")
             .accessibilityValue(energyTrendAccessibilityValue(trend))
             .accessibilityIdentifier("today.energyTrendChart")
