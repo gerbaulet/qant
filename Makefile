@@ -4,8 +4,8 @@ COMPOSE ?= docker compose
 TAILSCALE ?= tailscale
 TAILSCALE_TARGET ?= 8080
 TAILSCALE_HTTPS_PORT ?= 443
-DEPLOY_HOST ?=
-DEPLOY_USER ?=
+DEPLOY_HOST ?= server01.tail851aa0.ts.net
+DEPLOY_USER ?= clemens
 
 .PHONY: help test build docker-build config up start stop restart down status logs health run tailscale-up tailscale-down tailscale-status host-status deploy deploy-server
 
@@ -63,7 +63,7 @@ tailscale-status: ## Show the active Tailscale Serve configuration.
 host-status: ## Show host security and service status (run on the server).
 	sudo quant-provision status
 
-deploy-server: deploy ## Deploy to the provisioned host; pass DEPLOY_HOST=... and DEPLOY_USER=....
+deploy-server: deploy ## Deploy to server01; override DEPLOY_HOST or DEPLOY_USER if needed.
 
 deploy:
 	@test -n "$(DEPLOY_HOST)" || { echo "DEPLOY_HOST is required (for example SERVER-NAME.ts.net)" >&2; exit 2; }
