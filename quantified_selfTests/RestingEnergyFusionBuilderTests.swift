@@ -73,6 +73,42 @@ struct RestingEnergyFusionBuilderTests {
         #expect(!fused.coverage.isComplete)
     }
 
+    @Test("An hourly Health point value can cover its statistics bucket")
+    func infersCoverageForHourlyPointValue() {
+        let interval = DateInterval(start: .now, duration: 3_600)
+
+        let fused = RestingEnergyFusionBuilder.fuse(RestingEnergyIntervalValue(
+            interval: interval,
+            primaryKilocalories: nil,
+            primaryDuration: 0,
+            iPhoneKilocalories: 72,
+            iPhoneDuration: 0,
+            inferredIPhonePointCoverageDuration: 3_600
+        ))
+
+        #expect(fused.kilocalories == 72)
+        #expect(fused.coverage.iPhoneFallbackDuration == 3_600)
+        #expect(fused.coverage.isComplete)
+    }
+
+    @Test("A primary point known to be the iPhone value can cover the hour")
+    func infersCoverageForPrimaryIPhonePointValue() {
+        let interval = DateInterval(start: .now, duration: 3_600)
+
+        let fused = RestingEnergyFusionBuilder.fuse(RestingEnergyIntervalValue(
+            interval: interval,
+            primaryKilocalories: 72,
+            primaryDuration: 0,
+            iPhoneKilocalories: nil,
+            iPhoneDuration: 0,
+            inferredPrimaryPointCoverageDuration: 3_600
+        ))
+
+        #expect(fused.kilocalories == 72)
+        #expect(fused.coverage.primaryDuration == 3_600)
+        #expect(fused.coverage.isComplete)
+    }
+
     @Test("Unknown primary duration never causes a duplicate iPhone addition")
     func avoidsFallbackWhenPrimaryDurationIsUnknown() {
         let interval = DateInterval(start: .now, duration: 3_600)

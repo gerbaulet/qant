@@ -197,6 +197,7 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                 primaryKilocalories,
                 rawIPhoneKilocalories
             ) && abs(primaryDuration - rawIPhoneDuration) <= 1
+            let bucketDuration = intervalEnd.timeIntervalSince(intervalStart)
 
             values.append(RestingEnergyFusionBuilder.fuse(
                 RestingEnergyIntervalValue(
@@ -205,7 +206,13 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                     primaryDuration: primaryDuration,
                     iPhoneKilocalories: iPhoneIsAlreadyPrimary ? nil : rawIPhoneKilocalories,
                     iPhoneDuration: iPhoneIsAlreadyPrimary ? 0 : rawIPhoneDuration,
-                    pendingDuration: pendingDuration
+                    pendingDuration: pendingDuration,
+                    inferredPrimaryPointCoverageDuration: iPhoneIsAlreadyPrimary
+                        ? bucketDuration
+                        : 0,
+                    inferredIPhonePointCoverageDuration: rawIPhoneKilocalories == nil
+                        ? 0
+                        : bucketDuration
                 )
             ))
         }
@@ -242,7 +249,9 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                 productType: sample.sourceRevision.productType,
                 deviceName: sample.device?.name,
                 deviceModel: sample.device?.model,
-                manufacturer: sample.device?.manufacturer
+                manufacturer: sample.device?.manufacturer,
+                sourceName: source.name,
+                sourceBundleIdentifier: source.bundleIdentifier
             ) else {
                 continue
             }

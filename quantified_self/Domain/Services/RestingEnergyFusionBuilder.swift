@@ -7,6 +7,8 @@ struct RestingEnergyIntervalValue: Sendable, Equatable {
     let iPhoneKilocalories: Double?
     let iPhoneDuration: TimeInterval
     let pendingDuration: TimeInterval
+    let inferredPrimaryPointCoverageDuration: TimeInterval
+    let inferredIPhonePointCoverageDuration: TimeInterval
 
     init(
         interval: DateInterval,
@@ -14,7 +16,9 @@ struct RestingEnergyIntervalValue: Sendable, Equatable {
         primaryDuration: TimeInterval,
         iPhoneKilocalories: Double?,
         iPhoneDuration: TimeInterval,
-        pendingDuration: TimeInterval = 0
+        pendingDuration: TimeInterval = 0,
+        inferredPrimaryPointCoverageDuration: TimeInterval = 0,
+        inferredIPhonePointCoverageDuration: TimeInterval = 0
     ) {
         self.interval = interval
         self.primaryKilocalories = primaryKilocalories
@@ -22,6 +26,8 @@ struct RestingEnergyIntervalValue: Sendable, Equatable {
         self.iPhoneKilocalories = iPhoneKilocalories
         self.iPhoneDuration = iPhoneDuration
         self.pendingDuration = pendingDuration
+        self.inferredPrimaryPointCoverageDuration = inferredPrimaryPointCoverageDuration
+        self.inferredIPhonePointCoverageDuration = inferredIPhonePointCoverageDuration
     }
 }
 
@@ -39,13 +45,21 @@ enum RestingEnergyFusionBuilder {
         let primaryKilocalories = validKilocalories(value.primaryKilocalories)
         let primaryDuration = primaryKilocalories == nil
             ? 0
-            : clampedDuration(value.primaryDuration, maximum: expectedDuration)
+            : effectiveDuration(
+                reported: value.primaryDuration,
+                inferredForPoint: value.inferredPrimaryPointCoverageDuration,
+                maximum: expectedDuration
+            )
         let missingDuration = max(expectedDuration - primaryDuration, 0)
 
         let iPhoneKilocalories = validKilocalories(value.iPhoneKilocalories)
         let availableIPhoneDuration = iPhoneKilocalories == nil
             ? 0
-            : clampedDuration(value.iPhoneDuration, maximum: expectedDuration)
+            : effectiveDuration(
+                reported: value.iPhoneDuration,
+                inferredForPoint: value.inferredIPhonePointCoverageDuration,
+                maximum: expectedDuration
+            )
         // Without primary duration metadata, overlap cannot be determined safely.
         // Keep the primary value, but do not add a potentially duplicate fallback.
         let canFillFromIPhone = primaryKilocalories == nil || primaryDuration > 0
@@ -116,5 +130,15 @@ enum RestingEnergyFusionBuilder {
     ) -> TimeInterval {
         guard duration.isFinite else { return 0 }
         return min(max(duration, 0), maximum)
+    }
+
+    private static func effectiveDuration(
+        reported duration: TimeInterval,
+        inferredForPoint inferredDuration: TimeInterval,
+        maximum: TimeInterval
+    ) -> TimeInterval {
+        let reportedDuration = clampedDuration(duration, maximum: maximum)
+        guard reportedDuration <= 1 else { return reportedDuration }
+        return clampedDuration(inferredDuration, maximum: maximum)
     }
 }

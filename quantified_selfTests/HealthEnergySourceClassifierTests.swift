@@ -22,6 +22,30 @@ struct HealthEnergySourceClassifierTests {
         ))
     }
 
+    @Test("Apple Health source metadata can identify an iPhone without device metadata")
+    func appleSourceMetadata() {
+        #expect(HealthEnergySourceClassifier.isIPhone(
+            productType: nil,
+            deviceName: nil,
+            deviceModel: nil,
+            manufacturer: nil,
+            sourceName: "iPhone von Saskia",
+            sourceBundleIdentifier: "com.apple.Health"
+        ))
+    }
+
+    @Test("A third-party source named after an iPhone is not trusted")
+    func rejectsThirdPartySourceName() {
+        #expect(!HealthEnergySourceClassifier.isIPhone(
+            productType: nil,
+            deviceName: nil,
+            deviceModel: nil,
+            manufacturer: nil,
+            sourceName: "iPhone bridge",
+            sourceBundleIdentifier: "com.example.bridge"
+        ))
+    }
+
     @Test("A similarly named third-party device is not trusted")
     func rejectsThirdPartyDevice() {
         #expect(!HealthEnergySourceClassifier.isIPhone(
