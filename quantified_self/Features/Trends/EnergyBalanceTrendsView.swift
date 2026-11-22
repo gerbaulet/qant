@@ -6,6 +6,7 @@ struct EnergyBalanceTrendsView: View {
     let healthStatus: HealthDataStatus
     let weightStatus: HealthDataStatus
     let weightComparison: WeightBalanceComparison?
+    let currentDayForecastBalanceKilocalories: Double?
     let onOpenSettings: () -> Void
 
     private var displayedBalances: [DailyEnergyBalance] {
@@ -259,7 +260,8 @@ struct EnergyBalanceTrendsView: View {
     private func displayedBalanceKilocalories(for balance: DailyEnergyBalance) -> Double? {
         PersonalEnergyBalanceCalculator.balanceKilocalories(
             for: balance,
-            dailyAdjustmentKilocalories: personalDailyAdjustment
+            dailyAdjustmentKilocalories: personalDailyAdjustment,
+            currentDayForecastKilocalories: currentDayForecastBalanceKilocalories
         )
     }
 

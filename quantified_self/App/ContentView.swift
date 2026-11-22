@@ -212,7 +212,10 @@ private struct TodayDashboardContainer: View {
         guard let refreshID = refreshID(for: date), refreshID != lastRefreshID else { return }
         await Task.yield()
         let calendar = Calendar.autoupdatingCurrent
-        let forecastInterval = energyForecastInterval(for: date, calendar: calendar)
+        let forecastInterval = EnergyExpenditureForecastBuilder.historyInterval(
+            for: date,
+            calendar: calendar
+        )
         let calibrationInterval = healthMetrics.personalCalibrationEnabled
             ? WeightBalanceComparisonBuilder.calibrationInterval(
                 endingAt: date,
@@ -307,21 +310,6 @@ private struct TodayDashboardContainer: View {
             calendar: calendar,
             force: true
         )
-    }
-
-    private func energyForecastInterval(
-        for date: Date,
-        calendar: Calendar
-    ) -> DateInterval? {
-        guard let dayInterval = calendar.dateInterval(of: .day, for: date),
-              let start = calendar.date(
-                byAdding: .day,
-                value: -90,
-                to: dayInterval.start
-              ) else {
-            return nil
-        }
-        return DateInterval(start: start, end: dayInterval.end)
     }
 
     private func personalDailyBalanceAdjustment(

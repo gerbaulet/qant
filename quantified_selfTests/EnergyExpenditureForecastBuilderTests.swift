@@ -155,6 +155,23 @@ struct EnergyExpenditureForecastBuilderTests {
         #expect(forecast == nil)
     }
 
+    @Test("Forecast history covers ninety calendar days through the selected day")
+    func historyIntervalUsesCalendarDays() throws {
+        let reference = date(2026, 3, 30, 14)
+        let selectedDay = try #require(calendar.dateInterval(of: .day, for: reference))
+        let interval = try #require(EnergyExpenditureForecastBuilder.historyInterval(
+            for: reference,
+            calendar: calendar
+        ))
+
+        #expect(interval.start == calendar.date(
+            byAdding: .day,
+            value: -90,
+            to: selectedDay.start
+        ))
+        #expect(interval.end == selectedDay.end)
+    }
+
     private func date(
         _ year: Int,
         _ month: Int,

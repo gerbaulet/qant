@@ -3,15 +3,30 @@ import Foundation
 enum PersonalEnergyBalanceCalculator {
     static func balanceKilocalories(
         for balance: DailyEnergyBalance,
-        dailyAdjustmentKilocalories: Double?
+        dailyAdjustmentKilocalories: Double?,
+        currentDayForecastKilocalories: Double? = nil
     ) -> Double? {
         guard let recordedBalance = balance.balanceKilocalories else { return nil }
+        if balance.isCurrentDay, let currentDayForecastKilocalories {
+            return currentDayForecastKilocalories
+        }
         guard let dailyAdjustmentKilocalories,
               balance.completeness == .complete,
               !balance.isCurrentDay else {
             return recordedBalance
         }
         return recordedBalance + dailyAdjustmentKilocalories
+    }
+
+    static func forecastBalanceKilocalories(
+        intakeKilocalories: Double?,
+        expenditureKilocalories: Double?,
+        dailyAdjustmentKilocalories: Double?
+    ) -> Double? {
+        guard let intakeKilocalories, let expenditureKilocalories else { return nil }
+        return intakeKilocalories
+            - expenditureKilocalories
+            + (dailyAdjustmentKilocalories ?? 0)
     }
 
     static func averageBalanceKilocalories(

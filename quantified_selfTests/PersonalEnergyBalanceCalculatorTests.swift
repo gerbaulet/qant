@@ -52,6 +52,55 @@ struct PersonalEnergyBalanceCalculatorTests {
         #expect(average == 0)
     }
 
+    @Test("Current day uses its calibrated end-of-day forecast when available")
+    func currentDayForecast() {
+        let current = balance(
+            intake: 1_500,
+            completeness: .complete,
+            isCurrentDay: true
+        )
+        let complete = balance(
+            intake: 1_500,
+            completeness: .complete,
+            isCurrentDay: false
+        )
+
+        #expect(PersonalEnergyBalanceCalculator.balanceKilocalories(
+            for: current,
+            dailyAdjustmentKilocalories: 200,
+            currentDayForecastKilocalories: -258
+        ) == -258)
+        #expect(PersonalEnergyBalanceCalculator.balanceKilocalories(
+            for: current,
+            dailyAdjustmentKilocalories: 200,
+            currentDayForecastKilocalories: nil
+        ) == -500)
+        #expect(PersonalEnergyBalanceCalculator.balanceKilocalories(
+            for: complete,
+            dailyAdjustmentKilocalories: 200,
+            currentDayForecastKilocalories: -258
+        ) == -300)
+    }
+
+    @Test("Forecast combines projected intake and expenditure with personal adjustment")
+    func forecastBalance() {
+        #expect(PersonalEnergyBalanceCalculator.forecastBalanceKilocalories(
+            intakeKilocalories: 1_956,
+            expenditureKilocalories: 2_713,
+            dailyAdjustmentKilocalories: 500
+        ) == -257)
+        #expect(PersonalEnergyBalanceCalculator.forecastBalanceKilocalories(
+            intakeKilocalories: 1_956,
+            expenditureKilocalories: 2_713,
+            dailyAdjustmentKilocalories: nil
+        ) == -757)
+        #expect(PersonalEnergyBalanceCalculator.forecastBalanceKilocalories(
+            intakeKilocalories: nil,
+            expenditureKilocalories: 2_713,
+            dailyAdjustmentKilocalories: 500
+        ) == nil)
+    }
+
     private func balance(
         intake: Double,
         completeness: EnergyBalanceCompleteness,

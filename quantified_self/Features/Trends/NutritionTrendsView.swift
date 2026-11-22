@@ -22,6 +22,7 @@ struct NutritionTrendsContainer: View {
     @State private var snapshot: NutritionTrendsSnapshot?
     @State private var balances: [DailyEnergyBalance] = []
     @State private var weightComparison: WeightBalanceComparison?
+    @State private var currentDayForecastBalanceKilocalories: Double?
     @State private var lastRefreshID: RefreshID?
     @State private var lastBalanceRefreshID: BalanceRefreshID?
     let isActive: Bool
@@ -60,6 +61,7 @@ struct NutritionTrendsContainer: View {
                     healthStatus: healthMetrics.energyStatus,
                     weightStatus: healthMetrics.weightStatus,
                     weightComparison: weightComparison,
+                    currentDayForecastBalanceKilocalories: currentDayForecastBalanceKilocalories,
                     onOpenSettings: onOpenSettings
                 )
                 if let snapshot, snapshot.range == range {
@@ -101,7 +103,7 @@ struct NutritionTrendsContainer: View {
         guard isActive else { return nil }
         let calendar = Calendar.autoupdatingCurrent
         return BalanceRefreshID(
-            presentationVersion: NutritionPresentationVersion(meals: meals, goals: []),
+            presentationVersion: NutritionPresentationVersion(meals: meals, goals: goals),
             hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date,
             range: range,
             healthDataVersion: healthMetrics.dataVersion
@@ -133,6 +135,10 @@ struct NutritionTrendsContainer: View {
             endingAt: date,
             calendar: calendar
         )
+        let forecastInterval = EnergyExpenditureForecastBuilder.historyInterval(
+            for: date,
+            calendar: calendar
+        )
         let queryStart = min(interval.start, calibrationInterval.start)
         if healthMetrics.hasRequestedEnergyAccess {
             await healthMetrics.loadEnergy(
@@ -140,12 +146,19 @@ struct NutritionTrendsContainer: View {
                 to: interval.end,
                 calendar: calendar
             )
+            if let forecastInterval {
+                await healthMetrics.loadHourlyEnergy(
+                    from: forecastInterval.start,
+                    to: forecastInterval.end,
+                    calendar: calendar
+                )
+            }
         }
         if healthMetrics.hasRequestedWeightAccess {
             await healthMetrics.loadWeights(from: queryStart, to: interval.end)
         }
         guard !Task.isCancelled else { return }
-        balances = EnergyBalanceBuilder.makeBalances(
+        let nextBalances = EnergyBalanceBuilder.makeBalances(
             within: interval,
             meals: meals,
             expenditures: healthMetrics.expenditures(within: interval),
@@ -160,7 +173,7 @@ struct NutritionTrendsContainer: View {
             now: date,
             calendar: calendar
         )
-        weightComparison = WeightBalanceComparisonBuilder.makeComparison(
+        let nextWeightComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: healthMetrics.weights(within: historyInterval),
             balances: historicalBalances,
             comparisonStart: interval.start,
@@ -168,6 +181,31 @@ struct NutritionTrendsContainer: View {
             calendar: calendar,
             calibrationEnabled: healthMetrics.personalCalibrationEnabled
         )
+        let todayPresentation = TodayDashboardPresentationBuilder.makePresentation(
+            for: date,
+            meals: meals,
+            goals: goals,
+            calendar: calendar
+        )
+        let currentExpenditure = healthMetrics.expenditure(for: date, calendar: calendar)
+        let expenditureForecast = forecastInterval.flatMap {
+            EnergyExpenditureForecastBuilder.makeForecast(
+                for: date,
+                current: currentExpenditure,
+                dailyExpenditures: healthMetrics.expenditures(within: $0),
+                hourlyExpenditures: healthMetrics.hourlyExpenditures(within: $0),
+                calendar: calendar
+            )
+        }
+        let nextCurrentDayForecastBalance = PersonalEnergyBalanceCalculator
+            .forecastBalanceKilocalories(
+                intakeKilocalories: todayPresentation.intakeForecast?.energyKilocalories,
+                expenditureKilocalories: expenditureForecast?.totalKilocalories,
+                dailyAdjustmentKilocalories: nextWeightComparison.dailyBalanceAdjustmentKilocalories
+            )
+        balances = nextBalances
+        weightComparison = nextWeightComparison
+        currentDayForecastBalanceKilocalories = nextCurrentDayForecastBalance
         lastBalanceRefreshID = refreshID
     }
 

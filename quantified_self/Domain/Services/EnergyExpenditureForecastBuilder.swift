@@ -16,6 +16,21 @@ enum EnergyExpenditureForecastBuilder {
     private static let minimumHistoricalDayCount = 7
     private static let maximumHistoricalDayCount = 90
 
+    static func historyInterval(
+        for date: Date,
+        calendar: Calendar
+    ) -> DateInterval? {
+        guard let dayInterval = calendar.dateInterval(of: .day, for: date),
+              let start = calendar.date(
+                byAdding: .day,
+                value: -maximumHistoricalDayCount,
+                to: dayInterval.start
+              ) else {
+            return nil
+        }
+        return DateInterval(start: start, end: dayInterval.end)
+    }
+
     static func makeForecast(
         for date: Date,
         current: DailyEnergyExpenditure?,
