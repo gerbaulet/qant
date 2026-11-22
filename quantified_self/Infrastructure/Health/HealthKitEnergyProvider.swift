@@ -69,10 +69,14 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         to endDate: Date,
         calendar: Calendar
     ) async throws -> EnergyExpenditureSnapshot {
-        let effectiveEndDate = min(endDate, now())
+        let referenceDate = now()
+        let effectiveEndDate = min(endDate, referenceDate)
         guard startDate < effectiveEndDate else {
             return EnergyExpenditureSnapshot(daily: [], hourly: [])
         }
+        let pendingHour = endDate >= referenceDate
+            ? calendar.dateInterval(of: .hour, for: referenceDate)
+            : nil
         let activeType = HKQuantityType(.activeEnergyBurned)
 
         async let activeByHour = energySums(
@@ -85,7 +89,8 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         async let fusedRestingIntervals = fusedRestingEnergy(
             from: startDate,
             to: effectiveEndDate,
-            calendar: calendar
+            calendar: calendar,
+            pendingHour: pendingHour
         )
         let (active, restingIntervals) = try await (
             activeByHour,
@@ -138,7 +143,8 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
     private func fusedRestingEnergy(
         from startDate: Date,
         to endDate: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        pendingHour: DateInterval?
     ) async throws -> [FusedRestingEnergyInterval] {
         let type = HKQuantityType(.basalEnergyBurned)
         async let primaryCollection = statisticsCollection(
@@ -170,6 +176,11 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
             let intervalStart = max(statistics.startDate, startDate)
             let intervalEnd = min(statistics.endDate, endDate)
             guard intervalStart < intervalEnd else { return }
+            let pendingDuration = self.overlapDuration(
+                from: intervalStart,
+                to: intervalEnd,
+                with: pendingHour
+            )
 
             let primaryKilocalories = statistics.sumQuantity()?.doubleValue(
                 for: .kilocalorie()
@@ -193,11 +204,23 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                     primaryKilocalories: primaryKilocalories,
                     primaryDuration: primaryDuration,
                     iPhoneKilocalories: iPhoneIsAlreadyPrimary ? nil : rawIPhoneKilocalories,
-                    iPhoneDuration: iPhoneIsAlreadyPrimary ? 0 : rawIPhoneDuration
+                    iPhoneDuration: iPhoneIsAlreadyPrimary ? 0 : rawIPhoneDuration,
+                    pendingDuration: pendingDuration
                 )
             ))
         }
         return values
+    }
+
+    private func overlapDuration(
+        from startDate: Date,
+        to endDate: Date,
+        with interval: DateInterval?
+    ) -> TimeInterval {
+        guard let interval else { return 0 }
+        let overlapStart = max(startDate, interval.start)
+        let overlapEnd = min(endDate, interval.end)
+        return max(overlapEnd.timeIntervalSince(overlapStart), 0)
     }
 
     private func preferredIPhoneSources(

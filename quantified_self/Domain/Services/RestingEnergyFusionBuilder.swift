@@ -6,6 +6,23 @@ struct RestingEnergyIntervalValue: Sendable, Equatable {
     let primaryDuration: TimeInterval
     let iPhoneKilocalories: Double?
     let iPhoneDuration: TimeInterval
+    let pendingDuration: TimeInterval
+
+    init(
+        interval: DateInterval,
+        primaryKilocalories: Double?,
+        primaryDuration: TimeInterval,
+        iPhoneKilocalories: Double?,
+        iPhoneDuration: TimeInterval,
+        pendingDuration: TimeInterval = 0
+    ) {
+        self.interval = interval
+        self.primaryKilocalories = primaryKilocalories
+        self.primaryDuration = primaryDuration
+        self.iPhoneKilocalories = iPhoneKilocalories
+        self.iPhoneDuration = iPhoneDuration
+        self.pendingDuration = pendingDuration
+    }
 }
 
 struct FusedRestingEnergyInterval: Sendable, Equatable {
@@ -61,7 +78,8 @@ enum RestingEnergyFusionBuilder {
             coverage: RestingEnergyCoverage(
                 expectedDuration: expectedDuration,
                 primaryDuration: primaryDuration,
-                iPhoneFallbackDuration: usedIPhoneDuration
+                iPhoneFallbackDuration: usedIPhoneDuration,
+                pendingDuration: min(max(value.pendingDuration, 0), expectedDuration)
             )
         )
     }
@@ -76,6 +94,9 @@ enum RestingEnergyFusionBuilder {
             primaryDuration: values.reduce(0) { $0 + $1.coverage.primaryDuration },
             iPhoneFallbackDuration: values.reduce(0) {
                 $0 + $1.coverage.iPhoneFallbackDuration
+            },
+            pendingDuration: values.reduce(0) {
+                $0 + $1.coverage.pendingDuration
             }
         )
         return (

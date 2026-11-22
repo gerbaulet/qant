@@ -107,6 +107,31 @@ struct RestingEnergyFusionBuilderTests {
         #expect(!incomplete.isComplete)
     }
 
+    @Test("An unfinished current hour does not make today's coverage incomplete")
+    func toleratesPendingCurrentHour() {
+        let coverage = RestingEnergyCoverage(
+            expectedDuration: 24 * 60 * 60,
+            primaryDuration: 23 * 60 * 60,
+            iPhoneFallbackDuration: 0,
+            pendingDuration: 60 * 60
+        )
+
+        #expect(coverage.missingDuration == 60 * 60)
+        #expect(coverage.isComplete)
+    }
+
+    @Test("A pending current hour does not hide earlier coverage gaps")
+    func pendingHourDoesNotHideEarlierGaps() {
+        let coverage = RestingEnergyCoverage(
+            expectedDuration: 24 * 60 * 60,
+            primaryDuration: 22 * 60 * 60,
+            iPhoneFallbackDuration: 0,
+            pendingDuration: 60 * 60
+        )
+
+        #expect(!coverage.isComplete)
+    }
+
     @Test("Aggregating intervals keeps energy and provenance consistent")
     func aggregatesIntervals() throws {
         let start = Date.now
@@ -129,14 +154,25 @@ struct RestingEnergyFusionBuilderTests {
                     iPhoneFallbackDuration: 3_600
                 )
             ),
+            FusedRestingEnergyInterval(
+                interval: DateInterval(start: start.addingTimeInterval(7_200), duration: 3_600),
+                kilocalories: nil,
+                coverage: RestingEnergyCoverage(
+                    expectedDuration: 3_600,
+                    primaryDuration: 0,
+                    iPhoneFallbackDuration: 0,
+                    pendingDuration: 3_600
+                )
+            ),
         ]
 
         let aggregate = RestingEnergyFusionBuilder.aggregate(values)
 
         #expect(aggregate.kilocalories == 142)
-        #expect(aggregate.coverage?.expectedDuration == 7_200)
+        #expect(aggregate.coverage?.expectedDuration == 10_800)
         #expect(aggregate.coverage?.primaryDuration == 3_600)
         #expect(aggregate.coverage?.iPhoneFallbackDuration == 3_600)
+        #expect(aggregate.coverage?.pendingDuration == 3_600)
         #expect(aggregate.coverage?.isComplete == true)
     }
 }

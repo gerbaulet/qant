@@ -6,6 +6,19 @@ struct RestingEnergyCoverage: Sendable, Equatable {
     let expectedDuration: TimeInterval
     let primaryDuration: TimeInterval
     let iPhoneFallbackDuration: TimeInterval
+    let pendingDuration: TimeInterval
+
+    init(
+        expectedDuration: TimeInterval,
+        primaryDuration: TimeInterval,
+        iPhoneFallbackDuration: TimeInterval,
+        pendingDuration: TimeInterval = 0
+    ) {
+        self.expectedDuration = expectedDuration
+        self.primaryDuration = primaryDuration
+        self.iPhoneFallbackDuration = iPhoneFallbackDuration
+        self.pendingDuration = pendingDuration
+    }
 
     var coveredDuration: TimeInterval {
         min(max(primaryDuration + iPhoneFallbackDuration, 0), expectedDuration)
@@ -15,6 +28,10 @@ struct RestingEnergyCoverage: Sendable, Equatable {
         max(expectedDuration - coveredDuration, 0)
     }
 
+    private var unresolvedMissingDuration: TimeInterval {
+        max(missingDuration - min(max(pendingDuration, 0), expectedDuration), 0)
+    }
+
     var isComplete: Bool {
         let proportionalTolerance = expectedDuration * 0.02
         let toleratedMissingDuration = min(
@@ -22,7 +39,7 @@ struct RestingEnergyCoverage: Sendable, Equatable {
             proportionalTolerance
         )
         return expectedDuration > 0 && coveredDuration > 0 &&
-            missingDuration <= toleratedMissingDuration
+            unresolvedMissingDuration <= toleratedMissingDuration
     }
 
     var usesIPhoneFallback: Bool {
