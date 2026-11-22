@@ -110,9 +110,7 @@ if it is unavailable. Do not expose public TCP 80, 443, or 8080.
 From this repository on the Mac:
 
 ```sh
-scripts/deploy-server.sh \
-  --host SERVER-NAME.ts.net \
-  --user clemens
+make deploy-server DEPLOY_HOST=SERVER-NAME.ts.net DEPLOY_USER=clemens
 ```
 
 The deployment accepts only a full private `.ts.net` host name, verifies

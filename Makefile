@@ -4,8 +4,10 @@ COMPOSE ?= docker compose
 TAILSCALE ?= tailscale
 TAILSCALE_TARGET ?= 8080
 TAILSCALE_HTTPS_PORT ?= 443
+DEPLOY_HOST ?=
+DEPLOY_USER ?=
 
-.PHONY: help test build docker-build config up start stop restart down status logs health run tailscale-up tailscale-down tailscale-status host-status
+.PHONY: help test build docker-build config up start stop restart down status logs health run tailscale-up tailscale-down tailscale-status host-status deploy deploy-server
 
 help: ## Show available commands.
 	@awk 'BEGIN { FS = ":.*## " } /^[a-z-]+:.*## / { printf "  %-18s %s\n", $$1, $$2 }' "$(firstword $(MAKEFILE_LIST))"
@@ -60,3 +62,10 @@ tailscale-status: ## Show the active Tailscale Serve configuration.
 
 host-status: ## Show host security and service status (run on the server).
 	sudo quant-provision status
+
+deploy-server: deploy ## Deploy to the provisioned host; pass DEPLOY_HOST=... and DEPLOY_USER=....
+
+deploy:
+	@test -n "$(DEPLOY_HOST)" || { echo "DEPLOY_HOST is required (for example SERVER-NAME.ts.net)" >&2; exit 2; }
+	@test -n "$(DEPLOY_USER)" || { echo "DEPLOY_USER is required (for example clemens)" >&2; exit 2; }
+	scripts/deploy-server.sh --host "$(DEPLOY_HOST)" --user "$(DEPLOY_USER)"

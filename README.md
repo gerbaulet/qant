@@ -50,6 +50,7 @@ commands are not required:
 | `make tailscale-up` | Publish the server privately using Tailscale Serve |
 | `make tailscale-down` | Disable the server's Tailscale HTTPS proxy |
 | `make tailscale-status` | Show the active Tailscale Serve configuration |
+| `make deploy-server DEPLOY_HOST=SERVER-NAME.ts.net DEPLOY_USER=clemens` | Deploy the current source to the provisioned server (`make deploy` is a shorter alias) |
 | `make help` | List all available commands |
 
 `make logs` shows a privacy-safe lifecycle line when an analysis job is
