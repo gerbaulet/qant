@@ -27,6 +27,21 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Verbrauch"].exists)
         XCTAssertTrue(app.staticTexts["Tagesende"].exists)
         XCTAssertFalse(app.staticTexts["ZWISCHENSTAND"].exists)
+        let intakeGoal = app.staticTexts["Aufnahmeziel"]
+        let protein = app.descendants(matching: .any)["today.nutrient.protein"]
+        let carbohydrates = app.descendants(matching: .any)["today.nutrient.carbohydrates"]
+        let fat = app.descendants(matching: .any)["today.nutrient.fat"]
+        let fiber = app.descendants(matching: .any)["today.nutrient.fiber"]
+        XCTAssertTrue(intakeGoal.waitForExistence(timeout: 2))
+        XCTAssertTrue(protein.waitForExistence(timeout: 2))
+        XCTAssertTrue(carbohydrates.exists)
+        XCTAssertTrue(fat.exists)
+        XCTAssertTrue(fiber.exists)
+        XCTAssertGreaterThan(protein.frame.minY, intakeGoal.frame.maxY)
+        XCTAssertLessThan(protein.frame.minY - intakeGoal.frame.maxY, 100)
+        XCTAssertGreaterThan(carbohydrates.frame.minY, protein.frame.maxY)
+        XCTAssertGreaterThan(fat.frame.minY, carbohydrates.frame.maxY)
+        XCTAssertGreaterThan(fiber.frame.minY, fat.frame.maxY)
         XCTAssertEqual(
             app.descendants(matching: .any)
                 .matching(NSPredicate(format: "label BEGINSWITH %@", "Ruhe "))
@@ -498,6 +513,9 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(dailyFiber.waitForExistence(timeout: 3))
 
         let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        for _ in 0..<6 where !mealName.isHittable {
+            app.swipeUp()
+        }
         XCTAssertTrue(mealName.waitForExistence(timeout: 3))
         mealName.tap()
 

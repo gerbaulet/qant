@@ -63,7 +63,6 @@ struct TodayDashboardView: View {
                 healthStatusCard
                 hintsSection
                 weeklyCalorieCard
-                macroCard
                 mealsSection
             }
             .padding(.horizontal, QuantLayout.pageInset)
@@ -110,6 +109,7 @@ struct TodayDashboardView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Energiebilanz am Tagesende")
                     .font(.headline)
+                    .accessibilityIdentifier("today.energyBalance")
 
                 energyForecastSummary(balance)
 
@@ -144,9 +144,11 @@ struct TodayDashboardView: View {
                     .accessibilityLabel("Fortschritt zum Aufnahmeziel")
                     .accessibilityValue(progressAccessibilityValue)
                 }
+
+                Divider()
+                macroProgressSection
             }
         }
-        .accessibilityIdentifier("today.energyBalance")
     }
 
     @ViewBuilder
@@ -511,12 +513,10 @@ struct TodayDashboardView: View {
         }
     }
 
-    private var macroCard: some View {
-        QuantCard(style: .hero) {
-            VStack(spacing: 18) {
-                ForEach(snapshot.macros + [snapshot.fiber]) { progress in
-                    macroRow(progress)
-                }
+    private var macroProgressSection: some View {
+        VStack(spacing: 18) {
+            ForEach(snapshot.macros + [snapshot.fiber]) { progress in
+                macroRow(progress)
             }
         }
     }
