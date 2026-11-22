@@ -1,6 +1,20 @@
 import Charts
 import SwiftUI
 
+private enum EnergyChartLegendLineStyle {
+    case solid
+    case dashed
+    case dotted
+
+    var segments: (count: Int, width: CGFloat, spacing: CGFloat) {
+        switch self {
+        case .solid: (1, 18, 0)
+        case .dashed: (3, 4, 3)
+        case .dotted: (4, 3, 2)
+        }
+    }
+}
+
 struct TodayDashboardView: View {
     let snapshot: TodayDashboardSnapshot
     let weeklySummary: WeeklyNutritionSummary?
@@ -166,20 +180,9 @@ struct TodayDashboardView: View {
 
     private func energyTrendChart(_ trend: TodayEnergyTrend) -> some View {
         let scale = TodayEnergyChartScaleBuilder.makeScale(for: trend)
+        let legend = TodayEnergyChartLegendBuilder.makeLegend(for: trend)
         return VStack(alignment: .leading, spacing: 10) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 14) {
-                    energyChartLegend(title: "+ Aufnahme", color: .blue)
-                    energyChartLegend(title: "− Verbrauch", color: .purple)
-                    energyChartLegend(title: "= Bilanz", color: .green)
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    energyChartLegend(title: "+ Aufnahme", color: .blue)
-                    energyChartLegend(title: "− Verbrauch", color: .purple)
-                    energyChartLegend(title: "= Bilanz", color: .green)
-                }
-            }
-            .font(.caption)
+            energySeriesLegend(legend)
 
             Chart {
                 RuleMark(y: .value("Ausgeglichen", 0))
@@ -304,30 +307,90 @@ struct TodayDashboardView: View {
             .accessibilityValue(energyTrendAccessibilityValue(trend))
             .accessibilityIdentifier("today.energyTrendChart")
 
-            HStack {
-                Text("Durchgezogen: bisher")
-                Spacer()
-                Text("Gestrichelt: Prognose")
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    energyChartLegend(title: "Bisher", color: .secondary)
+                    Spacer(minLength: 8)
+                    energyChartLegend(
+                        title: legend.forecastTitle,
+                        color: .secondary,
+                        lineStyle: .dashed
+                    )
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    energyChartLegend(title: "Bisher", color: .secondary)
+                    energyChartLegend(
+                        title: legend.forecastTitle,
+                        color: .secondary,
+                        lineStyle: .dashed
+                    )
+                }
             }
             .font(.caption2)
-            .foregroundStyle(.secondary)
-
-            if !trend.averageIntakePoints.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Orange gepunktet: durchschnittliche Aufnahme aus \(trend.intakeHistoricalDayCount) erfassten Tagen.")
-                    Text(forecastSourceText(trend))
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
         }
     }
 
-    private func energyChartLegend(title: String, color: Color) -> some View {
-        HStack(spacing: 5) {
-            Capsule()
-                .fill(color)
-                .frame(width: 18, height: 3)
+    private func energySeriesLegend(_ legend: TodayEnergyChartLegend) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                energyChartLegend(title: "+ Aufnahme", color: .blue)
+                energyChartLegend(title: "− Verbrauch", color: .purple)
+                energyChartLegend(title: "= Bilanz", color: .green)
+                if let typicalIntakeTitle = legend.typicalIntakeTitle {
+                    energyChartLegend(
+                        title: typicalIntakeTitle,
+                        color: .orange,
+                        lineStyle: .dotted
+                    )
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 14) {
+                    energyChartLegend(title: "+ Aufnahme", color: .blue)
+                    energyChartLegend(title: "− Verbrauch", color: .purple)
+                }
+                HStack(spacing: 14) {
+                    energyChartLegend(title: "= Bilanz", color: .green)
+                    if let typicalIntakeTitle = legend.typicalIntakeTitle {
+                        energyChartLegend(
+                            title: typicalIntakeTitle,
+                            color: .orange,
+                            lineStyle: .dotted
+                        )
+                    }
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                energyChartLegend(title: "+ Aufnahme", color: .blue)
+                energyChartLegend(title: "− Verbrauch", color: .purple)
+                energyChartLegend(title: "= Bilanz", color: .green)
+                if let typicalIntakeTitle = legend.typicalIntakeTitle {
+                    energyChartLegend(
+                        title: typicalIntakeTitle,
+                        color: .orange,
+                        lineStyle: .dotted
+                    )
+                }
+            }
+        }
+        .font(.caption)
+    }
+
+    private func energyChartLegend(
+        title: String,
+        color: Color,
+        lineStyle: EnergyChartLegendLineStyle = .solid
+    ) -> some View {
+        let segments = lineStyle.segments
+        return HStack(spacing: 5) {
+            HStack(spacing: segments.spacing) {
+                ForEach(0..<segments.count, id: \.self) { _ in
+                    Capsule()
+                        .fill(color)
+                        .frame(width: segments.width, height: 3)
+                }
+            }
+            .frame(width: 18, alignment: .leading)
             Text(title)
                 .foregroundStyle(color)
         }
@@ -693,13 +756,6 @@ struct TodayDashboardView: View {
     private func balanceDirection(_ value: Double) -> String {
         if abs(value) < 100 { return "ausgeglichen" }
         return value < 0 ? "Defizit" : "Überschuss"
-    }
-
-    private func forecastSourceText(_ trend: TodayEnergyTrend) -> String {
-        guard trend.expenditureHistoricalDayCount > 0 else {
-            return "Die Aufnahmeprognose verwendet deinen bisherigen Tagesverlauf und ähnliche Tage."
-        }
-        return "Prognose aus deinem bisherigen Tagesverlauf sowie \(trend.expenditureHistoricalDayCount) Verbrauchstagen."
     }
 
     private func energyTrendAccessibilityValue(_ trend: TodayEnergyTrend) -> String {
