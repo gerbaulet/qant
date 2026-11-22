@@ -1,9 +1,52 @@
 import Foundation
 
+struct RestingEnergyCoverage: Sendable, Equatable {
+    static let maximumToleratedMissingDuration: TimeInterval = 15 * 60
+
+    let expectedDuration: TimeInterval
+    let primaryDuration: TimeInterval
+    let iPhoneFallbackDuration: TimeInterval
+
+    var coveredDuration: TimeInterval {
+        min(max(primaryDuration + iPhoneFallbackDuration, 0), expectedDuration)
+    }
+
+    var missingDuration: TimeInterval {
+        max(expectedDuration - coveredDuration, 0)
+    }
+
+    var isComplete: Bool {
+        let proportionalTolerance = expectedDuration * 0.02
+        let toleratedMissingDuration = min(
+            Self.maximumToleratedMissingDuration,
+            proportionalTolerance
+        )
+        return expectedDuration > 0 && coveredDuration > 0 &&
+            missingDuration <= toleratedMissingDuration
+    }
+
+    var usesIPhoneFallback: Bool {
+        iPhoneFallbackDuration > 0
+    }
+}
+
 struct DailyEnergyExpenditure: Identifiable, Sendable, Equatable {
     let date: Date
     let activeKilocalories: Double?
     let restingKilocalories: Double?
+    let restingEnergyCoverage: RestingEnergyCoverage?
+
+    init(
+        date: Date,
+        activeKilocalories: Double?,
+        restingKilocalories: Double?,
+        restingEnergyCoverage: RestingEnergyCoverage? = nil
+    ) {
+        self.date = date
+        self.activeKilocalories = activeKilocalories
+        self.restingKilocalories = restingKilocalories
+        self.restingEnergyCoverage = restingEnergyCoverage
+    }
 
     var id: Date { date }
 
@@ -17,6 +60,19 @@ struct HourlyEnergyExpenditure: Identifiable, Sendable, Equatable {
     let date: Date
     let activeKilocalories: Double?
     let restingKilocalories: Double?
+    let restingEnergyCoverage: RestingEnergyCoverage?
+
+    init(
+        date: Date,
+        activeKilocalories: Double?,
+        restingKilocalories: Double?,
+        restingEnergyCoverage: RestingEnergyCoverage? = nil
+    ) {
+        self.date = date
+        self.activeKilocalories = activeKilocalories
+        self.restingKilocalories = restingKilocalories
+        self.restingEnergyCoverage = restingEnergyCoverage
+    }
 
     var id: Date { date }
 }
@@ -43,6 +99,7 @@ enum EnergyBalanceCompleteness: Sendable, Equatable {
     case missingIntake
     case missingActiveEnergy
     case missingRestingEnergy
+    case incompleteRestingEnergy
 
     var isEvaluable: Bool {
         self == .complete
@@ -54,8 +111,27 @@ struct DailyEnergyBalance: Identifiable, Sendable, Equatable {
     let intakeKilocalories: Double?
     let activeKilocalories: Double?
     let restingKilocalories: Double?
+    let restingEnergyCoverage: RestingEnergyCoverage?
     let completeness: EnergyBalanceCompleteness
     let isCurrentDay: Bool
+
+    init(
+        date: Date,
+        intakeKilocalories: Double?,
+        activeKilocalories: Double?,
+        restingKilocalories: Double?,
+        restingEnergyCoverage: RestingEnergyCoverage? = nil,
+        completeness: EnergyBalanceCompleteness,
+        isCurrentDay: Bool
+    ) {
+        self.date = date
+        self.intakeKilocalories = intakeKilocalories
+        self.activeKilocalories = activeKilocalories
+        self.restingKilocalories = restingKilocalories
+        self.restingEnergyCoverage = restingEnergyCoverage
+        self.completeness = completeness
+        self.isCurrentDay = isCurrentDay
+    }
 
     var id: Date { date }
 

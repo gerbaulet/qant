@@ -120,7 +120,10 @@ struct TodayDashboardView: View {
                 Divider()
                 energyBalanceTable(balance)
 
-                if balance?.isCurrentDay ?? true,
+                restingEnergyCoverageNotice(balance)
+
+                if balance?.restingEnergyCoverage?.isComplete != false,
+                   balance?.isCurrentDay ?? true,
                    intakeForecast == nil || expenditureForecast == nil {
                     Label("Für die Hochrechnung fehlen noch Verlaufsdaten.", systemImage: "clock.arrow.circlepath")
                         .font(.caption2)
@@ -146,6 +149,29 @@ struct TodayDashboardView: View {
                 }
 
                 macroProgressSection
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func restingEnergyCoverageNotice(_ balance: DailyEnergyBalance?) -> some View {
+        if let coverage = balance?.restingEnergyCoverage {
+            if !coverage.isComplete {
+                Label(
+                    "Ruheenergiedaten unvollständig – Bilanz und Prognose sind vorläufig.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .accessibilityIdentifier("today.restingEnergyIncomplete")
+            } else if coverage.usesIPhoneFallback {
+                Label(
+                    "Ruheenergie teilweise mit iPhone-Daten ergänzt.",
+                    systemImage: "iphone"
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("today.restingEnergyFallback")
             }
         }
     }

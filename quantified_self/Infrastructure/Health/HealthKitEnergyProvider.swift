@@ -1,20 +1,20 @@
 import Foundation
 import HealthKit
 
+struct EnergyExpenditureSnapshot: Sendable, Equatable {
+    let daily: [DailyEnergyExpenditure]
+    let hourly: [HourlyEnergyExpenditure]
+}
+
 @MainActor
 protocol HealthEnergyProviding {
     func isHealthDataAvailable() -> Bool
     func requestEnergyAuthorization() async throws
-    func dailyEnergy(
+    func energy(
         from startDate: Date,
         to endDate: Date,
         calendar: Calendar
-    ) async throws -> [DailyEnergyExpenditure]
-    func hourlyEnergy(
-        from startDate: Date,
-        to endDate: Date,
-        calendar: Calendar
-    ) async throws -> [HourlyEnergyExpenditure]
+    ) async throws -> EnergyExpenditureSnapshot
     func earliestAuthorizedEnergyDate() async throws -> Date?
 }
 
@@ -28,30 +28,32 @@ protocol HealthWeightProviding {
 @MainActor
 final class HealthKitEnergyProvider: HealthEnergyProviding {
     private enum StatisticsInterval {
-        case day
         case hour
 
         var components: DateComponents {
-            switch self {
-            case .day: DateComponents(day: 1)
-            case .hour: DateComponents(hour: 1)
-            }
+            DateComponents(hour: 1)
         }
 
         func bucketStart(for date: Date, calendar: Calendar) -> Date {
-            switch self {
-            case .day:
-                calendar.startOfDay(for: date)
-            case .hour:
-                calendar.dateInterval(of: .hour, for: date)?.start ?? date
-            }
+            calendar.dateInterval(of: .hour, for: date)?.start ?? date
         }
     }
 
-    private let store: HKHealthStore
+    private struct SourceCandidate {
+        let source: HKSource
+        let sampleDate: Date
+        let isLocalDevice: Bool
+    }
 
-    init(store: HKHealthStore = HKHealthStore()) {
+    private let store: HKHealthStore
+    private let now: () -> Date
+
+    init(
+        store: HKHealthStore = HKHealthStore(),
+        now: @escaping () -> Date = { .now }
+    ) {
         self.store = store
+        self.now = now
     }
 
     func isHealthDataAvailable() -> Bool {
@@ -62,73 +64,271 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         try await store.requestAuthorization(toShare: [], read: energyTypes)
     }
 
-    func dailyEnergy(
+    func energy(
         from startDate: Date,
         to endDate: Date,
         calendar: Calendar
-    ) async throws -> [DailyEnergyExpenditure] {
-        guard startDate < endDate else { return [] }
+    ) async throws -> EnergyExpenditureSnapshot {
+        let effectiveEndDate = min(endDate, now())
+        guard startDate < effectiveEndDate else {
+            return EnergyExpenditureSnapshot(daily: [], hourly: [])
+        }
         let activeType = HKQuantityType(.activeEnergyBurned)
-        let restingType = HKQuantityType(.basalEnergyBurned)
 
-        async let active = energySums(
+        async let activeByHour = energySums(
             for: activeType,
             from: startDate,
-            to: endDate,
+            to: effectiveEndDate,
             calendar: calendar,
-            interval: .day
+            interval: .hour
         )
-        async let resting = energySums(
-            for: restingType,
+        async let fusedRestingIntervals = fusedRestingEnergy(
+            from: startDate,
+            to: effectiveEndDate,
+            calendar: calendar
+        )
+        let (active, restingIntervals) = try await (
+            activeByHour,
+            fusedRestingIntervals
+        )
+
+        let restingByHour = Dictionary(grouping: restingIntervals) {
+            calendar.dateInterval(of: .hour, for: $0.interval.start)?.start ??
+                $0.interval.start
+        }
+        let restingByDay = Dictionary(grouping: restingIntervals) {
+            calendar.startOfDay(for: $0.interval.start)
+        }
+        let activeByDay = Dictionary(grouping: active.keys) {
+            calendar.startOfDay(for: $0)
+        }
+        .mapValues { hours in
+            hours.compactMap { active[$0] }.reduce(0, +)
+        }
+
+        let allHours = Set(active.keys).union(restingByHour.keys)
+        let hourly = allHours.sorted().map { hour in
+            let resting = RestingEnergyFusionBuilder.aggregate(
+                restingByHour[hour, default: []]
+            )
+            return HourlyEnergyExpenditure(
+                date: hour,
+                activeKilocalories: active[hour],
+                restingKilocalories: resting.kilocalories,
+                restingEnergyCoverage: resting.coverage
+            )
+        }
+
+        let allDays = Set(activeByDay.keys).union(restingByDay.keys)
+        let daily = allDays.sorted().map { day in
+            let resting = RestingEnergyFusionBuilder.aggregate(
+                restingByDay[day, default: []]
+            )
+            return DailyEnergyExpenditure(
+                date: day,
+                activeKilocalories: activeByDay[day],
+                restingKilocalories: resting.kilocalories,
+                restingEnergyCoverage: resting.coverage
+            )
+        }
+
+        return EnergyExpenditureSnapshot(daily: daily, hourly: hourly)
+    }
+
+    private func fusedRestingEnergy(
+        from startDate: Date,
+        to endDate: Date,
+        calendar: Calendar
+    ) async throws -> [FusedRestingEnergyInterval] {
+        let type = HKQuantityType(.basalEnergyBurned)
+        async let primaryCollection = statisticsCollection(
+            for: type,
             from: startDate,
             to: endDate,
             calendar: calendar,
-            interval: .day
+            interval: .hour,
+            options: [.cumulativeSum, .duration]
         )
-        let (activeByDay, restingByDay) = try await (active, resting)
-        let allDays = Set(activeByDay.keys).union(restingByDay.keys)
+        async let sourceCollection = statisticsCollection(
+            for: type,
+            from: startDate,
+            to: endDate,
+            calendar: calendar,
+            interval: .hour,
+            options: [.cumulativeSum, .duration, .separateBySource]
+        )
+        let (primary, separated) = try await (primaryCollection, sourceCollection)
+        let iPhoneSources = await preferredIPhoneSources(
+            in: separated.sources(),
+            type: type,
+            from: startDate,
+            to: endDate
+        )
 
-        return allDays.sorted().map { day in
-            DailyEnergyExpenditure(
-                date: day,
-                activeKilocalories: activeByDay[day],
-                restingKilocalories: restingByDay[day]
+        var values: [FusedRestingEnergyInterval] = []
+        primary.enumerateStatistics(from: startDate, to: endDate) { statistics, _ in
+            let intervalStart = max(statistics.startDate, startDate)
+            let intervalEnd = min(statistics.endDate, endDate)
+            guard intervalStart < intervalEnd else { return }
+
+            let primaryKilocalories = statistics.sumQuantity()?.doubleValue(
+                for: .kilocalorie()
             )
+            let primaryDuration = statistics.duration()?.doubleValue(for: .second()) ?? 0
+            let sourceStatistics = separated.statistics(for: statistics.startDate)
+            let iPhoneValue = self.preferredSourceValue(
+                in: sourceStatistics,
+                sources: iPhoneSources
+            )
+            let rawIPhoneKilocalories = iPhoneValue.kilocalories
+            let rawIPhoneDuration = iPhoneValue.duration
+            let iPhoneIsAlreadyPrimary = self.valuesMatch(
+                primaryKilocalories,
+                rawIPhoneKilocalories
+            ) && abs(primaryDuration - rawIPhoneDuration) <= 1
+
+            values.append(RestingEnergyFusionBuilder.fuse(
+                RestingEnergyIntervalValue(
+                    interval: DateInterval(start: intervalStart, end: intervalEnd),
+                    primaryKilocalories: primaryKilocalories,
+                    primaryDuration: primaryDuration,
+                    iPhoneKilocalories: iPhoneIsAlreadyPrimary ? nil : rawIPhoneKilocalories,
+                    iPhoneDuration: iPhoneIsAlreadyPrimary ? 0 : rawIPhoneDuration
+                )
+            ))
+        }
+        return values
+    }
+
+    private func preferredIPhoneSources(
+        in sources: Set<HKSource>,
+        type: HKQuantityType,
+        from startDate: Date,
+        to endDate: Date
+    ) async -> [HKSource] {
+        let localIdentifier = HKDevice.local().localIdentifier
+        var candidates: [SourceCandidate] = []
+        for source in sources {
+            guard let sample = try? await latestSample(
+                for: source,
+                type: type,
+                from: startDate,
+                to: endDate
+            ),
+            HealthEnergySourceClassifier.isIPhone(
+                productType: sample.sourceRevision.productType,
+                deviceName: sample.device?.name,
+                deviceModel: sample.device?.model,
+                manufacturer: sample.device?.manufacturer
+            ) else {
+                continue
+            }
+            let sampleIdentifier = sample.device?.localIdentifier
+            candidates.append(SourceCandidate(
+                source: source,
+                sampleDate: sample.endDate,
+                isLocalDevice: localIdentifier != nil && sampleIdentifier == localIdentifier
+            ))
+        }
+        return candidates.sorted {
+            if $0.isLocalDevice != $1.isLocalDevice {
+                return $0.isLocalDevice && !$1.isLocalDevice
+            }
+            return $0.sampleDate > $1.sampleDate
+        }
+        .map(\.source)
+    }
+
+    private func preferredSourceValue(
+        in statistics: HKStatistics?,
+        sources: [HKSource]
+    ) -> (kilocalories: Double?, duration: TimeInterval) {
+        guard let statistics else { return (nil, 0) }
+        for source in sources {
+            let kilocalories = statistics.sumQuantity(for: source)?.doubleValue(
+                for: .kilocalorie()
+            )
+            let duration = statistics.duration(for: source)?.doubleValue(
+                for: .second()
+            ) ?? 0
+            if kilocalories != nil || duration > 0 {
+                return (kilocalories, duration)
+            }
+        }
+        return (nil, 0)
+    }
+
+    private func latestSample(
+        for source: HKSource,
+        type: HKQuantityType,
+        from startDate: Date,
+        to endDate: Date
+    ) async throws -> HKQuantitySample? {
+        let datePredicate = HKQuery.predicateForSamples(
+            withStart: startDate,
+            end: endDate,
+            options: []
+        )
+        let sourcePredicate = HKQuery.predicateForObjects(from: source)
+        let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            datePredicate,
+            sourcePredicate,
+        ])
+        let sort = NSSortDescriptor(
+            key: HKSampleSortIdentifierEndDate,
+            ascending: false
+        )
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: type,
+                predicate: predicate,
+                limit: 1,
+                sortDescriptors: [sort]
+            ) { _, samples, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: samples?.first as? HKQuantitySample)
+                }
+            }
+            store.execute(query)
         }
     }
 
-    func hourlyEnergy(
+    private func statisticsCollection(
+        for type: HKQuantityType,
         from startDate: Date,
         to endDate: Date,
-        calendar: Calendar
-    ) async throws -> [HourlyEnergyExpenditure] {
-        guard startDate < endDate else { return [] }
-        let activeType = HKQuantityType(.activeEnergyBurned)
-        let restingType = HKQuantityType(.basalEnergyBurned)
-
-        async let active = energySums(
-            for: activeType,
-            from: startDate,
-            to: endDate,
-            calendar: calendar,
-            interval: .hour
+        calendar: Calendar,
+        interval: StatisticsInterval,
+        options: HKStatisticsOptions
+    ) async throws -> HKStatisticsCollection {
+        let anchor = calendar.startOfDay(for: startDate)
+        let predicate = HKQuery.predicateForSamples(
+            withStart: startDate,
+            end: endDate,
+            options: []
         )
-        async let resting = energySums(
-            for: restingType,
-            from: startDate,
-            to: endDate,
-            calendar: calendar,
-            interval: .hour
-        )
-        let (activeByHour, restingByHour) = try await (active, resting)
-        let allHours = Set(activeByHour.keys).union(restingByHour.keys)
 
-        return allHours.sorted().map { hour in
-            HourlyEnergyExpenditure(
-                date: hour,
-                activeKilocalories: activeByHour[hour],
-                restingKilocalories: restingByHour[hour]
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKStatisticsCollectionQuery(
+                quantityType: type,
+                quantitySamplePredicate: predicate,
+                options: options,
+                anchorDate: anchor,
+                intervalComponents: interval.components
             )
+            query.initialResultsHandler = { _, collection, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let collection {
+                    continuation.resume(returning: collection)
+                } else {
+                    continuation.resume(throwing: HealthEnergyProviderError.missingStatistics)
+                }
+            }
+            store.execute(query)
         }
     }
 
@@ -159,7 +359,7 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         let predicate = HKQuery.predicateForSamples(
             withStart: startDate,
             end: endDate,
-            options: [.strictStartDate]
+            options: []
         )
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -196,6 +396,15 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
             store.execute(query)
         }
     }
+
+    private func valuesMatch(_ lhs: Double?, _ rhs: Double?) -> Bool {
+        guard let lhs, let rhs else { return lhs == nil && rhs == nil }
+        return abs(lhs - rhs) <= max(abs(lhs) * 0.001, 0.001)
+    }
+}
+
+private enum HealthEnergyProviderError: Error {
+    case missingStatistics
 }
 
 @MainActor

@@ -128,8 +128,8 @@ struct HealthMetricsModelTests {
         #expect(provider.queryCount == 2)
     }
 
-    @Test("Hourly Health history stays cached while the current day refreshes")
-    func refreshesCurrentHourlyEnergyAfterHourChange() async {
+    @Test("Daily and hourly Health data refresh atomically after the hour changes")
+    func refreshesCurrentEnergyAfterHourChange() async {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let day = calendar.date(from: DateComponents(
@@ -144,7 +144,7 @@ struct HealthMetricsModelTests {
             restingKilocalories: 65
         )
         let provider = StubHealthEnergyProvider(
-            results: [],
+            results: [[], []],
             hourlyResults: [[], [expenditure]]
         )
         let preferences = StubHealthAccessPreferences(hasRequestedEnergyAccess: true)
@@ -159,27 +159,27 @@ struct HealthMetricsModelTests {
         )
         let currentDayInterval = DateInterval(start: day, end: interval.end)
 
-        await model.loadHourlyEnergy(
+        await model.loadEnergy(
             from: interval.start,
             to: interval.end,
             calendar: calendar
         )
-        await model.loadHourlyEnergy(
+        await model.loadEnergy(
             from: interval.start,
             to: interval.end,
             calendar: calendar
         )
-        #expect(provider.hourlyQueryCount == 1)
+        #expect(provider.queryCount == 1)
 
         now = calendar.date(byAdding: .hour, value: 1, to: now)!
-        await model.loadHourlyEnergy(
+        await model.loadEnergy(
             from: interval.start,
             to: interval.end,
             calendar: calendar
         )
 
-        #expect(provider.hourlyQueryCount == 2)
-        #expect(provider.queriedHourlyIntervals == [interval, currentDayInterval])
+        #expect(provider.queryCount == 2)
+        #expect(provider.queriedIntervals == [interval, currentDayInterval])
         #expect(model.hourlyEnergyExpenditures == [expenditure])
     }
 
@@ -218,9 +218,7 @@ private final class StubHealthEnergyProvider: HealthEnergyProviding {
     private var results: [[DailyEnergyExpenditure]]
     private var hourlyResults: [[HourlyEnergyExpenditure]]
     private(set) var queryCount = 0
-    private(set) var hourlyQueryCount = 0
     private(set) var queriedIntervals: [DateInterval] = []
-    private(set) var queriedHourlyIntervals: [DateInterval] = []
 
     init(
         results: [[DailyEnergyExpenditure]],
@@ -234,24 +232,17 @@ private final class StubHealthEnergyProvider: HealthEnergyProviding {
 
     func requestEnergyAuthorization() async throws {}
 
-    func dailyEnergy(
+    func energy(
         from startDate: Date,
         to endDate: Date,
         calendar: Calendar
-    ) async throws -> [DailyEnergyExpenditure] {
+    ) async throws -> EnergyExpenditureSnapshot {
         queryCount += 1
         queriedIntervals.append(DateInterval(start: startDate, end: endDate))
-        return results.isEmpty ? [] : results.removeFirst()
-    }
-
-    func hourlyEnergy(
-        from startDate: Date,
-        to endDate: Date,
-        calendar: Calendar
-    ) async throws -> [HourlyEnergyExpenditure] {
-        hourlyQueryCount += 1
-        queriedHourlyIntervals.append(DateInterval(start: startDate, end: endDate))
-        return hourlyResults.isEmpty ? [] : hourlyResults.removeFirst()
+        return EnergyExpenditureSnapshot(
+            daily: results.isEmpty ? [] : results.removeFirst(),
+            hourly: hourlyResults.isEmpty ? [] : hourlyResults.removeFirst()
+        )
     }
 
     func earliestAuthorizedEnergyDate() async throws -> Date? { nil }

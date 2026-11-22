@@ -146,13 +146,6 @@ struct NutritionTrendsContainer: View {
                 to: interval.end,
                 calendar: calendar
             )
-            if let forecastInterval {
-                await healthMetrics.loadHourlyEnergy(
-                    from: forecastInterval.start,
-                    to: forecastInterval.end,
-                    calendar: calendar
-                )
-            }
         }
         if healthMetrics.hasRequestedWeightAccess {
             await healthMetrics.loadWeights(from: queryStart, to: interval.end)

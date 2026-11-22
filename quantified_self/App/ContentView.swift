@@ -228,11 +228,6 @@ private struct TodayDashboardContainer: View {
                 to: forecastInterval.end,
                 calendar: calendar
             )
-            await healthMetrics.loadHourlyEnergy(
-                from: forecastInterval.start,
-                to: forecastInterval.end,
-                calendar: calendar
-            )
         }
         if healthMetrics.hasRequestedWeightAccess, let calibrationInterval {
             await healthMetrics.loadWeights(
@@ -299,12 +294,6 @@ private struct TodayDashboardContainer: View {
         let calendar = Calendar.autoupdatingCurrent
         guard let dayInterval = calendar.dateInterval(of: .day, for: .now) else { return }
         await healthMetrics.loadEnergy(
-            from: dayInterval.start,
-            to: dayInterval.end,
-            calendar: calendar,
-            force: true
-        )
-        await healthMetrics.loadHourlyEnergy(
             from: dayInterval.start,
             to: dayInterval.end,
             calendar: calendar,

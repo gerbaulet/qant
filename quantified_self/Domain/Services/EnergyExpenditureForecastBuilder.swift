@@ -39,7 +39,8 @@ enum EnergyExpenditureForecastBuilder {
         calendar: Calendar
     ) -> EnergyExpenditureForecast? {
         guard let currentActive = current?.activeKilocalories,
-              let currentResting = current?.restingKilocalories else {
+              let currentResting = current?.restingKilocalories,
+              current?.restingEnergyCoverage?.isComplete != false else {
             return nil
         }
 
@@ -50,7 +51,8 @@ enum EnergyExpenditureForecastBuilder {
                 let day = calendar.startOfDay(for: expenditure.date)
                 guard day < selectedDay,
                       expenditure.activeKilocalories != nil,
-                      expenditure.restingKilocalories != nil else {
+                      expenditure.restingKilocalories != nil,
+                      expenditure.restingEnergyCoverage?.isComplete != false else {
                     return nil
                 }
                 return (day, expenditure)
@@ -82,6 +84,9 @@ enum EnergyExpenditureForecastBuilder {
             guard let hourly = hourlyByDay[day.date],
                   hourly.contains(where: { $0.activeKilocalories != nil }),
                   hourly.contains(where: { $0.restingKilocalories != nil }),
+                  !hourly.contains(where: {
+                      $0.restingEnergyCoverage?.isComplete == false
+                  }),
                   totalsMatch(
                     actual: hourly.compactMap(\.activeKilocalories).reduce(0, +),
                     expected: day.activeKilocalories

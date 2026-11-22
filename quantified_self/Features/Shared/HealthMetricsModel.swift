@@ -11,12 +11,9 @@ final class HealthMetricsModel {
     private(set) var weightMeasurements: [WeightMeasurement] = []
     private(set) var dataVersion = 0
     private(set) var isLoadingEnergy = false
-    private(set) var isLoadingHourlyEnergy = false
     private(set) var isLoadingWeight = false
     private var loadedEnergyInterval: DateInterval?
     private var lastCurrentDayEnergyLoadDate: Date?
-    private var loadedHourlyEnergyInterval: DateInterval?
-    private var lastCurrentDayHourlyEnergyLoadDate: Date?
     private var loadedWeightInterval: DateInterval?
 
     var hasRequestedEnergyAccess: Bool {
@@ -118,17 +115,18 @@ final class HealthMetricsModel {
         defer { isLoadingEnergy = false }
 
         do {
-            let next = try await energyProvider.dailyEnergy(
+            let next = try await energyProvider.energy(
                 from: queryInterval.start,
                 to: queryInterval.end,
                 calendar: calendar
             )
             let loadDate = now()
             merge(
-                next,
+                next.daily,
                 replacing: queryInterval,
                 calendar: calendar
             )
+            mergeHourlyEnergy(next.hourly, replacing: queryInterval)
             if currentDayIntersection(
                 with: queryInterval,
                 referenceDate: loadDate,
@@ -155,60 +153,6 @@ final class HealthMetricsModel {
             dataVersion += 1
         } catch {
             energyStatus = .failed
-        }
-    }
-
-    func loadHourlyEnergy(
-        from startDate: Date,
-        to endDate: Date,
-        calendar: Calendar,
-        force: Bool = false
-    ) async {
-        guard preferences.hasRequestedEnergyAccess,
-              energyProvider.isHealthDataAvailable(),
-              !isLoadingHourlyEnergy else {
-            return
-        }
-        let requestedInterval = DateInterval(start: startDate, end: endDate)
-        guard let queryInterval = energyQueryInterval(
-            for: requestedInterval,
-            loadedInterval: loadedHourlyEnergyInterval,
-            lastCurrentDayLoadDate: lastCurrentDayHourlyEnergyLoadDate,
-            calendar: calendar,
-            force: force
-        ) else {
-            return
-        }
-
-        isLoadingHourlyEnergy = true
-        defer { isLoadingHourlyEnergy = false }
-
-        do {
-            let next = try await energyProvider.hourlyEnergy(
-                from: queryInterval.start,
-                to: queryInterval.end,
-                calendar: calendar
-            )
-            let loadDate = now()
-            mergeHourlyEnergy(next, replacing: queryInterval)
-            if currentDayIntersection(
-                with: queryInterval,
-                referenceDate: loadDate,
-                calendar: calendar
-            ) != nil {
-                lastCurrentDayHourlyEnergyLoadDate = loadDate
-            }
-            if let loadedHourlyEnergyInterval {
-                self.loadedHourlyEnergyInterval = DateInterval(
-                    start: min(loadedHourlyEnergyInterval.start, queryInterval.start),
-                    end: max(loadedHourlyEnergyInterval.end, queryInterval.end)
-                )
-            } else {
-                loadedHourlyEnergyInterval = queryInterval
-            }
-            dataVersion += 1
-        } catch {
-            return
         }
     }
 

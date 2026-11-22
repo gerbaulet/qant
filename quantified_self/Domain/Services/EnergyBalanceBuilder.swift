@@ -96,6 +96,8 @@ enum EnergyBalanceBuilder {
             completeness = .missingActiveEnergy
         } else if expenditure?.restingKilocalories == nil {
             completeness = .missingRestingEnergy
+        } else if expenditure?.restingEnergyCoverage?.isComplete == false {
+            completeness = .incompleteRestingEnergy
         } else if hasIncompleteMeal || hasProvisionalMeal {
             completeness = .provisionalIntake
         } else {
@@ -107,6 +109,7 @@ enum EnergyBalanceBuilder {
             intakeKilocalories: intake,
             activeKilocalories: expenditure?.activeKilocalories,
             restingKilocalories: expenditure?.restingKilocalories,
+            restingEnergyCoverage: expenditure?.restingEnergyCoverage,
             completeness: completeness,
             isCurrentDay: isCurrentDay
         )
