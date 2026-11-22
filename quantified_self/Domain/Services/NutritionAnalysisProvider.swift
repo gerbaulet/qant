@@ -221,6 +221,8 @@ enum NutritionAnalysisError: Error, LocalizedError, Equatable {
 }
 
 enum NutritionAnalysisValidator {
+    private static let maximumUncertaintySummaryWordCount = 60
+
     private static let requiredNutrients: Set<NutrientIdentifier> = [
         .energy,
         .protein,
@@ -235,6 +237,14 @@ enum NutritionAnalysisValidator {
     static func validate(_ result: NutritionAnalysisResult) throws {
         guard !result.mealName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw NutritionAnalysisError.invalidResult("Der Name der Mahlzeit fehlt.")
+        }
+        if let uncertaintySummary = result.uncertaintySummary {
+            let wordCount = uncertaintySummary.split(whereSeparator: \.isWhitespace).count
+            guard wordCount <= maximumUncertaintySummaryWordCount else {
+                throw NutritionAnalysisError.invalidResult(
+                    "Die Angabe zur Schätzsicherheit umfasst mehr als 60 Wörter."
+                )
+            }
         }
         try validateOptionalNonnegative(result.estimatedTotalWeightGrams, field: "Das Gesamtgewicht")
         try validateNutrients(result.nutrients, requireCoreNutrients: true)

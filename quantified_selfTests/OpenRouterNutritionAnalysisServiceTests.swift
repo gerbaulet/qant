@@ -76,6 +76,8 @@ struct OpenRouterNutritionAnalysisServiceTests {
         let componentProperties = try #require(componentItems["properties"] as? [String: Any])
         let nutrientBasis = try #require(componentProperties["nutrientBasis"] as? [String: Any])
         #expect(nutrientBasis["enum"] as? [String] == ["per100Grams", "consumedAmount"])
+        let systemPrompt = try #require(messages.first?["content"] as? String)
+        #expect(systemPrompt.contains("uncertaintySummary to at most 60 words"))
     }
 
     @Test("Missing credentials fail before a network request")

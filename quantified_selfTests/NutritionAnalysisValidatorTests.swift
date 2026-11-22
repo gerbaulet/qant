@@ -58,6 +58,22 @@ struct NutritionAnalysisValidatorTests {
         }
     }
 
+    @Test("An uncertainty summary with 60 words is accepted")
+    func acceptsUncertaintySummaryAtWordLimit() throws {
+        let summary = Array(repeating: "Wort", count: 60).joined(separator: " ")
+
+        try NutritionAnalysisValidator.validate(Self.validResult(uncertaintySummary: summary))
+    }
+
+    @Test("An uncertainty summary with more than 60 words is rejected")
+    func rejectsUncertaintySummaryAboveWordLimit() {
+        let summary = Array(repeating: "Wort", count: 61).joined(separator: " ")
+
+        #expect(throws: NutritionAnalysisError.self) {
+            try NutritionAnalysisValidator.validate(Self.validResult(uncertaintySummary: summary))
+        }
+    }
+
     static let coreNutrients: [AnalyzedNutrient] = [
         nutrient(.energy, 640, .kilocalorie),
         nutrient(.protein, 34, .gram),
@@ -70,13 +86,14 @@ struct NutritionAnalysisValidatorTests {
     static func validResult(
         nutrients: [AnalyzedNutrient] = coreNutrients,
         components: [AnalyzedFoodComponent]? = nil,
-        clarificationQuestion: String? = nil
+        clarificationQuestion: String? = nil,
+        uncertaintySummary: String? = "Menge des verwendeten Öls"
     ) -> NutritionAnalysisResult {
         NutritionAnalysisResult(
             mealName: "Gemüsecurry mit Reis",
             estimatedTotalWeightGrams: 480,
             confidence: .medium,
-            uncertaintySummary: "Menge des verwendeten Öls",
+            uncertaintySummary: uncertaintySummary,
             clarificationQuestion: clarificationQuestion,
             nutrients: nutrients,
             components: components ?? [AnalyzedFoodComponent(
