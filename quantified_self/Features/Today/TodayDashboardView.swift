@@ -145,7 +145,6 @@ struct TodayDashboardView: View {
                     .accessibilityValue(progressAccessibilityValue)
                 }
 
-                Divider()
                 macroProgressSection
             }
         }
