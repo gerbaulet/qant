@@ -527,6 +527,43 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testShowsAdditionalNutrientsInMealSummaryWithoutDisclosure() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append(contentsOf: [
+            "--ui-testing",
+            "--ui-testing-review-confirmation",
+        ])
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        for _ in 0..<6 where !mealName.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+
+        let sugar = app.descendants(matching: .any)["meal.nutrient.sugar"]
+        let saturatedFat = app.descendants(matching: .any)["meal.nutrient.saturatedFat"]
+        let sodium = app.descendants(matching: .any)["meal.nutrient.sodium"]
+        for _ in 0..<4 where !sugar.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(sugar.waitForExistence(timeout: 2))
+        XCTAssertTrue(saturatedFat.exists)
+        XCTAssertTrue(sodium.exists)
+        XCTAssertFalse(app.buttons["Weitere Nährwerte"].exists)
+
+        let components = app.staticTexts["Bestandteile"]
+        for _ in 0..<4 where !components.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(components.waitForExistence(timeout: 2))
+        XCTAssertLessThan(sugar.frame.minY, components.frame.minY)
+        XCTAssertLessThan(saturatedFat.frame.minY, components.frame.minY)
+        XCTAssertLessThan(sodium.frame.minY, components.frame.minY)
+    }
+
+    @MainActor
     func testShowsNutritionValuesForEachMealComponent() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [

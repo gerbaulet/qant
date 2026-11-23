@@ -22,7 +22,6 @@ struct MealReviewView: View {
     @State private var descriptionText = ""
     @State private var isWorking = false
     @State private var alertMessage: String?
-    @State private var showsMoreNutrients = false
     @State private var showsCorrectionEntry = false
     @State private var showsDeleteConfirmation = false
     @State private var showsTimestampEditor = false
@@ -83,11 +82,6 @@ struct MealReviewView: View {
                         revision: revision,
                         adjustment: portionAdjustment,
                         onCommit: { persistPortionMultiplier(for: revision) }
-                    )
-                    PortionAdditionalNutrientsSection(
-                        revision: revision,
-                        adjustment: portionAdjustment,
-                        isExpanded: $showsMoreNutrients
                     )
                     revisionHistorySection(portionMultipliers: portionMultipliers)
                     revisionFootnote(revision)
@@ -935,6 +929,7 @@ private struct PortionNutritionSummary: View {
 
     var body: some View {
         let multiplier = adjustment.multiplier
+        let displayedAdditionalNutrients = additionalNutrients
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -994,6 +989,22 @@ private struct PortionNutritionSummary: View {
                     macroTile("Ballaststoffe", identifier: .fiber, multiplier: multiplier)
                 }
             }
+
+            if !displayedAdditionalNutrients.isEmpty {
+                Divider()
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), alignment: .leading),
+                        GridItem(.flexible(), alignment: .leading),
+                    ],
+                    alignment: .leading,
+                    spacing: 12
+                ) {
+                    ForEach(displayedAdditionalNutrients) { nutrient in
+                        additionalNutrientTile(nutrient, multiplier: multiplier)
+                    }
+                }
+            }
         }
         .padding(QuantLayout.heroCardPadding)
         .background(
@@ -1019,6 +1030,35 @@ private struct PortionNutritionSummary: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("meal.nutrient.\(identifier.rawValue)")
+    }
+
+    private func additionalNutrientTile(
+        _ nutrient: NutrientValue,
+        multiplier: Double
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(nutrient.knownIdentifier?.reviewTitle ?? nutrient.identifierRawValue)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text("~\(formattedValue(ComponentPortionScaling.nutrient(nutrient, in: revision, multipliers: adjustment.componentMultipliers) * multiplier)) \(nutrient.unitRawValue)")
+                .font(.headline.monospacedDigit())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("meal.nutrient.\(nutrient.identifierRawValue)")
+    }
+
+    private var additionalNutrients: [NutrientValue] {
+        let primary: Set<NutrientIdentifier> = [.energy, .protein, .carbohydrates, .fat, .fiber]
+        return revision.nutrients
+            .filter { nutrient in
+                guard let identifier = nutrient.knownIdentifier else { return true }
+                if identifier == .alcohol && nutrient.value == 0 { return false }
+                return !primary.contains(identifier)
+            }
+            .sorted { $0.identifierRawValue < $1.identifierRawValue }
     }
 
     private func nutrientText(
@@ -1144,47 +1184,6 @@ private struct PortionComponentRow: View {
 
     private func wholeNumber(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0)))
-    }
-
-    private func formattedValue(_ value: Double) -> String {
-        value.formatted(.number.precision(.fractionLength(value < 10 ? 1 : 0)))
-    }
-}
-
-private struct PortionAdditionalNutrientsSection: View {
-    let revision: MealAnalysisRevision
-    let adjustment: PortionAdjustmentDraft
-    @Binding var isExpanded: Bool
-
-    var body: some View {
-        let multiplier = adjustment.multiplier
-        DisclosureGroup("Weitere Nährwerte", isExpanded: $isExpanded) {
-            VStack(spacing: 10) {
-                ForEach(additionalNutrients) { nutrient in
-                    LabeledContent(
-                        nutrient.knownIdentifier?.reviewTitle ?? nutrient.identifierRawValue,
-                        value: "~\(formattedValue(ComponentPortionScaling.nutrient(nutrient, in: revision, multipliers: adjustment.componentMultipliers) * multiplier)) \(nutrient.unitRawValue)"
-                    )
-                }
-            }
-            .padding(.top, 12)
-        }
-        .padding(QuantLayout.cardPadding)
-        .background(
-            .background,
-            in: .rect(cornerRadius: QuantLayout.cardCornerRadius)
-        )
-    }
-
-    private var additionalNutrients: [NutrientValue] {
-        let primary: Set<NutrientIdentifier> = [.energy, .protein, .carbohydrates, .fat, .fiber]
-        return revision.nutrients
-            .filter { nutrient in
-                guard let identifier = nutrient.knownIdentifier else { return true }
-                if identifier == .alcohol && nutrient.value == 0 { return false }
-                return !primary.contains(identifier)
-            }
-            .sorted { $0.identifierRawValue < $1.identifierRawValue }
     }
 
     private func formattedValue(_ value: Double) -> String {
