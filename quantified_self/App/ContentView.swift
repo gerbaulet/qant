@@ -80,6 +80,10 @@ struct ContentView: View {
                 _ = await weeklyReminderScheduler.enable()
             }
         }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await confirmStaleClarificationsWhileActive()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
             presentRequestedQuickCapture()
         }
@@ -107,6 +111,34 @@ struct ContentView: View {
             try? await Task.sleep(for: .milliseconds(800))
             guard activeQuickCaptureRequestID == requestID else { return }
             mealCaptureMode = .camera
+        }
+    }
+
+    private func confirmStaleClarificationsWhileActive() async {
+        while !Task.isCancelled {
+            do {
+                let now = Date.now
+                try MealAnalysisCoordinator.confirmStaleClarifications(
+                    in: modelContext,
+                    now: now
+                )
+                let deadline = try MealAnalysisCoordinator.nextClarificationDeadline(
+                    in: modelContext
+                )
+                let nextDiscovery = now.addingTimeInterval(5 * 60)
+                let nextCheck = min(
+                    deadline?.addingTimeInterval(1) ?? nextDiscovery,
+                    nextDiscovery
+                )
+                try await Task.sleep(
+                    for: .seconds(max(nextCheck.timeIntervalSinceNow, 1))
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                AppLogger.persistence.error("Could not confirm stale clarifications")
+                return
+            }
         }
     }
 

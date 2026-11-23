@@ -6,6 +6,7 @@ import SwiftData
 final class MealAnalysisCoordinator {
     static let maximumClarificationCount = 2
     static let maximumTransientAttemptCount = 5
+    static let clarificationConfirmationInterval: TimeInterval = 48 * 60 * 60
 
     static func finalizeLegacyAwaitingConfirmations(in context: ModelContext) throws {
         let meals = try context.fetch(FetchDescriptor<Meal>())
@@ -18,6 +19,36 @@ final class MealAnalysisCoordinator {
             changed = true
         }
         if changed { try context.save() }
+    }
+
+    static func confirmStaleClarifications(
+        in context: ModelContext,
+        now: Date = .now
+    ) throws {
+        let meals = try context.fetch(FetchDescriptor<Meal>())
+        let cutoff = now.addingTimeInterval(-clarificationConfirmationInterval)
+        var changed = false
+        for meal in meals where meal.analysisState == .needsClarification {
+            guard let revision = meal.activeRevision,
+                  revision.status == .needsClarification,
+                  revision.createdAt < cutoff else { continue }
+            revision.status = .confirmed
+            meal.analysisState = .confirmed
+            meal.modifiedAt = now
+            changed = true
+        }
+        if changed { try context.save() }
+    }
+
+    static func nextClarificationDeadline(in context: ModelContext) throws -> Date? {
+        let meals = try context.fetch(FetchDescriptor<Meal>())
+        return meals.compactMap { meal -> Date? in
+            guard meal.analysisState == .needsClarification,
+                  let revision = meal.activeRevision,
+                  revision.status == .needsClarification else { return nil }
+            return revision.createdAt.addingTimeInterval(clarificationConfirmationInterval)
+        }
+        .min()
     }
 
     private let context: ModelContext

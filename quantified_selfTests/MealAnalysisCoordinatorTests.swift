@@ -746,6 +746,92 @@ struct MealAnalysisCoordinatorTests {
         #expect(revision.status == .confirmed)
     }
 
+    @Test("Clarifications are confirmed only after they have been open for 48 hours")
+    func confirmsStaleClarifications() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let now = Date(timeIntervalSince1970: 2_000_000)
+        let staleRevision = makeRevision(
+            status: .needsClarification,
+            question: "Wie viel Öl wurde verwendet?",
+            createdAt: now.addingTimeInterval(-(48 * 60 * 60) - 1)
+        )
+        let boundaryRevision = makeRevision(
+            status: .needsClarification,
+            question: "Wie viel Reis war es?",
+            createdAt: now.addingTimeInterval(-(48 * 60 * 60))
+        )
+        let recentRevision = makeRevision(
+            status: .needsClarification,
+            question: "Wie groß war die Portion?",
+            createdAt: now.addingTimeInterval(-(48 * 60 * 60) + 1)
+        )
+        let staleMeal = Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: staleRevision.id,
+            analysisRevisions: [staleRevision]
+        )
+        let boundaryMeal = Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: boundaryRevision.id,
+            analysisRevisions: [boundaryRevision]
+        )
+        let recentMeal = Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: recentRevision.id,
+            analysisRevisions: [recentRevision]
+        )
+        context.insert(staleMeal)
+        context.insert(boundaryMeal)
+        context.insert(recentMeal)
+        try context.save()
+
+        try MealAnalysisCoordinator.confirmStaleClarifications(
+            in: context,
+            now: now
+        )
+
+        #expect(staleMeal.analysisState == .confirmed)
+        #expect(staleRevision.status == .confirmed)
+        #expect(staleMeal.modifiedAt == now)
+        #expect(boundaryMeal.analysisState == .needsClarification)
+        #expect(boundaryRevision.status == .needsClarification)
+        #expect(recentMeal.analysisState == .needsClarification)
+        #expect(recentRevision.status == .needsClarification)
+    }
+
+    @Test("The next clarification deadline comes from the oldest open question")
+    func nextClarificationDeadline() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let firstCreatedAt = Date(timeIntervalSince1970: 1_000_000)
+        let firstRevision = makeRevision(
+            status: .needsClarification,
+            question: "Wie viel Öl wurde verwendet?",
+            createdAt: firstCreatedAt
+        )
+        let secondRevision = makeRevision(
+            status: .needsClarification,
+            question: "Wie viel Reis war es?",
+            createdAt: firstCreatedAt.addingTimeInterval(60)
+        )
+        context.insert(Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: firstRevision.id,
+            analysisRevisions: [firstRevision]
+        ))
+        context.insert(Meal(
+            analysisState: .needsClarification,
+            activeRevisionID: secondRevision.id,
+            analysisRevisions: [secondRevision]
+        ))
+        try context.save()
+
+        let deadline = try MealAnalysisCoordinator.nextClarificationDeadline(in: context)
+
+        #expect(deadline == firstCreatedAt.addingTimeInterval(48 * 60 * 60))
+    }
+
     @Test("A clarification answer creates a new revision with prior context")
     func answersClarificationWithRevisionHistory() async throws {
         let container = try makeContainer()
@@ -1273,9 +1359,11 @@ struct MealAnalysisCoordinatorTests {
 
     private func makeRevision(
         status: AnalysisState,
-        question: String? = nil
+        question: String? = nil,
+        createdAt: Date = .now
     ) -> MealAnalysisRevision {
         MealAnalysisRevision(
+            createdAt: createdAt,
             modelIdentifier: "example/vision-model",
             status: status,
             mealName: "Vorherige Schätzung",
