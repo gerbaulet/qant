@@ -417,6 +417,17 @@ struct MealReviewView: View {
                 ? InitialAnalysisRunMetadata.decode(revision.providerMetadata)
                 : []
             if !calls.isEmpty {
+                if let costSummary = AnalysisCostSummaryBuilder.make(for: calls) {
+                    LabeledContent {
+                        Text(formattedCost(costSummary.knownCostUSD))
+                            .monospacedDigit()
+                    } label: {
+                        Text(costSummary.isComplete ? "Gesamtkosten" : "Bekannte Kosten")
+                    }
+                    .font(.caption.bold())
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("meal.analysis.costSummary")
+                }
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(calls) { call in
                         analysisRunRow(
@@ -511,12 +522,12 @@ struct MealReviewView: View {
             LabeledContent("Rückfrage", value: nonempty(clarificationQuestion) ?? "—")
             LabeledContent("Antwort", value: nonempty(clarificationAnswer) ?? "—")
             LabeledContent("Kalorien", value: energyKilocalories.map { "~\(wholeNumber($0)) kcal" } ?? "—")
-            if inputTokens != nil || outputTokens != nil || costUSD != nil {
+            if inputTokens != nil || outputTokens != nil {
                 LabeledContent("Tokens") {
                     Text("Input \(inputTokens?.formatted() ?? "—") · Output \(outputTokens?.formatted() ?? "—")")
                 }
-                LabeledContent("Kosten", value: costUSD.map(formattedCost) ?? "—")
             }
+            LabeledContent("Kosten", value: costUSD.map(formattedCost) ?? "—")
             if let errorMessage = nonempty(errorMessage) {
                 Text("Fehler: \(errorMessage)")
                     .foregroundStyle(.orange)
@@ -540,7 +551,7 @@ struct MealReviewView: View {
     }
 
     private func formattedCost(_ cost: Double) -> String {
-        cost.formatted(.number.precision(.fractionLength(0...6))) + " USD"
+        cost.formatted(.number.precision(.fractionLength(0...8))) + " USD"
     }
 
     private func wholeNumber(_ value: Double) -> String {

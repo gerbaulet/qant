@@ -564,6 +564,48 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testShowsEachAnalysisCallCostAndTheirTotal() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--ui-testing", "--ui-testing-review-costs"]
+        app.launch()
+
+        let mealName = app.staticTexts["Chicken Curry mit Reis"]
+        for _ in 0..<6 where !mealName.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        mealName.tap()
+
+        let analysisHistory = app.buttons["Analyseverlauf"]
+        for _ in 0..<10 where !analysisHistory.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(analysisHistory.waitForExistence(timeout: 2))
+        analysisHistory.tap()
+
+        let costSummary = app.descendants(matching: .any)["meal.analysis.costSummary"]
+        for _ in 0..<5 where !costSummary.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(costSummary.waitForExistence(timeout: 2))
+        XCTAssertTrue(costSummary.label.contains("Gesamtkosten"))
+        XCTAssertTrue(costSummary.label.contains("0,0035 USD"))
+
+        let firstCallCost = app.staticTexts["0,002 USD"]
+        for _ in 0..<5 where !firstCallCost.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(firstCallCost.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Fehler: Nährwerte sind widersprüchlich."].exists)
+
+        let secondCallCost = app.staticTexts["0,0015 USD"]
+        for _ in 0..<5 where !secondCallCost.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(secondCallCost.waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     func testShowsNutritionValuesForEachMealComponent() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [

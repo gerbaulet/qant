@@ -62,6 +62,61 @@ struct AnalysisCallSummary: Codable, Identifiable, Sendable, Equatable {
         self.costUSD = costUSD
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case callNumber
+        case sampleNumber
+        case attemptNumber
+        case status
+        case modelIdentifier
+        case providerIdentifier
+        case energyKilocalories
+        case errorMessage
+        case requestedAt
+        case clarificationQuestion
+        case clarificationAnswer
+        case inputTokens
+        case outputTokens
+        case costUSD
+        case serverCostUSD = "costUsd"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        callNumber = try container.decode(Int.self, forKey: .callNumber)
+        sampleNumber = try container.decodeIfPresent(Int.self, forKey: .sampleNumber)
+        attemptNumber = try container.decode(Int.self, forKey: .attemptNumber)
+        status = try container.decode(AnalysisCallStatus.self, forKey: .status)
+        modelIdentifier = try container.decodeIfPresent(String.self, forKey: .modelIdentifier)
+        providerIdentifier = try container.decodeIfPresent(String.self, forKey: .providerIdentifier)
+        energyKilocalories = try container.decodeIfPresent(Double.self, forKey: .energyKilocalories)
+        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+        requestedAt = try container.decodeIfPresent(Date.self, forKey: .requestedAt)
+        clarificationQuestion = try container.decodeIfPresent(String.self, forKey: .clarificationQuestion)
+        clarificationAnswer = try container.decodeIfPresent(String.self, forKey: .clarificationAnswer)
+        inputTokens = try container.decodeIfPresent(Int.self, forKey: .inputTokens)
+        outputTokens = try container.decodeIfPresent(Int.self, forKey: .outputTokens)
+        costUSD = try container.decodeIfPresent(Double.self, forKey: .costUSD)
+            ?? container.decodeIfPresent(Double.self, forKey: .serverCostUSD)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(callNumber, forKey: .callNumber)
+        try container.encodeIfPresent(sampleNumber, forKey: .sampleNumber)
+        try container.encode(attemptNumber, forKey: .attemptNumber)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(modelIdentifier, forKey: .modelIdentifier)
+        try container.encodeIfPresent(providerIdentifier, forKey: .providerIdentifier)
+        try container.encodeIfPresent(energyKilocalories, forKey: .energyKilocalories)
+        try container.encodeIfPresent(errorMessage, forKey: .errorMessage)
+        try container.encodeIfPresent(requestedAt, forKey: .requestedAt)
+        try container.encodeIfPresent(clarificationQuestion, forKey: .clarificationQuestion)
+        try container.encodeIfPresent(clarificationAnswer, forKey: .clarificationAnswer)
+        try container.encodeIfPresent(inputTokens, forKey: .inputTokens)
+        try container.encodeIfPresent(outputTokens, forKey: .outputTokens)
+        try container.encodeIfPresent(costUSD, forKey: .costUSD)
+    }
+
     var id: Int { callNumber }
 }
 

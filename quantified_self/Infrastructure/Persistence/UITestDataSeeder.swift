@@ -14,8 +14,9 @@ enum UITestDataSeeder {
         let wantsFailure = arguments.contains("--ui-testing-review-failure")
         let wantsProgress = arguments.contains("--ui-testing-review-progress")
         let wantsPhoto = arguments.contains("--ui-testing-review-photo")
+        let wantsCosts = arguments.contains("--ui-testing-review-costs")
         let shouldSeed = wantsConfirmation || wantsConfirmed || wantsClarification || wantsFailure ||
-            wantsProgress || wantsPhoto
+            wantsProgress || wantsPhoto || wantsCosts
         guard shouldSeed else { return }
 
         let status: AnalysisState = wantsConfirmed ? .confirmed : wantsProgress ? .analyzing : wantsFailure
@@ -24,6 +25,34 @@ enum UITestDataSeeder {
         let revision = MealAnalysisRevision(
             modelIdentifier: "example/vision-model",
             providerIdentifier: "Example Provider",
+            providerMetadata: wantsCosts ? InitialAnalysisRunMetadata.encodeCalls([
+                AnalysisCallSummary(
+                    callNumber: 1,
+                    sampleNumber: 1,
+                    attemptNumber: 1,
+                    status: .failed,
+                    modelIdentifier: "example/vision-model",
+                    providerIdentifier: "Example Provider",
+                    energyKilocalories: 810,
+                    errorMessage: "Nährwerte sind widersprüchlich.",
+                    inputTokens: 1_200,
+                    outputTokens: 300,
+                    costUSD: 0.002
+                ),
+                AnalysisCallSummary(
+                    callNumber: 2,
+                    sampleNumber: 1,
+                    attemptNumber: 2,
+                    status: .succeeded,
+                    modelIdentifier: "example/vision-model",
+                    providerIdentifier: "Example Provider",
+                    energyKilocalories: 785,
+                    errorMessage: nil,
+                    inputTokens: 1_250,
+                    outputTokens: 280,
+                    costUSD: 0.0015
+                ),
+            ]) : nil,
             status: status,
             mealName: "Chicken Curry mit Reis",
             estimatedTotalWeightGrams: 440,

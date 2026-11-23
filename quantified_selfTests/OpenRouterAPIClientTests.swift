@@ -293,6 +293,9 @@ struct OpenRouterAPIClientTests {
         #expect(job.result?.policyVersion == 1)
         #expect(job.result?.result?.mealName == "Gemüsecurry mit Reis")
         #expect(job.result?.calls.first?.requestedAt == Date(timeIntervalSince1970: 1_788_115_200))
+        #expect(job.result?.calls.first?.inputTokens == 120)
+        #expect(job.result?.calls.first?.outputTokens == 40)
+        #expect(job.result?.calls.first?.costUSD == 0.002)
         #expect(receivedEvents == [.requestStarted, .responseStarted, .responseCompleted])
         let entries = await trafficLog.snapshot()
         #expect(entries.count == 2)
@@ -370,6 +373,9 @@ struct OpenRouterAPIClientTests {
                     "provider_identifier": "Example",
                     "energy_kilocalories": 640,
                     "requested_at": "2026-08-30T18:40:00Z",
+                    "input_tokens": 120,
+                    "output_tokens": 40,
+                    "cost_usd": 0.002,
                 ]],
                 "prompt_version": 12,
                 "policy_version": 1,
