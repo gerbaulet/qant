@@ -19,6 +19,12 @@ struct RestingEnergyDiagnosticImportedDay: Sendable, Equatable {
     let coveredDuration: TimeInterval?
 }
 
+struct RestingEnergyDiagnosticImportedHour: Sendable, Equatable {
+    let date: Date
+    let kilocalories: Double?
+    let coveredDuration: TimeInterval?
+}
+
 struct RestingEnergyDiagnosticSample: Sendable, Equatable {
     let interval: DateInterval
     let kilocalories: Double
@@ -37,12 +43,21 @@ struct RestingEnergyDiagnosticDay: Identifiable, Sendable, Equatable {
     let sampleCount: Int?
 }
 
+struct RestingEnergyDiagnosticHour: Identifiable, Sendable, Equatable {
+    var id: Date { date }
+
+    let date: Date
+    let kilocalories: Double?
+    let coveredDuration: TimeInterval?
+}
+
 struct RestingEnergyDiagnosticSeries: Identifiable, Sendable, Equatable {
     let id: String
     let title: String
     let details: String?
     let role: RestingEnergyDiagnosticSeriesRole
     let days: [RestingEnergyDiagnosticDay]
+    let hours: [RestingEnergyDiagnosticHour]
 }
 
 struct RestingEnergyDiagnosticsSnapshot: Sendable, Equatable {

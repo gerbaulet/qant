@@ -24,6 +24,13 @@ struct RestingEnergyDiagnosticsBuilderTests {
                     coveredDuration: 24 * 60 * 60
                 ),
             ],
+            importedHours: [
+                RestingEnergyDiagnosticImportedHour(
+                    date: start,
+                    kilocalories: 62,
+                    coveredDuration: 60 * 60
+                ),
+            ],
             samples: [
                 sample(
                     at: iPhoneDate,
@@ -59,14 +66,19 @@ struct RestingEnergyDiagnosticsBuilderTests {
         ])
         #expect(snapshot.series.count == 6)
         #expect(snapshot.series.allSatisfy { $0.days.count == 7 })
+        #expect(snapshot.series.allSatisfy { $0.hours.count == 168 })
 
         let total = try #require(snapshot.series.first { $0.id == "total" })
         #expect(total.days[0].kilocalories == 1_500)
         #expect(total.days[1].kilocalories == nil)
+        #expect(total.hours[0].kilocalories == 62)
+        #expect(total.hours[1].kilocalories == nil)
 
         let iPhone = try #require(snapshot.series.first { $0.id == "category.iphone" })
         #expect(iPhone.days[1].kilocalories == 60)
         #expect(iPhone.days[1].sampleCount == 1)
+        #expect(iPhone.hours[24].kilocalories == 60)
+        #expect(iPhone.hours[25].kilocalories == nil)
 
         let watch = try #require(snapshot.series.first { $0.id == "category.watch" })
         #expect(watch.days[2].kilocalories == 70)
@@ -88,6 +100,7 @@ struct RestingEnergyDiagnosticsBuilderTests {
 
         let snapshot = RestingEnergyDiagnosticsBuilder.makeSnapshot(
             importedDays: [],
+            importedHours: [],
             samples: [],
             from: start,
             to: end,
@@ -101,6 +114,37 @@ struct RestingEnergyDiagnosticsBuilderTests {
         ])
         #expect(snapshot.series.allSatisfy { series in
             series.days.allSatisfy { $0.kilocalories == nil }
+        })
+        #expect(snapshot.series.allSatisfy { series in
+            series.hours.count == 168 &&
+                series.hours.allSatisfy { $0.kilocalories == nil }
+        })
+    }
+
+    @Test("Hourly diagnostics follow calendar hours across daylight saving time")
+    func followsCalendarHoursAcrossDaylightSavingTime() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "Europe/Berlin"))
+        let start = try #require(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 3,
+            day: 23
+        )))
+        let end = try #require(calendar.date(byAdding: .day, value: 7, to: start))
+
+        let snapshot = RestingEnergyDiagnosticsBuilder.makeSnapshot(
+            importedDays: [],
+            importedHours: [],
+            samples: [],
+            from: start,
+            to: end,
+            calendar: calendar
+        )
+
+        #expect(snapshot.series.allSatisfy { $0.days.count == 7 })
+        #expect(snapshot.series.allSatisfy { $0.hours.count == 167 })
+        #expect(snapshot.series.allSatisfy { series in
+            Set(series.hours.map(\.date)).count == series.hours.count
         })
     }
 

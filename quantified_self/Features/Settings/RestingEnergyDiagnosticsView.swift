@@ -10,7 +10,7 @@ struct RestingEnergyDiagnosticsView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
-                Text("Die Gesamtzeile zeigt den tatsächlich von Quant importierten Wert. Watch-Daten haben Vorrang; iPhone-Daten füllen nur Lücken. Die weiteren Zeilen zeigen die gelesenen Rohdaten der letzten sieben Tage.")
+                Text("Die Gesamtzeile zeigt den tatsächlich von Quant importierten Wert. Watch-Daten haben Vorrang; iPhone-Daten füllen nur Lücken. Die Diagramme zeigen die gelesenen Daten der letzten sieben Tage stündlich.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -119,16 +119,17 @@ private struct RestingEnergyDiagnosticSeriesCard: View {
                 }
             }
 
-            Chart(series.days) { day in
+            Chart(series.hours) { hour in
                 BarMark(
-                    x: .value("Tag", day.date, unit: .day),
-                    y: .value("Ruheenergie", day.kilocalories ?? 0)
+                    x: .value("Stunde", hour.date, unit: .hour),
+                    y: .value("Ruheenergie", hour.kilocalories ?? 0)
                 )
-                .foregroundStyle(day.kilocalories == nil ? Color.secondary.opacity(0.15) : tint)
-                .cornerRadius(3)
+                .foregroundStyle(hour.kilocalories == nil ? Color.clear : tint)
             }
+            .chartXScale(domain: chartDomain)
             .chartXAxis {
-                AxisMarks(values: series.days.map(\.date)) { value in
+                AxisMarks(values: .stride(by: .day)) { value in
+                    AxisGridLine()
                     AxisValueLabel {
                         if let date = value.as(Date.self) {
                             Text(date.formatted(
@@ -146,7 +147,7 @@ private struct RestingEnergyDiagnosticSeriesCard: View {
             }
             .frame(height: 128)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Sieben-Tage-Verlauf für \(series.title)")
+            .accessibilityLabel("Stündlicher Sieben-Tage-Verlauf für \(series.title)")
             .accessibilityValue(totalText)
 
             HStack(spacing: 16) {
@@ -211,6 +212,17 @@ private struct RestingEnergyDiagnosticSeriesCard: View {
     private var sampleCount: Int? {
         let counts = series.days.compactMap(\.sampleCount)
         return counts.isEmpty ? nil : counts.reduce(0, +)
+    }
+
+    private var chartDomain: ClosedRange<Date> {
+        let start = series.hours.first?.date ?? .now
+        let last = series.hours.last?.date ?? start
+        let end = Calendar.autoupdatingCurrent.date(
+            byAdding: .hour,
+            value: 1,
+            to: last
+        ) ?? last.addingTimeInterval(3_600)
+        return start...end
     }
 
     private var tint: Color {

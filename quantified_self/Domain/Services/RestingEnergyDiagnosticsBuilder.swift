@@ -3,6 +3,7 @@ import Foundation
 enum RestingEnergyDiagnosticsBuilder {
     static func makeSnapshot(
         importedDays: [RestingEnergyDiagnosticImportedDay],
+        importedHours: [RestingEnergyDiagnosticImportedHour],
         samples: [RestingEnergyDiagnosticSample],
         from startDate: Date,
         to endDate: Date,
@@ -14,8 +15,20 @@ enum RestingEnergyDiagnosticsBuilder {
             to: endDate,
             calendar: calendar
         )
+        let hourStarts = diagnosticHourStarts(
+            from: startDate,
+            to: endDate,
+            calendar: calendar
+        )
         let importedByDay = Dictionary(
             importedDays.map { (calendar.startOfDay(for: $0.date), $0) },
+            uniquingKeysWith: { _, newest in newest }
+        )
+        let importedByHour = Dictionary(
+            importedHours.map {
+                let hour = calendar.dateInterval(of: .hour, for: $0.date)?.start ?? $0.date
+                return (hour, $0)
+            },
             uniquingKeysWith: { _, newest in newest }
         )
 
@@ -32,6 +45,14 @@ enum RestingEnergyDiagnosticsBuilder {
                     coveredDuration: imported?.coveredDuration,
                     sampleCount: nil
                 )
+            },
+            hours: hourStarts.map { hour in
+                let imported = importedByHour[hour]
+                return RestingEnergyDiagnosticHour(
+                    date: hour,
+                    kilocalories: imported?.kilocalories,
+                    coveredDuration: imported?.coveredDuration
+                )
             }
         )
         let iPhone = makeRawSeries(
@@ -42,6 +63,7 @@ enum RestingEnergyDiagnosticsBuilder {
             samples: samples.filter { $0.sourceKind == .iPhone },
             interval: interval,
             dayStarts: dayStarts,
+            hourStarts: hourStarts,
             calendar: calendar
         )
         let watch = makeRawSeries(
@@ -52,6 +74,7 @@ enum RestingEnergyDiagnosticsBuilder {
             samples: samples.filter { $0.sourceKind == .appleWatch },
             interval: interval,
             dayStarts: dayStarts,
+            hourStarts: hourStarts,
             calendar: calendar
         )
         let sources = Dictionary(grouping: samples, by: \.sourceID)
@@ -65,6 +88,7 @@ enum RestingEnergyDiagnosticsBuilder {
                     samples: sourceSamples,
                     interval: interval,
                     dayStarts: dayStarts,
+                    hourStarts: hourStarts,
                     calendar: calendar
                 )
             }
@@ -87,6 +111,7 @@ enum RestingEnergyDiagnosticsBuilder {
         samples: [RestingEnergyDiagnosticSample],
         interval: DateInterval,
         dayStarts: [Date],
+        hourStarts: [Date],
         calendar: Calendar
     ) -> RestingEnergyDiagnosticSeries {
         let buckets = RestingEnergySampleBucketBuilder.makeBuckets(
@@ -124,6 +149,14 @@ enum RestingEnergyDiagnosticsBuilder {
                         samples.filter { sampleContributes($0, to: interval) }.count
                     } ?? 0
                 )
+            },
+            hours: hourStarts.map { hour in
+                let bucket = buckets[hour]
+                return RestingEnergyDiagnosticHour(
+                    date: hour,
+                    kilocalories: bucket?.kilocalories,
+                    coveredDuration: bucket?.coveredDuration
+                )
             }
         )
     }
@@ -149,6 +182,26 @@ enum RestingEnergyDiagnosticsBuilder {
             current = next
         }
         return days
+    }
+
+    private static func diagnosticHourStarts(
+        from startDate: Date,
+        to endDate: Date,
+        calendar: Calendar
+    ) -> [Date] {
+        guard startDate < endDate else { return [] }
+        var current = calendar.dateInterval(of: .hour, for: startDate)?.start ?? startDate
+        var hours: [Date] = []
+
+        while current < endDate {
+            hours.append(current)
+            guard let next = calendar.date(byAdding: .hour, value: 1, to: current),
+                  next > current else {
+                break
+            }
+            current = next
+        }
+        return hours
     }
 
     private static func sampleContributes(

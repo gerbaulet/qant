@@ -148,6 +148,7 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         guard startDate < effectiveEndDate else {
             return RestingEnergyDiagnosticsBuilder.makeSnapshot(
                 importedDays: [],
+                importedHours: [],
                 samples: [],
                 from: startDate,
                 to: effectiveEndDate,
@@ -177,6 +178,13 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         return RestingEnergyDiagnosticsBuilder.makeSnapshot(
             importedDays: imported.daily.map {
                 RestingEnergyDiagnosticImportedDay(
+                    date: $0.date,
+                    kilocalories: $0.restingKilocalories,
+                    coveredDuration: $0.restingEnergyCoverage?.coveredDuration
+                )
+            },
+            importedHours: imported.hourly.map {
+                RestingEnergyDiagnosticImportedHour(
                     date: $0.date,
                     kilocalories: $0.restingKilocalories,
                     coveredDuration: $0.restingEnergyCoverage?.coveredDuration

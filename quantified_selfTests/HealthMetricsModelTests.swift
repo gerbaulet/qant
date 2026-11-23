@@ -252,6 +252,7 @@ private final class StubHealthEnergyProvider: HealthEnergyProviding {
     ) async throws -> RestingEnergyDiagnosticsSnapshot {
         RestingEnergyDiagnosticsBuilder.makeSnapshot(
             importedDays: [],
+            importedHours: [],
             samples: [],
             from: startDate,
             to: endDate,
