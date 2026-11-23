@@ -24,6 +24,14 @@ struct AppleHealthSettingsSection: View {
             .disabled(healthMetrics.isLoadingEnergy)
             .accessibilityIdentifier("settings.healthEnergyAccess")
 
+            NavigationLink {
+                RestingEnergyDiagnosticsView()
+            } label: {
+                Label("Ruheenergie-Diagnose", systemImage: "chart.bar.xaxis")
+            }
+            .disabled(!healthMetrics.hasRequestedEnergyAccess)
+            .accessibilityIdentifier("settings.restingEnergyDiagnostics")
+
             LabeledContent("Gewichtsverlauf") {
                 Label(weightStatusTitle, systemImage: statusSystemImage(healthMetrics.weightStatus))
                     .foregroundStyle(statusColor(healthMetrics.weightStatus))

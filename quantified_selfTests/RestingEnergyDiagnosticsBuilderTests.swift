@@ -1,0 +1,129 @@
+import Foundation
+import Testing
+@testable import Quant
+
+struct RestingEnergyDiagnosticsBuilderTests {
+    @Test("Diagnostics always contain total, iPhone, Watch, and discovered sources")
+    func buildsRequiredSeries() throws {
+        let calendar = utcCalendar
+        let start = try #require(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 11,
+            day: 17
+        )))
+        let end = try #require(calendar.date(byAdding: .day, value: 7, to: start))
+        let iPhoneDate = try #require(calendar.date(byAdding: .day, value: 1, to: start))
+        let watchDate = try #require(calendar.date(byAdding: .day, value: 2, to: start))
+        let otherDate = try #require(calendar.date(byAdding: .day, value: 3, to: start))
+
+        let snapshot = RestingEnergyDiagnosticsBuilder.makeSnapshot(
+            importedDays: [
+                RestingEnergyDiagnosticImportedDay(
+                    date: start,
+                    kilocalories: 1_500,
+                    coveredDuration: 24 * 60 * 60
+                ),
+            ],
+            samples: [
+                sample(
+                    at: iPhoneDate,
+                    kilocalories: 60,
+                    sourceID: "iphone.local",
+                    sourceTitle: "iPhone von Saskia",
+                    kind: .iPhone
+                ),
+                sample(
+                    at: watchDate,
+                    kilocalories: 70,
+                    sourceID: "watch.local",
+                    sourceTitle: "Apple Watch",
+                    kind: .appleWatch
+                ),
+                sample(
+                    at: otherDate,
+                    kilocalories: 55,
+                    sourceID: "other.app",
+                    sourceTitle: "Andere Energie-App",
+                    kind: .other
+                ),
+            ],
+            from: start,
+            to: end,
+            calendar: calendar
+        )
+
+        #expect(snapshot.series.prefix(3).map(\.id) == [
+            "total",
+            "category.iphone",
+            "category.watch",
+        ])
+        #expect(snapshot.series.count == 6)
+        #expect(snapshot.series.allSatisfy { $0.days.count == 7 })
+
+        let total = try #require(snapshot.series.first { $0.id == "total" })
+        #expect(total.days[0].kilocalories == 1_500)
+        #expect(total.days[1].kilocalories == nil)
+
+        let iPhone = try #require(snapshot.series.first { $0.id == "category.iphone" })
+        #expect(iPhone.days[1].kilocalories == 60)
+        #expect(iPhone.days[1].sampleCount == 1)
+
+        let watch = try #require(snapshot.series.first { $0.id == "category.watch" })
+        #expect(watch.days[2].kilocalories == 70)
+
+        let source = try #require(snapshot.series.first { $0.id == "source.other.app" })
+        #expect(source.title == "Andere Energie-App")
+        #expect(source.days[3].kilocalories == 55)
+    }
+
+    @Test("The required source categories remain visible without raw samples")
+    func keepsEmptyRequiredCategories() throws {
+        let calendar = utcCalendar
+        let start = try #require(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 11,
+            day: 17
+        )))
+        let end = try #require(calendar.date(byAdding: .day, value: 7, to: start))
+
+        let snapshot = RestingEnergyDiagnosticsBuilder.makeSnapshot(
+            importedDays: [],
+            samples: [],
+            from: start,
+            to: end,
+            calendar: calendar
+        )
+
+        #expect(snapshot.series.map(\.id) == [
+            "total",
+            "category.iphone",
+            "category.watch",
+        ])
+        #expect(snapshot.series.allSatisfy { series in
+            series.days.allSatisfy { $0.kilocalories == nil }
+        })
+    }
+
+    private func sample(
+        at date: Date,
+        kilocalories: Double,
+        sourceID: String,
+        sourceTitle: String,
+        kind: RestingEnergyDiagnosticSourceKind
+    ) -> RestingEnergyDiagnosticSample {
+        RestingEnergyDiagnosticSample(
+            interval: DateInterval(start: date, duration: 0),
+            kilocalories: kilocalories,
+            sourceID: sourceID,
+            sourceTitle: sourceTitle,
+            sourceDetails: nil,
+            sourceKind: kind
+        )
+    }
+
+    private var utcCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+}

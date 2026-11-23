@@ -39,4 +39,29 @@ enum HealthEnergySourceClassifier {
         let sourceIdentifiesIPhone = normalizedSourceName?.contains("iphone") == true
         return isAppleSource && sourceIdentifiesIPhone
     }
+
+    static func isAppleWatch(
+        productType: String?,
+        deviceName: String?,
+        deviceModel: String?,
+        manufacturer: String?,
+        sourceName: String?,
+        sourceBundleIdentifier: String?
+    ) -> Bool {
+        let normalizedProductType = productType?.lowercased()
+        if normalizedProductType?.hasPrefix("watch") == true {
+            return true
+        }
+
+        let isAppleDevice = manufacturer?.lowercased().contains("apple") == true
+        let identifiesWatch = deviceModel?.lowercased().contains("watch") == true ||
+            deviceName?.lowercased().contains("watch") == true
+        if isAppleDevice && identifiesWatch {
+            return true
+        }
+
+        let isAppleSource = sourceBundleIdentifier?.lowercased().hasPrefix("com.apple.") == true
+        let sourceIdentifiesWatch = sourceName?.lowercased().contains("watch") == true
+        return isAppleSource && sourceIdentifiesWatch
+    }
 }

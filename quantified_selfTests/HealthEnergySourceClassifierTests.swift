@@ -92,4 +92,28 @@ struct HealthEnergySourceClassifierTests {
             isLocalDevice: true
         ))
     }
+
+    @Test("An Apple Watch product type identifies the Watch source")
+    func watchProductType() {
+        #expect(HealthEnergySourceClassifier.isAppleWatch(
+            productType: "Watch8,1",
+            deviceName: nil,
+            deviceModel: nil,
+            manufacturer: nil,
+            sourceName: "Health",
+            sourceBundleIdentifier: "com.apple.Health"
+        ))
+    }
+
+    @Test("A third-party source mentioning Watch is not trusted")
+    func rejectsThirdPartyWatchSource() {
+        #expect(!HealthEnergySourceClassifier.isAppleWatch(
+            productType: nil,
+            deviceName: nil,
+            deviceModel: nil,
+            manufacturer: nil,
+            sourceName: "Watch Importer",
+            sourceBundleIdentifier: "com.example.watch"
+        ))
+    }
 }

@@ -203,6 +203,9 @@ final class QuantUITests: XCTestCase {
         settingsButton.tap()
 
         XCTAssertTrue(app.navigationBars["Einstellungen"].waitForExistence(timeout: 2))
+        XCTAssertTrue(
+            app.buttons["settings.restingEnergyDiagnostics"].waitForExistence(timeout: 2)
+        )
         let reminderButton = app.buttons["settings.createWeeklySummaryTestReminder"]
         for _ in 0..<4 where !reminderButton.isHittable {
             app.swipeUp()

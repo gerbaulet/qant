@@ -15,6 +15,11 @@ protocol HealthEnergyProviding {
         to endDate: Date,
         calendar: Calendar
     ) async throws -> EnergyExpenditureSnapshot
+    func restingEnergyDiagnostics(
+        from startDate: Date,
+        to endDate: Date,
+        calendar: Calendar
+    ) async throws -> RestingEnergyDiagnosticsSnapshot
     func earliestAuthorizedEnergyDate() async throws -> Date?
 }
 
@@ -134,6 +139,56 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         return EnergyExpenditureSnapshot(daily: daily, hourly: hourly)
     }
 
+    func restingEnergyDiagnostics(
+        from startDate: Date,
+        to endDate: Date,
+        calendar: Calendar
+    ) async throws -> RestingEnergyDiagnosticsSnapshot {
+        let effectiveEndDate = min(endDate, now())
+        guard startDate < effectiveEndDate else {
+            return RestingEnergyDiagnosticsBuilder.makeSnapshot(
+                importedDays: [],
+                samples: [],
+                from: startDate,
+                to: effectiveEndDate,
+                calendar: calendar
+            )
+        }
+
+        async let importedSnapshot = energy(
+            from: startDate,
+            to: effectiveEndDate,
+            calendar: calendar
+        )
+        async let rawSamples = quantitySamples(
+            for: HKQuantityType(.basalEnergyBurned),
+            from: startDate,
+            to: effectiveEndDate
+        )
+        let (imported, samples) = try await (importedSnapshot, rawSamples)
+        let localIdentifier = HKDevice.local().localIdentifier
+        let diagnosticSamples = samples.map { sample in
+            restingEnergyDiagnosticSample(
+                from: sample,
+                localIdentifier: localIdentifier
+            )
+        }
+
+        return RestingEnergyDiagnosticsBuilder.makeSnapshot(
+            importedDays: imported.daily.map {
+                RestingEnergyDiagnosticImportedDay(
+                    date: $0.date,
+                    kilocalories: $0.restingKilocalories,
+                    coveredDuration: $0.restingEnergyCoverage?.coveredDuration
+                )
+            },
+            samples: diagnosticSamples,
+            from: startDate,
+            to: effectiveEndDate,
+            calendar: calendar
+        )
+    }
+
     private func fusedRestingEnergy(
         from startDate: Date,
         to endDate: Date,
@@ -249,6 +304,78 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
             from: values,
             within: DateInterval(start: startDate, end: endDate),
             calendar: calendar
+        )
+    }
+
+    private func restingEnergyDiagnosticSample(
+        from sample: HKQuantitySample,
+        localIdentifier: String?
+    ) -> RestingEnergyDiagnosticSample {
+        let source = sample.sourceRevision.source
+        let sampleIdentifier = sample.device?.localIdentifier
+        let isLocalDevice = localIdentifier != nil && sampleIdentifier == localIdentifier
+        let sourceKind: RestingEnergyDiagnosticSourceKind
+        if HealthEnergySourceClassifier.isIPhone(
+            productType: sample.sourceRevision.productType,
+            deviceName: sample.device?.name,
+            deviceModel: sample.device?.model,
+            manufacturer: sample.device?.manufacturer,
+            sourceName: source.name,
+            sourceBundleIdentifier: source.bundleIdentifier,
+            isLocalDevice: isLocalDevice
+        ) {
+            sourceKind = .iPhone
+        } else if HealthEnergySourceClassifier.isAppleWatch(
+            productType: sample.sourceRevision.productType,
+            deviceName: sample.device?.name,
+            deviceModel: sample.device?.model,
+            manufacturer: sample.device?.manufacturer,
+            sourceName: source.name,
+            sourceBundleIdentifier: source.bundleIdentifier
+        ) {
+            sourceKind = .appleWatch
+        } else {
+            sourceKind = .other
+        }
+
+        let sourceTitle: String
+        switch sourceKind {
+        case .iPhone:
+            sourceTitle = sample.device?.name ?? "iPhone"
+        case .appleWatch:
+            sourceTitle = sample.device?.name ?? "Apple Watch"
+        case .other:
+            sourceTitle = sample.device?.name ?? source.name
+        }
+        let detailCandidates: [String?] = [
+            sample.sourceRevision.productType,
+            sample.device?.model,
+            source.bundleIdentifier,
+        ]
+        let sourceDetails = detailCandidates.compactMap { value -> String? in
+            guard let value, !value.isEmpty else { return nil }
+            return value
+        }
+        .reduce(into: [String]()) { values, value in
+            if !values.contains(value) {
+                values.append(value)
+            }
+        }
+        .joined(separator: " · ")
+        let sourceID = [
+            source.bundleIdentifier,
+            sample.sourceRevision.productType ?? "unknown-product",
+            sample.device?.name ?? sample.device?.model ?? "unknown-device",
+        ]
+        .joined(separator: "|")
+
+        return RestingEnergyDiagnosticSample(
+            interval: DateInterval(start: sample.startDate, end: sample.endDate),
+            kilocalories: sample.quantity.doubleValue(for: .kilocalorie()),
+            sourceID: sourceID,
+            sourceTitle: sourceTitle,
+            sourceDetails: sourceDetails.isEmpty ? nil : sourceDetails,
+            sourceKind: sourceKind
         )
     }
 

@@ -175,6 +175,18 @@ final class HealthMetricsModel {
         }
     }
 
+    func restingEnergyDiagnostics(
+        from startDate: Date,
+        to endDate: Date,
+        calendar: Calendar
+    ) async throws -> RestingEnergyDiagnosticsSnapshot {
+        try await energyProvider.restingEnergyDiagnostics(
+            from: startDate,
+            to: endDate,
+            calendar: calendar
+        )
+    }
+
     func requestWeightAccess(from startDate: Date, to endDate: Date) async {
         guard weightProvider.isHealthDataAvailable() else {
             weightStatus = .unavailable

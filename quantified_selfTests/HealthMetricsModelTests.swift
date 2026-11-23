@@ -245,6 +245,20 @@ private final class StubHealthEnergyProvider: HealthEnergyProviding {
         )
     }
 
+    func restingEnergyDiagnostics(
+        from startDate: Date,
+        to endDate: Date,
+        calendar: Calendar
+    ) async throws -> RestingEnergyDiagnosticsSnapshot {
+        RestingEnergyDiagnosticsBuilder.makeSnapshot(
+            importedDays: [],
+            samples: [],
+            from: startDate,
+            to: endDate,
+            calendar: calendar
+        )
+    }
+
     func earliestAuthorizedEnergyDate() async throws -> Date? { nil }
 }
 
