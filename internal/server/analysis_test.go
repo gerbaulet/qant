@@ -29,6 +29,9 @@ func TestAnalysisJobReturnsOneValidatedLabelResultAndDeletesItAfterAcknowledgeme
 		if !bytes.Contains(body, []byte("nutrition_analysis_v12")) || !bytes.Contains(body, []byte("Locally recognized packaging text")) {
 			t.Errorf("request does not contain the server-owned prompt and schema: %s", body)
 		}
+		if !bytes.Contains(body, []byte(`"usage":{"include":true}`)) {
+			t.Errorf("request does not explicitly include usage accounting: %s", body)
+		}
 		writeOpenRouterAnalysisResponse(t, w, validAnalysisPayload(640))
 	}))
 	defer upstream.Close()
@@ -50,6 +53,9 @@ func TestAnalysisJobReturnsOneValidatedLabelResultAndDeletesItAfterAcknowledgeme
 	}
 	if len(job.Result.Calls) != 1 || job.Result.Calls[0].Status != "succeeded" {
 		t.Fatalf("unexpected call history: %#v", job.Result.Calls)
+	}
+	if cost := job.Result.Calls[0].CostUSD; cost == nil || *cost != 0.002 {
+		t.Fatalf("missing request cost: %#v", job.Result.Calls[0])
 	}
 	if job.Result.PromptVersion != analysisPromptVersion || job.Result.PolicyVersion != analysisPolicyVersion {
 		t.Fatalf("missing policy versions: %#v", job.Result)
@@ -122,8 +128,60 @@ func TestAnalysisJobRepairsOneInvalidResponseOnTheServer(t *testing.T) {
 	if job.Result.Calls[0].Status != "failed" || job.Result.Calls[0].ErrorMessage == nil || job.Result.Calls[1].Status != "succeeded" {
 		t.Fatalf("unexpected correction history: %#v", job.Result.Calls)
 	}
+	for _, call := range job.Result.Calls {
+		if call.CostUSD == nil || *call.CostUSD != 0.002 {
+			t.Fatalf("missing cost for corrected call history: %#v", job.Result.Calls)
+		}
+	}
 	if !bytes.Contains(secondBody, []byte("failed local validation")) || !bytes.Contains(secondBody, []byte("Kalorien und Makronährstoffe")) {
 		t.Fatalf("repair prompt does not contain concrete validation feedback: %s", secondBody)
+	}
+}
+
+func TestAnalysisJobPreservesUsageForUnreadableResponse(t *testing.T) {
+	t.Parallel()
+	var calls int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"choices":  []any{map[string]any{"message": map[string]any{"content": "not-json"}}},
+				"model":    "resolved/vision-model",
+				"provider": "Example Provider",
+				"usage": map[string]any{
+					"prompt_tokens":     90,
+					"completion_tokens": 10,
+					"cost":              0.003,
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		writeOpenRouterAnalysisResponse(t, w, validAnalysisPayload(600))
+	}))
+	defer upstream.Close()
+
+	application := newTestServer(t, t.TempDir(), upstream.URL)
+	api := httptest.NewServer(application.Handler())
+	defer api.Close()
+
+	request := validAnalysisRequest()
+	request.RecognizedLabelText = []string{"Nährwerte Energie 100 kcal pro 100 g"}
+	job := createAnalysisJob(t, api.URL, "alice@example.com", "key", "unreadable-request", request)
+	job = waitForTerminalAnalysisJob(t, api.URL, "alice@example.com", job.ID)
+	if job.Status != JobSucceeded || job.Result == nil || len(job.Result.Calls) != 2 {
+		t.Fatalf("expected repaired analysis with two calls, got %#v", job)
+	}
+	first := job.Result.Calls[0]
+	if first.Status != "failed" || first.CostUSD == nil || *first.CostUSD != 0.003 {
+		t.Fatalf("unreadable response lost its request cost: %#v", first)
+	}
+	if first.InputTokens == nil || *first.InputTokens != 90 || first.OutputTokens == nil || *first.OutputTokens != 10 {
+		t.Fatalf("unreadable response lost its token usage: %#v", first)
+	}
+	if first.ModelIdentifier == nil || *first.ModelIdentifier != "resolved/vision-model" || first.ProviderIdentifier == nil || *first.ProviderIdentifier != "Example Provider" {
+		t.Fatalf("unreadable response lost its routing metadata: %#v", first)
 	}
 }
 

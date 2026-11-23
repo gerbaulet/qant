@@ -31,6 +31,12 @@ type upstreamAnalysisError struct {
 
 func (e upstreamAnalysisError) Error() string { return e.message }
 
+type analysisCallTelemetry struct {
+	ModelIdentifier    *string
+	ProviderIdentifier *string
+	RequestMetrics     analysisRequestMetrics
+}
+
 type analysisCallRecorder struct {
 	mu                    sync.Mutex
 	nextCallNumber        int
@@ -152,12 +158,12 @@ func (s *Server) requestValidAnalysis(ctx context.Context, apiKey string, origin
 	for {
 		attempt++
 		callNumber, requestedAt := recorder.start()
-		candidate, err := s.performAnalysisCall(ctx, apiKey, next, requestedAt)
+		candidate, telemetry, err := s.performAnalysisCall(ctx, apiKey, next, requestedAt)
 		if err == nil {
-			recorder.record(makeAnalysisCallSummary(callNumber, sampleNumber, attempt, "succeeded", &candidate, nil, requestedAt, recorder))
+			recorder.record(makeAnalysisCallSummary(callNumber, sampleNumber, attempt, "succeeded", &candidate, telemetry, nil, recorder))
 			return candidate, nil
 		}
-		recorder.record(makeAnalysisCallSummary(callNumber, sampleNumber, attempt, "failed", candidateOrNil(candidate), err, requestedAt, recorder))
+		recorder.record(makeAnalysisCallSummary(callNumber, sampleNumber, attempt, "failed", candidateOrNil(candidate), telemetry, err, recorder))
 		if isCorrectableAnalysisError(err) {
 			if usedCorrection {
 				return nutritionAnalysisResult{}, err
@@ -180,29 +186,48 @@ func (s *Server) requestValidAnalysis(ctx context.Context, apiKey string, origin
 	}
 }
 
-func (s *Server) performAnalysisCall(ctx context.Context, apiKey string, request analysisRequest, requestedAt time.Time) (nutritionAnalysisResult, error) {
+func (s *Server) performAnalysisCall(ctx context.Context, apiKey string, request analysisRequest, requestedAt time.Time) (nutritionAnalysisResult, analysisCallTelemetry, error) {
+	requestedModel := request.ModelIdentifier
+	telemetry := analysisCallTelemetry{
+		ModelIdentifier: &requestedModel,
+		RequestMetrics: analysisRequestMetrics{
+			RequestedAt: requestedAt,
+		},
+	}
 	body, err := makeOpenRouterAnalysisBody(request)
 	if err != nil {
-		return nutritionAnalysisResult{}, malformedAnalysisError{}
+		return nutritionAnalysisResult{}, telemetry, malformedAnalysisError{}
 	}
 	responseBody, err := s.sendAnalysisChatCompletion(ctx, apiKey, body)
 	clear(body)
 	if err != nil {
-		return nutritionAnalysisResult{}, err
+		return nutritionAnalysisResult{}, telemetry, err
 	}
 	defer clear(responseBody)
 	var response openRouterChatResponse
-	if err := json.Unmarshal(responseBody, &response); err != nil || len(response.Choices) == 0 || response.Choices[0].Message.Content == "" {
-		return nutritionAnalysisResult{}, malformedAnalysisError{}
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nutritionAnalysisResult{}, telemetry, malformedAnalysisError{}
+	}
+	if response.Model != nil {
+		telemetry.ModelIdentifier = response.Model
+	}
+	telemetry.ProviderIdentifier = response.Provider
+	if response.Usage != nil {
+		telemetry.RequestMetrics.InputTokens = response.Usage.PromptTokens
+		telemetry.RequestMetrics.OutputTokens = response.Usage.CompletionTokens
+		telemetry.RequestMetrics.CostUSD = response.Usage.Cost
+	}
+	if len(response.Choices) == 0 || response.Choices[0].Message.Content == "" {
+		return nutritionAnalysisResult{}, telemetry, malformedAnalysisError{}
 	}
 	contentBody := []byte(response.Choices[0].Message.Content)
 	defer clear(contentBody)
 	var payload nutritionAnalysisPayload
 	if err := json.Unmarshal(contentBody, &payload); err != nil || !hasRequiredNutrientValues(contentBody) || !hasValidAnalysisEnums(payload) {
-		return nutritionAnalysisResult{}, malformedAnalysisError{}
+		return nutritionAnalysisResult{}, telemetry, malformedAnalysisError{}
 	}
 	if !request.AllowsClarification && payload.ClarificationQuestion != nil && strings.TrimSpace(*payload.ClarificationQuestion) != "" {
-		return nutritionAnalysisResult{}, malformedAnalysisError{}
+		return nutritionAnalysisResult{}, telemetry, malformedAnalysisError{}
 	}
 	result := normalizeAnalysis(nutritionAnalysisResult{
 		MealName:                  payload.MealName,
@@ -212,40 +237,30 @@ func (s *Server) performAnalysisCall(ctx context.Context, apiKey string, request
 		ClarificationQuestion:     payload.ClarificationQuestion,
 		Nutrients:                 payload.Nutrients,
 		Components:                payload.Components,
-		ModelIdentifier:           request.ModelIdentifier,
-		ProviderIdentifier:        response.Provider,
-		RequestMetrics: &analysisRequestMetrics{
-			RequestedAt: requestedAt,
-		},
+		ModelIdentifier:           *telemetry.ModelIdentifier,
+		ProviderIdentifier:        telemetry.ProviderIdentifier,
+		RequestMetrics:            &telemetry.RequestMetrics,
 	})
-	if response.Model != nil {
-		result.ModelIdentifier = *response.Model
-	}
-	if response.Usage != nil {
-		result.RequestMetrics.InputTokens = response.Usage.PromptTokens
-		result.RequestMetrics.OutputTokens = response.Usage.CompletionTokens
-		result.RequestMetrics.CostUSD = response.Usage.Cost
-	}
 	if err := validateAnalysis(result); err != nil {
-		return result, err
+		return result, telemetry, err
 	}
 	consumed := scalingComponentsToConsumedAmounts(result)
 	if err := validateConsistency(consumed); err != nil {
-		return result, err
+		return result, telemetry, err
 	}
 	result = calculateTotals(consumed)
 	if err := validateAnalysis(result); err != nil {
-		return result, err
+		return result, telemetry, err
 	}
 	if err := validateConsistency(result); err != nil {
-		return result, err
+		return result, telemetry, err
 	}
 	if request.Trigger == "clarification" {
 		if err := validateDrift(request.PreviousAnalysis, result); err != nil {
-			return result, err
+			return result, telemetry, err
 		}
 	}
-	return result, nil
+	return result, telemetry, nil
 }
 
 func (s *Server) sendAnalysisChatCompletion(ctx context.Context, apiKey string, body []byte) ([]byte, error) {
@@ -295,15 +310,20 @@ func (s *Server) sendAnalysisChatCompletion(ctx context.Context, apiKey string, 
 	return responseBody, nil
 }
 
-func makeAnalysisCallSummary(callNumber int, sampleNumber *int, attempt int, status string, result *nutritionAnalysisResult, callError error, requestedAt time.Time, recorder *analysisCallRecorder) analysisCallSummary {
+func makeAnalysisCallSummary(callNumber int, sampleNumber *int, attempt int, status string, result *nutritionAnalysisResult, telemetry analysisCallTelemetry, callError error, recorder *analysisCallRecorder) analysisCallSummary {
 	summary := analysisCallSummary{
 		CallNumber:            callNumber,
 		SampleNumber:          sampleNumber,
 		AttemptNumber:         attempt,
 		Status:                status,
-		RequestedAt:           requestedAt,
+		ModelIdentifier:       telemetry.ModelIdentifier,
+		ProviderIdentifier:    telemetry.ProviderIdentifier,
+		RequestedAt:           telemetry.RequestMetrics.RequestedAt,
 		ClarificationQuestion: recorder.clarificationQuestion,
 		ClarificationAnswer:   recorder.clarificationAnswer,
+		InputTokens:           telemetry.RequestMetrics.InputTokens,
+		OutputTokens:          telemetry.RequestMetrics.OutputTokens,
+		CostUSD:               telemetry.RequestMetrics.CostUSD,
 	}
 	if result != nil {
 		summary.ModelIdentifier = &result.ModelIdentifier
@@ -313,12 +333,6 @@ func makeAnalysisCallSummary(callNumber int, sampleNumber *int, attempt int, sta
 		}
 		if result.ClarificationQuestion != nil {
 			summary.ClarificationQuestion = result.ClarificationQuestion
-		}
-		if result.RequestMetrics != nil {
-			summary.RequestedAt = result.RequestMetrics.RequestedAt
-			summary.InputTokens = result.RequestMetrics.InputTokens
-			summary.OutputTokens = result.RequestMetrics.OutputTokens
-			summary.CostUSD = result.RequestMetrics.CostUSD
 		}
 	}
 	if callError != nil {

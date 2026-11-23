@@ -29,6 +29,7 @@ func makeOpenRouterAnalysisBody(request analysisRequest) ([]byte, error) {
 		"max_completion_tokens": 16_384,
 		"temperature":           0,
 		"stream":                false,
+		"usage":                 map[string]any{"include": true},
 		"provider":              provider,
 		"messages": []any{
 			map[string]any{
