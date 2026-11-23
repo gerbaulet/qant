@@ -21,6 +21,42 @@ struct RestingEnergyFusionBuilderTests {
         #expect(fused.coverage.isComplete)
     }
 
+    @Test("Complete Watch coverage is never replaced or duplicated by iPhone energy")
+    func watchCoverageHasPriority() {
+        let interval = DateInterval(start: .now, duration: 3_600)
+
+        let fused = RestingEnergyFusionBuilder.fuse(RestingEnergyIntervalValue(
+            interval: interval,
+            primaryKilocalories: 70,
+            primaryDuration: 3_600,
+            iPhoneKilocalories: 72,
+            iPhoneDuration: 3_600
+        ))
+
+        #expect(fused.kilocalories == 70)
+        #expect(fused.coverage.primaryDuration == 3_600)
+        #expect(fused.coverage.iPhoneFallbackDuration == 0)
+    }
+
+    @Test("An hourly Watch point keeps priority over the iPhone fallback")
+    func watchPointCoverageHasPriority() {
+        let interval = DateInterval(start: .now, duration: 3_600)
+
+        let fused = RestingEnergyFusionBuilder.fuse(RestingEnergyIntervalValue(
+            interval: interval,
+            primaryKilocalories: 70,
+            primaryDuration: 0,
+            iPhoneKilocalories: 72,
+            iPhoneDuration: 3_600,
+            inferredPrimaryPointCoverageDuration: 3_600
+        ))
+
+        #expect(fused.kilocalories == 70)
+        #expect(fused.coverage.primaryDuration == 3_600)
+        #expect(fused.coverage.iPhoneFallbackDuration == 0)
+        #expect(fused.coverage.isComplete)
+    }
+
     @Test("The iPhone fills only the duration missing from the primary value")
     func fillsPartialGapWithoutDoubleCounting() throws {
         let interval = DateInterval(start: .now, duration: 300)

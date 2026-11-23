@@ -39,12 +39,6 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         }
     }
 
-    private struct SourceCandidate {
-        let source: HKSource
-        let sampleDate: Date
-        let isLocalDevice: Bool
-    }
-
     private let store: HKHealthStore
     private let now: () -> Date
 
@@ -155,21 +149,12 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
             interval: .hour,
             options: [.cumulativeSum, .duration]
         )
-        async let sourceCollection = statisticsCollection(
-            for: type,
+        async let iPhoneBuckets = iPhoneRestingEnergyBuckets(
             from: startDate,
             to: endDate,
-            calendar: calendar,
-            interval: .hour,
-            options: [.cumulativeSum, .duration, .separateBySource]
+            calendar: calendar
         )
-        let (primary, separated) = try await (primaryCollection, sourceCollection)
-        let iPhoneSources = await preferredIPhoneSources(
-            in: separated.sources(),
-            type: type,
-            from: startDate,
-            to: endDate
-        )
+        let (primary, iPhoneByHour) = try await (primaryCollection, iPhoneBuckets)
 
         var values: [FusedRestingEnergyInterval] = []
         primary.enumerateStatistics(from: startDate, to: endDate) { statistics, _ in
@@ -186,18 +171,22 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                 for: .kilocalorie()
             )
             let primaryDuration = statistics.duration()?.doubleValue(for: .second()) ?? 0
-            let sourceStatistics = separated.statistics(for: statistics.startDate)
-            let iPhoneValue = self.preferredSourceValue(
-                in: sourceStatistics,
-                sources: iPhoneSources
-            )
-            let rawIPhoneKilocalories = iPhoneValue.kilocalories
-            let rawIPhoneDuration = iPhoneValue.duration
+            let bucketStart = calendar.dateInterval(
+                of: .hour,
+                for: statistics.startDate
+            )?.start ?? statistics.startDate
+            let iPhoneValue = iPhoneByHour[bucketStart]
+            let rawIPhoneKilocalories = iPhoneValue?.kilocalories
+            let rawIPhoneDuration = iPhoneValue?.coveredDuration ?? 0
             let iPhoneIsAlreadyPrimary = self.valuesMatch(
                 primaryKilocalories,
                 rawIPhoneKilocalories
-            ) && abs(primaryDuration - rawIPhoneDuration) <= 1
+            )
             let bucketDuration = intervalEnd.timeIntervalSince(intervalStart)
+            let inferredPrimaryPointCoverageDuration = primaryKilocalories != nil &&
+                primaryDuration <= 1
+                ? bucketDuration
+                : 0
 
             values.append(RestingEnergyFusionBuilder.fuse(
                 RestingEnergyIntervalValue(
@@ -207,12 +196,8 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                     iPhoneKilocalories: iPhoneIsAlreadyPrimary ? nil : rawIPhoneKilocalories,
                     iPhoneDuration: iPhoneIsAlreadyPrimary ? 0 : rawIPhoneDuration,
                     pendingDuration: pendingDuration,
-                    inferredPrimaryPointCoverageDuration: iPhoneIsAlreadyPrimary
-                        ? bucketDuration
-                        : 0,
-                    inferredIPhonePointCoverageDuration: rawIPhoneKilocalories == nil
-                        ? 0
-                        : bucketDuration
+                    inferredPrimaryPointCoverageDuration: inferredPrimaryPointCoverageDuration,
+                    inferredIPhonePointCoverageDuration: 0
                 )
             ))
         }
@@ -230,98 +215,67 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         return max(overlapEnd.timeIntervalSince(overlapStart), 0)
     }
 
-    private func preferredIPhoneSources(
-        in sources: Set<HKSource>,
-        type: HKQuantityType,
+    private func iPhoneRestingEnergyBuckets(
         from startDate: Date,
-        to endDate: Date
-    ) async -> [HKSource] {
+        to endDate: Date,
+        calendar: Calendar
+    ) async throws -> [Date: RestingEnergySampleBucket] {
+        let type = HKQuantityType(.basalEnergyBurned)
+        let samples = try await quantitySamples(
+            for: type,
+            from: startDate,
+            to: endDate
+        )
         let localIdentifier = HKDevice.local().localIdentifier
-        var candidates: [SourceCandidate] = []
-        for source in sources {
-            guard let sample = try? await latestSample(
-                for: source,
-                type: type,
-                from: startDate,
-                to: endDate
-            ),
-            HealthEnergySourceClassifier.isIPhone(
+        let values = samples.compactMap { sample -> RestingEnergySampleValue? in
+            let sampleIdentifier = sample.device?.localIdentifier
+            guard HealthEnergySourceClassifier.isIPhone(
                 productType: sample.sourceRevision.productType,
                 deviceName: sample.device?.name,
                 deviceModel: sample.device?.model,
                 manufacturer: sample.device?.manufacturer,
-                sourceName: source.name,
-                sourceBundleIdentifier: source.bundleIdentifier
-            ) else {
-                continue
-            }
-            let sampleIdentifier = sample.device?.localIdentifier
-            candidates.append(SourceCandidate(
-                source: source,
-                sampleDate: sample.endDate,
+                sourceName: sample.sourceRevision.source.name,
+                sourceBundleIdentifier: sample.sourceRevision.source.bundleIdentifier,
                 isLocalDevice: localIdentifier != nil && sampleIdentifier == localIdentifier
-            ))
-        }
-        return candidates.sorted {
-            if $0.isLocalDevice != $1.isLocalDevice {
-                return $0.isLocalDevice && !$1.isLocalDevice
+            ) else {
+                return nil
             }
-            return $0.sampleDate > $1.sampleDate
-        }
-        .map(\.source)
-    }
-
-    private func preferredSourceValue(
-        in statistics: HKStatistics?,
-        sources: [HKSource]
-    ) -> (kilocalories: Double?, duration: TimeInterval) {
-        guard let statistics else { return (nil, 0) }
-        for source in sources {
-            let kilocalories = statistics.sumQuantity(for: source)?.doubleValue(
-                for: .kilocalorie()
+            return RestingEnergySampleValue(
+                interval: DateInterval(start: sample.startDate, end: sample.endDate),
+                kilocalories: sample.quantity.doubleValue(for: .kilocalorie())
             )
-            let duration = statistics.duration(for: source)?.doubleValue(
-                for: .second()
-            ) ?? 0
-            if kilocalories != nil || duration > 0 {
-                return (kilocalories, duration)
-            }
         }
-        return (nil, 0)
+        return RestingEnergySampleBucketBuilder.makeBuckets(
+            from: values,
+            within: DateInterval(start: startDate, end: endDate),
+            calendar: calendar
+        )
     }
 
-    private func latestSample(
-        for source: HKSource,
-        type: HKQuantityType,
+    private func quantitySamples(
+        for type: HKQuantityType,
         from startDate: Date,
         to endDate: Date
-    ) async throws -> HKQuantitySample? {
-        let datePredicate = HKQuery.predicateForSamples(
+    ) async throws -> [HKQuantitySample] {
+        let predicate = HKQuery.predicateForSamples(
             withStart: startDate,
             end: endDate,
             options: []
-        )
-        let sourcePredicate = HKQuery.predicateForObjects(from: source)
-        let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            datePredicate,
-            sourcePredicate,
-        ])
-        let sort = NSSortDescriptor(
-            key: HKSampleSortIdentifierEndDate,
-            ascending: false
         )
 
         return try await withCheckedThrowingContinuation { continuation in
             let query = HKSampleQuery(
                 sampleType: type,
                 predicate: predicate,
-                limit: 1,
-                sortDescriptors: [sort]
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
             ) { _, samples, error in
                 if let error {
                     continuation.resume(throwing: error)
                 } else {
-                    continuation.resume(returning: samples?.first as? HKQuantitySample)
+                    continuation.resume(returning: samples?.compactMap {
+                        $0 as? HKQuantitySample
+                    } ?? [])
                 }
             }
             store.execute(query)

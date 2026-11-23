@@ -22,6 +22,32 @@ struct HealthEnergySourceClassifierTests {
         ))
     }
 
+    @Test("The local iPhone is recognized without descriptive metadata")
+    func localDevice() {
+        #expect(HealthEnergySourceClassifier.isIPhone(
+            productType: nil,
+            deviceName: nil,
+            deviceModel: nil,
+            manufacturer: nil,
+            sourceName: "Health",
+            sourceBundleIdentifier: "com.apple.Health",
+            isLocalDevice: true
+        ))
+    }
+
+    @Test("A third-party app on the local iPhone is not treated as the phone source")
+    func rejectsLocalThirdPartySource() {
+        #expect(!HealthEnergySourceClassifier.isIPhone(
+            productType: nil,
+            deviceName: nil,
+            deviceModel: nil,
+            manufacturer: nil,
+            sourceName: "Energy Importer",
+            sourceBundleIdentifier: "com.example.energy",
+            isLocalDevice: true
+        ))
+    }
+
     @Test("Apple Health source metadata can identify an iPhone without device metadata")
     func appleSourceMetadata() {
         #expect(HealthEnergySourceClassifier.isIPhone(
@@ -62,7 +88,8 @@ struct HealthEnergySourceClassifierTests {
             productType: "Watch8,1",
             deviceName: "Apple Watch",
             deviceModel: "Watch",
-            manufacturer: "Apple Inc."
+            manufacturer: "Apple Inc.",
+            isLocalDevice: true
         ))
     }
 }
