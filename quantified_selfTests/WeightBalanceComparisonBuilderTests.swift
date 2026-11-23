@@ -115,6 +115,58 @@ struct WeightBalanceComparisonBuilderTests {
         #expect(abs(expected - (-2.8 * factor)) < 0.001)
     }
 
+    @Test("Personal calibration ignores weights before the first complete balance day")
+    func calibrationStartsWithFirstCompleteBalanceDay() {
+        let now = date(2026, 11, 11)
+        let weightsBeforeBalanceHistory = (-120 ... -61).map { offset in
+            WeightMeasurement(
+                date: day(offset, from: now),
+                kilograms: 100
+            )
+        }
+        let overlappingWeights = (-60 ... -1).map { offset in
+            WeightMeasurement(
+                date: day(offset, from: now),
+                kilograms: 80 + Double(offset + 60) * -0.1
+            )
+        }
+        let firstProvisionalBalance = DailyEnergyBalance(
+            date: day(-80, from: now),
+            intakeKilocalories: 1_230,
+            activeKilocalories: 400,
+            restingKilocalories: 1_600,
+            completeness: .provisionalIntake,
+            isCurrentDay: false
+        )
+        let completeBalances = balances(
+            from: -60,
+            count: 60,
+            relativeTo: now,
+            dailyBalance: -770
+        )
+
+        let comparison = WeightBalanceComparisonBuilder.makeComparison(
+            measurements: weightsBeforeBalanceHistory + overlappingWeights,
+            balances: [firstProvisionalBalance] + completeBalances,
+            comparisonStart: day(-28, from: now),
+            now: now,
+            calendar: calendar,
+            calibrationEnabled: true
+        )
+
+        guard case let .ready(
+            factor,
+            dailyBalanceAdjustmentKilocalories,
+            uncappedDailyBalanceAdjustmentKilocalories
+        ) = comparison.calibrationStatus else {
+            Issue.record("Expected a ready personal calibration")
+            return
+        }
+        #expect(abs(factor - 1) < 0.001)
+        #expect(abs(dailyBalanceAdjustmentKilocalories) < 0.001)
+        #expect(abs(uncappedDailyBalanceAdjustmentKilocalories) < 0.001)
+    }
+
     @Test("Calibration stays in collection mode below the strict history thresholds")
     func calibrationCollectsHistory() {
         let now = date(2026, 11, 11)

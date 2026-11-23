@@ -181,9 +181,20 @@ enum WeightBalanceComparisonBuilder {
         enabled: Bool
     ) -> PersonalCalibrationStatus {
         guard enabled else { return .disabled }
+        let firstCompleteBalanceDate = balances
+            .filter {
+                $0.date >= interval.start &&
+                    $0.date < interval.end &&
+                    $0.completeness == .complete
+            }
+            .map(\.date)
+            .min()
         let trainingWeights = dailyMedians(
             measurements.filter {
-                $0.date >= interval.start && $0.date < interval.end
+                guard let firstCompleteBalanceDate else { return false }
+                return $0.date >= firstCompleteBalanceDate &&
+                    $0.date >= interval.start &&
+                    $0.date < interval.end
             },
             calendar: calendar
         )
