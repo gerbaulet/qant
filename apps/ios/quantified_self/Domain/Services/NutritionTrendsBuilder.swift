@@ -1,5 +1,10 @@
 import Foundation
 
+enum IntakeForecastStrategy: Sendable, Hashable {
+    case historicalRemainder
+    case mealAware
+}
+
 enum NutritionTrendRange: String, CaseIterable, Identifiable, Sendable {
     case day
     case week
@@ -99,7 +104,8 @@ enum NutritionTrendsBuilder {
         nutrient: NutrientIdentifier,
         meals: [Meal],
         goals: [NutritionGoalPeriod],
-        calendar: Calendar
+        calendar: Calendar,
+        forecastStrategy: IntakeForecastStrategy = .historicalRemainder
     ) -> NutritionTrendsSnapshot {
         let portionMultipliers = PortionMultiplierSnapshot()
         let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
@@ -111,7 +117,8 @@ enum NutritionTrendsBuilder {
             meals: meals,
             calendar: calendar,
             portionMultipliers: portionMultipliers,
-            activeRevisions: activeRevisions
+            activeRevisions: activeRevisions,
+            forecastStrategy: forecastStrategy
         )
         let today = calendar.startOfDay(for: date)
         let comparisonStart = calendar.date(
@@ -172,7 +179,8 @@ enum NutritionTrendsBuilder {
         for date: Date,
         nutrient: NutrientIdentifier,
         meals: [Meal],
-        calendar: Calendar
+        calendar: Calendar,
+        forecastStrategy: IntakeForecastStrategy = .historicalRemainder
     ) -> DailyCumulativeNutritionTrend {
         let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
         return makeDailyCumulativeTrend(
@@ -181,7 +189,8 @@ enum NutritionTrendsBuilder {
             meals: meals,
             calendar: calendar,
             portionMultipliers: PortionMultiplierSnapshot(),
-            activeRevisions: activeRevisions
+            activeRevisions: activeRevisions,
+            forecastStrategy: forecastStrategy
         )
     }
 
@@ -191,7 +200,8 @@ enum NutritionTrendsBuilder {
         meals: [Meal],
         calendar: Calendar,
         portionMultipliers: PortionMultiplierSnapshot,
-        activeRevisions: ActiveMealRevisionSnapshot
+        activeRevisions: ActiveMealRevisionSnapshot,
+        forecastStrategy: IntakeForecastStrategy
     ) -> DailyCumulativeNutritionTrend {
         guard let selectedDay = calendar.dateInterval(of: .day, for: date) else {
             return DailyCumulativeNutritionTrend(
@@ -253,7 +263,9 @@ enum NutritionTrendsBuilder {
                 portionMultipliers: portionMultipliers,
                 activeRevisions: activeRevisions
             ),
-            forecastPoints: forecastPoints(
+            forecastPoints: makeForecastPoints(
+                strategy: forecastStrategy,
+                selectedDayMeals: selectedDayMeals,
                 historicalMeals: averageMeals,
                 recordedDays: recordedDaySet,
                 selectedDay: selectedDay.start,
@@ -271,6 +283,48 @@ enum NutritionTrendsBuilder {
                 activeRevisions.revision(for: $0)?.status.isProvisionalNutritionEstimate == true
             }
         )
+    }
+
+    private static func makeForecastPoints(
+        strategy: IntakeForecastStrategy,
+        selectedDayMeals: [Meal],
+        historicalMeals: [Meal],
+        recordedDays: Set<Date>,
+        selectedDay: Date,
+        currentHour: Double,
+        actualValue: Double,
+        nutrient: NutrientIdentifier,
+        calendar: Calendar,
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
+    ) -> [CumulativeNutritionTrendPoint] {
+        switch strategy {
+        case .historicalRemainder:
+            forecastPoints(
+                historicalMeals: historicalMeals,
+                recordedDays: recordedDays,
+                selectedDay: selectedDay,
+                currentHour: currentHour,
+                actualValue: actualValue,
+                nutrient: nutrient,
+                calendar: calendar,
+                portionMultipliers: portionMultipliers,
+                activeRevisions: activeRevisions
+            )
+        case .mealAware:
+            mealAwareForecastPoints(
+                selectedDayMeals: selectedDayMeals,
+                historicalMeals: historicalMeals,
+                recordedDays: recordedDays,
+                selectedDay: selectedDay,
+                currentHour: currentHour,
+                actualValue: actualValue,
+                nutrient: nutrient,
+                calendar: calendar,
+                portionMultipliers: portionMultipliers,
+                activeRevisions: activeRevisions
+            )
+        }
     }
 
     private static func forecastPoints(
@@ -318,6 +372,181 @@ enum NutritionTrendsBuilder {
         }
         points.append(CumulativeNutritionTrendPoint(hour: 24, value: forecastValue))
         return points
+    }
+
+    private struct ForecastMealEvent {
+        let hour: Double
+        let value: Double
+        let energy: Double
+    }
+
+    private struct MealMatchCandidate {
+        let currentIndex: Int
+        let historicalIndex: Int
+        let score: Double
+    }
+
+    private static func mealAwareForecastPoints(
+        selectedDayMeals: [Meal],
+        historicalMeals: [Meal],
+        recordedDays: Set<Date>,
+        selectedDay: Date,
+        currentHour: Double,
+        actualValue: Double,
+        nutrient: NutrientIdentifier,
+        calendar: Calendar,
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
+    ) -> [CumulativeNutritionTrendPoint] {
+        guard recordedDays.count >= 3 else { return [] }
+        let selectedWeekday = calendar.component(.weekday, from: selectedDay)
+        let weightsByDay = Dictionary(uniqueKeysWithValues: recordedDays.map { day in
+            let weight = calendar.component(.weekday, from: day) == selectedWeekday ? 2.0 : 1.0
+            return (day, weight)
+        })
+        let totalWeight = weightsByDay.values.reduce(0, +)
+        guard totalWeight > 0 else { return [] }
+
+        let currentEvents = forecastEvents(
+            meals: selectedDayMeals,
+            nutrient: nutrient,
+            calendar: calendar,
+            portionMultipliers: portionMultipliers,
+            activeRevisions: activeRevisions
+        )
+        let mealsByDay = Dictionary(grouping: historicalMeals) {
+            calendar.startOfDay(for: $0.timestamp)
+        }
+        var expectedValuesByHour: [Double: Double] = [:]
+
+        for day in recordedDays {
+            guard let dayWeight = weightsByDay[day] else { continue }
+            let historicalEvents = forecastEvents(
+                meals: mealsByDay[day, default: []],
+                nutrient: nutrient,
+                calendar: calendar,
+                portionMultipliers: portionMultipliers,
+                activeRevisions: activeRevisions
+            )
+            let matchedIndices = matchedHistoricalEventIndices(
+                current: currentEvents,
+                historical: historicalEvents
+            )
+
+            for (index, event) in historicalEvents.enumerated()
+            where !matchedIndices.contains(index) {
+                let probability = remainingEventProbability(
+                    historicalHour: event.hour,
+                    currentHour: currentHour
+                )
+                guard probability > 0 else { continue }
+                let projectedHour = projectedHour(
+                    historicalHour: event.hour,
+                    currentHour: currentHour
+                )
+                expectedValuesByHour[projectedHour, default: 0] +=
+                    event.value * probability * dayWeight / totalWeight
+            }
+        }
+
+        var forecastValue = actualValue
+        var points = [CumulativeNutritionTrendPoint(hour: currentHour, value: actualValue)]
+        for hour in expectedValuesByHour.keys.sorted() {
+            forecastValue += expectedValuesByHour[hour, default: 0]
+            points.append(CumulativeNutritionTrendPoint(hour: hour, value: forecastValue))
+        }
+        if points.last?.hour == 24 {
+            points[points.count - 1] = CumulativeNutritionTrendPoint(
+                hour: 24,
+                value: forecastValue
+            )
+        } else if currentHour < 24 {
+            points.append(CumulativeNutritionTrendPoint(hour: 24, value: forecastValue))
+        }
+        return points
+    }
+
+    private static func forecastEvents(
+        meals: [Meal],
+        nutrient: NutrientIdentifier,
+        calendar: Calendar,
+        portionMultipliers: PortionMultiplierSnapshot,
+        activeRevisions: ActiveMealRevisionSnapshot
+    ) -> [ForecastMealEvent] {
+        meals.compactMap { meal in
+            guard let revision = activeRevisions.revision(for: meal),
+                  let value = portionMultipliers.scaledValue(for: nutrient, in: revision),
+                  let energy = portionMultipliers.scaledValue(for: .energy, in: revision),
+                  value > 0,
+                  energy > 0 else { return nil }
+            return ForecastMealEvent(
+                hour: localHour(for: meal.timestamp, calendar: calendar),
+                value: value,
+                energy: energy
+            )
+        }
+        .sorted { $0.hour < $1.hour }
+    }
+
+    private static func matchedHistoricalEventIndices(
+        current: [ForecastMealEvent],
+        historical: [ForecastMealEvent]
+    ) -> Set<Int> {
+        guard !current.isEmpty, !historical.isEmpty else { return [] }
+        var candidates: [MealMatchCandidate] = []
+        for (currentIndex, currentEvent) in current.enumerated() {
+            for (historicalIndex, historicalEvent) in historical.enumerated() {
+                let hourDifference = abs(currentEvent.hour - historicalEvent.hour)
+                let energyRatio = min(currentEvent.energy, historicalEvent.energy) /
+                    max(currentEvent.energy, historicalEvent.energy)
+                guard hourDifference <= 5, energyRatio >= 0.3 else { continue }
+
+                let timeScore = exp(-0.5 * pow(hourDifference / 3, 2))
+                let orderDifference = abs(
+                    normalizedPosition(currentIndex, count: current.count) -
+                        normalizedPosition(historicalIndex, count: historical.count)
+                )
+                let orderScore = exp(-2 * orderDifference)
+                let score = timeScore * 0.5 + energyRatio * 0.35 + orderScore * 0.15
+                guard score >= 0.55 else { continue }
+                candidates.append(MealMatchCandidate(
+                    currentIndex: currentIndex,
+                    historicalIndex: historicalIndex,
+                    score: score
+                ))
+            }
+        }
+
+        var usedCurrentIndices = Set<Int>()
+        var usedHistoricalIndices = Set<Int>()
+        for candidate in candidates.sorted(by: { $0.score > $1.score }) {
+            guard !usedCurrentIndices.contains(candidate.currentIndex),
+                  !usedHistoricalIndices.contains(candidate.historicalIndex) else { continue }
+            usedCurrentIndices.insert(candidate.currentIndex)
+            usedHistoricalIndices.insert(candidate.historicalIndex)
+        }
+        return usedHistoricalIndices
+    }
+
+    private static func normalizedPosition(_ index: Int, count: Int) -> Double {
+        guard count > 1 else { return 0.5 }
+        return Double(index) / Double(count - 1)
+    }
+
+    private static func remainingEventProbability(
+        historicalHour: Double,
+        currentHour: Double
+    ) -> Double {
+        guard historicalHour <= currentHour else { return 1 }
+        return exp(-(currentHour - historicalHour) / 3)
+    }
+
+    private static func projectedHour(
+        historicalHour: Double,
+        currentHour: Double
+    ) -> Double {
+        guard historicalHour <= currentHour else { return historicalHour }
+        return min(floor(currentHour) + 1, 24)
     }
 
     private static func cumulativePoints(

@@ -329,6 +329,80 @@ struct NutritionTrendsBuilderTests {
         #expect(trend.forecastPoints.map(\.value) == [500, 950, 950])
     }
 
+    @Test("Meal-aware forecast does not count an early dinner twice")
+    func mealAwareForecastMatchesEarlyDinner() {
+        let history = historicalMainMeals()
+        let today = [
+            meal(at: date(2026, 8, 24, 8), state: .confirmed, energy: 450, protein: 22),
+            meal(at: date(2026, 8, 24, 13), state: .confirmed, energy: 600, protein: 30),
+            meal(at: date(2026, 8, 24, 17), state: .confirmed, energy: 780, protein: 39),
+        ]
+
+        let legacy = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 24, 18),
+            nutrient: .energy,
+            meals: history + today,
+            calendar: calendar
+        )
+        let mealAware = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 24, 18),
+            nutrient: .energy,
+            meals: history + today,
+            calendar: calendar,
+            forecastStrategy: .mealAware
+        )
+
+        #expect((legacy.forecastPoints.last?.value ?? 0) > 2_500)
+        #expect(mealAware.forecastPoints.last?.value == 1_830)
+    }
+
+    @Test("Meal-aware forecast keeps an overdue dinner in the projection")
+    func mealAwareForecastRetainsLateDinner() {
+        let history = historicalMainMeals()
+        let today = [
+            meal(at: date(2026, 8, 24, 8), state: .confirmed, energy: 450, protein: 22),
+            meal(at: date(2026, 8, 24, 13), state: .confirmed, energy: 600, protein: 30),
+        ]
+
+        let legacy = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 24, 21),
+            nutrient: .energy,
+            meals: history + today,
+            calendar: calendar
+        )
+        let mealAware = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 24, 21),
+            nutrient: .energy,
+            meals: history + today,
+            calendar: calendar,
+            forecastStrategy: .mealAware
+        )
+
+        #expect(legacy.forecastPoints.last?.value == 1_050)
+        #expect((mealAware.forecastPoints.last?.value ?? 0) > 1_250)
+        #expect(mealAware.forecastPoints.dropFirst().contains { $0.hour > 21 && $0.value > 1_050 })
+    }
+
+    @Test("Meal-aware forecast does not mistake a small snack for dinner")
+    func mealAwareForecastKeepsDinnerAfterSnack() {
+        let history = historicalMainMeals()
+        let today = [
+            meal(at: date(2026, 8, 24, 8), state: .confirmed, energy: 450, protein: 22),
+            meal(at: date(2026, 8, 24, 13), state: .confirmed, energy: 600, protein: 30),
+            meal(at: date(2026, 8, 24, 17), state: .confirmed, energy: 120, protein: 4),
+        ]
+
+        let trend = NutritionTrendsBuilder.makeDailyCumulativeTrend(
+            for: date(2026, 8, 24, 18),
+            nutrient: .energy,
+            meals: history + today,
+            calendar: calendar,
+            forecastStrategy: .mealAware
+        )
+
+        #expect((trend.forecastPoints.last?.value ?? 0) > 1_650)
+    }
+
     @Test("Forecast is available before the first meal and never falls below actual intake")
     func forecastBeforeFirstMealAndActualFloor() {
         let previousMeals = [
@@ -421,6 +495,20 @@ struct NutritionTrendsBuilderTests {
             activeRevisionID: revision.id,
             analysisRevisions: [revision]
         )
+    }
+
+    private func historicalMainMeals() -> [Meal] {
+        [
+            meal(at: date(2026, 8, 21, 8), state: .confirmed, energy: 400, protein: 20),
+            meal(at: date(2026, 8, 21, 13), state: .confirmed, energy: 600, protein: 30),
+            meal(at: date(2026, 8, 21, 19), state: .confirmed, energy: 800, protein: 40),
+            meal(at: date(2026, 8, 22, 8, 30), state: .confirmed, energy: 450, protein: 22),
+            meal(at: date(2026, 8, 22, 13, 30), state: .confirmed, energy: 650, protein: 32),
+            meal(at: date(2026, 8, 22, 19, 30), state: .confirmed, energy: 750, protein: 37),
+            meal(at: date(2026, 8, 23, 9), state: .confirmed, energy: 500, protein: 25),
+            meal(at: date(2026, 8, 23, 12, 30), state: .confirmed, energy: 550, protein: 27),
+            meal(at: date(2026, 8, 23, 20, 30), state: .confirmed, energy: 850, protein: 42),
+        ]
     }
 
     private func nutrient(
