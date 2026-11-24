@@ -39,6 +39,8 @@
 	<string>Nimm Fotos deiner Mahlzeiten für die Nährwertanalyse auf.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Quant liest Aktivitäts-, Ruhe- und Gewichtsdaten aus Apple Health, um deine Energiebilanz und deinen Gewichtstrend lokal zu berechnen. Diese Daten werden nicht an OpenRouter gesendet.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Quant schreibt keine Daten in Apple Health. Die App verwendet ausschließlich Lesezugriff für deine lokal berechnete Energiebilanz und deinen Gewichtstrend.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
