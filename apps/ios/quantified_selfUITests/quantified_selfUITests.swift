@@ -252,6 +252,11 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(
             app.buttons["settings.restingEnergyDiagnostics"].waitForExistence(timeout: 2)
         )
+        let forecastToggle = app.descendants(matching: .any)["settings.mealAwareIntakeForecast"]
+        for _ in 0..<4 where !forecastToggle.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(forecastToggle.waitForExistence(timeout: 2))
         let reminderButton = app.buttons["settings.createWeeklySummaryTestReminder"]
         for _ in 0..<4 where !reminderButton.isHittable {
             app.swipeUp()

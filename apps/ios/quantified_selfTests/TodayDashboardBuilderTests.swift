@@ -187,6 +187,27 @@ struct TodayDashboardBuilderTests {
         #expect(presentation.intakeForecast?.historicalDayCount == 3)
     }
 
+    @Test("Presentation applies the selected meal-aware forecast")
+    func presentationAppliesMealAwareForecast() {
+        let reference = date(2026, 8, 24, 18)
+        let meals = [
+            meal(at: date(2026, 8, 21, 19), state: .confirmed, energy: 800, protein: 40),
+            meal(at: date(2026, 8, 22, 19), state: .confirmed, energy: 750, protein: 37),
+            meal(at: date(2026, 8, 23, 20), state: .confirmed, energy: 850, protein: 42),
+            meal(at: date(2026, 8, 24, 17), state: .confirmed, energy: 780, protein: 39),
+        ]
+
+        let presentation = TodayDashboardPresentationBuilder.makePresentation(
+            for: reference,
+            meals: meals,
+            goals: goals(starting: date(2026, 8, 1)),
+            calendar: calendar,
+            forecastStrategy: .mealAware
+        )
+
+        #expect(presentation.intakeForecast?.energyKilocalories == 780)
+    }
+
     @Test("Portion multiplier scales meal, daily and weekly nutrients")
     func portionMultiplier() {
         let reference = date(2026, 8, 23, 12)

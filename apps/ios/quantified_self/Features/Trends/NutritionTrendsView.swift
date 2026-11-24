@@ -6,6 +6,7 @@ struct NutritionTrendsContainer: View {
         let presentationVersion: NutritionPresentationVersion
         let hour: Date
         let range: NutritionTrendRange
+        let forecastStrategy: IntakeForecastStrategy
     }
 
     private struct BalanceRefreshID: Hashable {
@@ -13,11 +14,14 @@ struct NutritionTrendsContainer: View {
         let hour: Date
         let range: NutritionTrendRange
         let healthDataVersion: Int
+        let forecastStrategy: IntakeForecastStrategy
     }
 
     @Environment(HealthMetricsModel.self) private var healthMetrics
     @Query(sort: \Meal.timestamp) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
+    @AppStorage(IntakeForecastPreferences.mealAwareEnabledKey)
+    private var mealAwareIntakeForecastEnabled = false
     @State private var range = NutritionTrendRange.month
     @State private var snapshot: NutritionTrendsSnapshot?
     @State private var balances: [DailyEnergyBalance] = []
@@ -95,7 +99,8 @@ struct NutritionTrendsContainer: View {
         return RefreshID(
             presentationVersion: NutritionPresentationVersion(meals: meals, goals: goals),
             hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date,
-            range: range
+            range: range,
+            forecastStrategy: forecastStrategy
         )
     }
 
@@ -106,7 +111,8 @@ struct NutritionTrendsContainer: View {
             presentationVersion: NutritionPresentationVersion(meals: meals, goals: goals),
             hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date,
             range: range,
-            healthDataVersion: healthMetrics.dataVersion
+            healthDataVersion: healthMetrics.dataVersion,
+            forecastStrategy: forecastStrategy
         )
     }
 
@@ -119,7 +125,8 @@ struct NutritionTrendsContainer: View {
             nutrient: .energy,
             meals: meals,
             goals: goals,
-            calendar: .autoupdatingCurrent
+            calendar: .autoupdatingCurrent,
+            forecastStrategy: forecastStrategy
         )
         guard !Task.isCancelled else { return }
         snapshot = nextSnapshot
@@ -178,7 +185,8 @@ struct NutritionTrendsContainer: View {
             for: date,
             meals: meals,
             goals: goals,
-            calendar: calendar
+            calendar: calendar,
+            forecastStrategy: forecastStrategy
         )
         let currentExpenditure = healthMetrics.expenditure(for: date, calendar: calendar)
         let expenditureForecast = forecastInterval.flatMap {
@@ -200,6 +208,12 @@ struct NutritionTrendsContainer: View {
         weightComparison = nextWeightComparison
         currentDayForecastBalanceKilocalories = nextCurrentDayForecastBalance
         lastBalanceRefreshID = refreshID
+    }
+
+    private var forecastStrategy: IntakeForecastStrategy {
+        IntakeForecastPreferences.strategy(
+            mealAwareEnabled: mealAwareIntakeForecastEnabled
+        )
     }
 
     private func balanceInterval(for date: Date) -> DateInterval? {

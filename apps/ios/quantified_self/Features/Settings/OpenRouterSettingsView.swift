@@ -12,6 +12,8 @@ struct OpenRouterSettingsView: View {
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @State private var viewModel: OpenRouterSettingsViewModel
     @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
+    @AppStorage(IntakeForecastPreferences.mealAwareEnabledKey)
+    private var mealAwareIntakeForecastEnabled = false
     @AppStorage(OpenRouterTrafficLogSettings.enabledKey) private var trafficLoggingEnabled = false
     @State private var weeklyReminderMessage: String?
     @State private var weeklyReminderMessageIsError = false
@@ -43,6 +45,18 @@ struct OpenRouterSettingsView: View {
                 AppleHealthSettingsSection()
 
                 NutritionGoalSettingsSection(goals: goals)
+
+                Section {
+                    Toggle(
+                        "Mahlzeitenbewusste Prognose",
+                        isOn: $mealAwareIntakeForecastEnabled
+                    )
+                    .accessibilityIdentifier("settings.mealAwareIntakeForecast")
+                } header: {
+                    Text("Kalorienprognose")
+                } footer: {
+                    Text("Standardmäßig verwendet Quant den bisherigen zeitbasierten Verlauf. Die experimentelle Variante ordnet heutige Mahlzeiten ähnlichen persönlichen Mahlzeiten zu und berücksichtigt dadurch frühe oder verspätete Mahlzeiten. Die Berechnung bleibt vollständig auf diesem iPhone.")
+                }
 
                 Section {
                     Toggle("Sonntags erinnern", isOn: Binding(

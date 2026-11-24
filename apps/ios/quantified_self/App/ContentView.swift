@@ -149,6 +149,7 @@ private struct TodayDashboardContainer: View {
         let presentationVersion: NutritionPresentationVersion
         let hour: Date
         let healthDataVersion: Int
+        let forecastStrategy: IntakeForecastStrategy
     }
 
     @Environment(\.modelContext) private var modelContext
@@ -156,6 +157,8 @@ private struct TodayDashboardContainer: View {
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
+    @AppStorage(IntakeForecastPreferences.mealAwareEnabledKey)
+    private var mealAwareIntakeForecastEnabled = false
     @State private var navigationPath: [UUID] = []
     @State private var duplicateConfirmationMealID: UUID?
     @State private var snapshot: TodayDashboardSnapshot?
@@ -236,7 +239,8 @@ private struct TodayDashboardContainer: View {
         return RefreshID(
             presentationVersion: NutritionPresentationVersion(meals: meals, goals: goals),
             hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date,
-            healthDataVersion: healthMetrics.dataVersion
+            healthDataVersion: healthMetrics.dataVersion,
+            forecastStrategy: forecastStrategy
         )
     }
 
@@ -271,7 +275,8 @@ private struct TodayDashboardContainer: View {
             for: date,
             meals: meals,
             goals: goals,
-            calendar: calendar
+            calendar: calendar,
+            forecastStrategy: forecastStrategy
         )
         guard !Task.isCancelled else { return }
         let currentExpenditure = healthMetrics.expenditure(for: date, calendar: calendar)
@@ -319,6 +324,12 @@ private struct TodayDashboardContainer: View {
             calendar: calendar
         )
         lastRefreshID = refreshID
+    }
+
+    private var forecastStrategy: IntakeForecastStrategy {
+        IntakeForecastPreferences.strategy(
+            mealAwareEnabled: mealAwareIntakeForecastEnabled
+        )
     }
 
     private func refreshCurrentDayEnergy() async {

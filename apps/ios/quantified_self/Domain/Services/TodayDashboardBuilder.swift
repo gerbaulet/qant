@@ -319,7 +319,8 @@ enum TodayDashboardPresentationBuilder {
         for date: Date,
         meals: [Meal],
         goals: [NutritionGoalPeriod],
-        calendar: Calendar
+        calendar: Calendar,
+        forecastStrategy: IntakeForecastStrategy = .historicalRemainder
     ) -> TodayDashboardPresentation {
         let portionMultipliers = PortionMultiplierSnapshot()
         let activeRevisions = ActiveMealRevisionSnapshot(meals: meals)
@@ -327,7 +328,8 @@ enum TodayDashboardPresentationBuilder {
             for: date,
             nutrient: .energy,
             meals: meals,
-            calendar: calendar
+            calendar: calendar,
+            forecastStrategy: forecastStrategy
         )
         return TodayDashboardPresentation(
             snapshot: TodayDashboardBuilder.makeSnapshot(
