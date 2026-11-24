@@ -167,8 +167,8 @@ struct EnergyBalanceBuilderTests {
         #expect(balance.isCurrentDay)
     }
 
-    @Test("A short current-day resting energy gap keeps the balance evaluable")
-    func toleratesShortCurrentDayRestingEnergyGap() {
+    @Test("An eight-hour current-day resting energy gap keeps the balance evaluable")
+    func toleratesOvernightCurrentDayRestingEnergyGap() {
         let day = date(2026, 11, 22, 12)
         let balance = EnergyBalanceBuilder.makeBalance(
             for: day,
@@ -179,7 +179,7 @@ struct EnergyBalanceBuilderTests {
                 restingKilocalories: 1_500,
                 restingEnergyCoverage: RestingEnergyCoverage(
                     expectedDuration: 23 * 60 * 60,
-                    primaryDuration: 21 * 60 * 60,
+                    primaryDuration: 15 * 60 * 60,
                     iPhoneFallbackDuration: 0
                 )
             ),

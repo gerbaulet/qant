@@ -2,7 +2,7 @@ import Foundation
 
 struct RestingEnergyCoverage: Sendable, Equatable {
     static let maximumToleratedMissingDuration: TimeInterval = 15 * 60
-    static let maximumToleratedLiveMissingDuration: TimeInterval = 2 * 60 * 60
+    static let liveFeatureMissingDurationLimit: TimeInterval = 18 * 60 * 60
 
     let expectedDuration: TimeInterval
     let primaryDuration: TimeInterval
@@ -47,7 +47,7 @@ struct RestingEnergyCoverage: Sendable, Equatable {
     /// features available during that delay without weakening historical data quality.
     var isUsableForLiveFeatures: Bool {
         expectedDuration > 0 && coveredDuration > 0 &&
-            unresolvedMissingDuration <= Self.maximumToleratedLiveMissingDuration
+            unresolvedMissingDuration < Self.liveFeatureMissingDurationLimit
     }
 
     var usesIPhoneFallback: Bool {

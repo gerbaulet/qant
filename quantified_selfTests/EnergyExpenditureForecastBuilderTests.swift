@@ -157,7 +157,7 @@ struct EnergyExpenditureForecastBuilderTests {
 
     @Test("Forecast rejects incomplete current resting energy")
     func rejectsIncompleteCurrentRestingEnergy() {
-        let reference = date(2026, 8, 24, 14)
+        let reference = date(2026, 8, 24, 20)
         let daily = (17...23).map {
             DailyEnergyExpenditure(
                 date: date(2026, 8, $0),
@@ -170,8 +170,8 @@ struct EnergyExpenditureForecastBuilderTests {
             activeKilocalories: 250,
             restingKilocalories: 900,
             restingEnergyCoverage: RestingEnergyCoverage(
-                expectedDuration: 14 * 60 * 60,
-                primaryDuration: 8 * 60 * 60,
+                expectedDuration: 20 * 60 * 60,
+                primaryDuration: 2 * 60 * 60,
                 iPhoneFallbackDuration: 0
             )
         )
@@ -187,8 +187,8 @@ struct EnergyExpenditureForecastBuilderTests {
         #expect(forecast == nil)
     }
 
-    @Test("Forecast tolerates a short current resting energy gap")
-    func toleratesShortCurrentRestingEnergyGap() throws {
+    @Test("Forecast tolerates an eight-hour current resting energy gap")
+    func toleratesOvernightCurrentRestingEnergyGap() throws {
         let reference = date(2026, 8, 24, 14)
         let daily = (17...23).map {
             DailyEnergyExpenditure(
@@ -203,7 +203,7 @@ struct EnergyExpenditureForecastBuilderTests {
             restingKilocalories: 900,
             restingEnergyCoverage: RestingEnergyCoverage(
                 expectedDuration: 14 * 60 * 60,
-                primaryDuration: 12 * 60 * 60,
+                primaryDuration: 6 * 60 * 60,
                 iPhoneFallbackDuration: 0
             )
         )

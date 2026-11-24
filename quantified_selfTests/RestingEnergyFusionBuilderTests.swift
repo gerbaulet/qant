@@ -179,16 +179,16 @@ struct RestingEnergyFusionBuilderTests {
         #expect(!incomplete.isComplete)
     }
 
-    @Test("Live features tolerate up to two unresolved hours")
+    @Test("Live features stop at eighteen unresolved hours")
     func liveFeatureToleranceBoundary() {
         let tolerated = RestingEnergyCoverage(
             expectedDuration: 24 * 60 * 60,
-            primaryDuration: 22 * 60 * 60,
+            primaryDuration: 6 * 60 * 60 + 1,
             iPhoneFallbackDuration: 0
         )
         let rejected = RestingEnergyCoverage(
             expectedDuration: 24 * 60 * 60,
-            primaryDuration: 22 * 60 * 60 - 1,
+            primaryDuration: 6 * 60 * 60,
             iPhoneFallbackDuration: 0
         )
 
