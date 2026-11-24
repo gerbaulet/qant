@@ -239,6 +239,41 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testAppleHealthSettingsRowsUseCompactHeight() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let settingsButton = app.buttons["settings.open"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 3))
+        settingsButton.tap()
+
+        let energyStatus = app.descendants(matching: .any)["settings.healthEnergyStatus"]
+        let energyAccess = app.buttons["settings.healthEnergyAccess"]
+        let weightStatus = app.descendants(matching: .any)["settings.healthWeightStatus"]
+        let weightAccess = app.buttons["settings.healthWeightAccess"]
+
+        XCTAssertTrue(energyStatus.waitForExistence(timeout: 2))
+        XCTAssertTrue(energyAccess.waitForExistence(timeout: 2))
+        let energyRowGap = energyAccess.frame.minY - energyStatus.frame.maxY
+        XCTAssertLessThan(energyStatus.frame.height, 100)
+        XCTAssertGreaterThan(energyRowGap, -1)
+        XCTAssertLessThan(energyRowGap, 40)
+
+        XCTAssertTrue(weightStatus.waitForExistence(timeout: 2))
+        XCTAssertTrue(weightAccess.waitForExistence(timeout: 2))
+        let weightRowGap = weightAccess.frame.minY - weightStatus.frame.maxY
+        XCTAssertLessThan(weightStatus.frame.height, 100)
+        XCTAssertGreaterThan(weightRowGap, -1)
+        XCTAssertLessThan(weightRowGap, 40)
+
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "Compact Apple Health settings"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testPresentsSecureOpenRouterSettings() throws {
         let app = XCUIApplication()
         app.launchArguments.append("--ui-testing")

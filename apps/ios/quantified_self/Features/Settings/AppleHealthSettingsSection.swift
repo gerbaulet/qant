@@ -5,10 +5,12 @@ struct AppleHealthSettingsSection: View {
 
     var body: some View {
         Section {
-            LabeledContent("Energiedaten") {
-                Label(energyStatusTitle, systemImage: statusSystemImage(healthMetrics.energyStatus))
-                    .foregroundStyle(statusColor(healthMetrics.energyStatus))
-            }
+            statusRow(
+                "Energiedaten",
+                status: healthMetrics.energyStatus,
+                statusTitle: energyStatusTitle
+            )
+            .accessibilityIdentifier("settings.healthEnergyStatus")
 
             Button {
                 requestAccess()
@@ -32,10 +34,12 @@ struct AppleHealthSettingsSection: View {
             .disabled(!healthMetrics.hasRequestedEnergyAccess)
             .accessibilityIdentifier("settings.restingEnergyDiagnostics")
 
-            LabeledContent("Gewichtsverlauf") {
-                Label(weightStatusTitle, systemImage: statusSystemImage(healthMetrics.weightStatus))
-                    .foregroundStyle(statusColor(healthMetrics.weightStatus))
-            }
+            statusRow(
+                "Gewichtsverlauf",
+                status: healthMetrics.weightStatus,
+                statusTitle: weightStatusTitle
+            )
+            .accessibilityIdentifier("settings.healthWeightStatus")
 
             Button {
                 requestWeightAccess()
@@ -134,6 +138,22 @@ struct AppleHealthSettingsSection: View {
         case .failed: .orange
         default: .secondary
         }
+    }
+
+    private func statusRow(
+        _ title: LocalizedStringKey,
+        status: HealthDataStatus,
+        statusTitle: String
+    ) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+            Spacer(minLength: 12)
+            Label(statusTitle, systemImage: statusSystemImage(status))
+                .lineLimit(1)
+                .foregroundStyle(statusColor(status))
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
     }
 
     private func requestAccess() {
