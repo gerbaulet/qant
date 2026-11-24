@@ -2,14 +2,27 @@
 
 ## Geltungsbereich und Priorität
 
-Diese Datei gilt für das gesamte Repository. Direkte Anweisungen des Nutzers im
-aktuellen Auftrag haben immer Vorrang. Unterverzeichnisse dürfen ergänzende
-`AGENTS.md`-Dateien enthalten; deren Regeln gelten zusätzlich in ihrem Bereich.
+Diese Datei gilt für das gesamte Monorepo. Direkte Anweisungen des Nutzers im
+aktuellen Auftrag haben immer Vorrang. Die Unterverzeichnisse `apps/ios` und
+`apps/server` enthalten ergänzende `AGENTS.md`-Dateien; deren Regeln gelten
+zusätzlich in ihrem jeweiligen Bereich.
 
-`ARCHITECTURE.md` beschreibt die ursprüngliche Architektur und Roadmap. Die
-Roadmap ist inzwischen umgesetzt. Vor neuen Arbeiten immer den tatsächlichen
-Code, die Tests und die Git-Historie prüfen und keine frühere Phase ungefragt
-erneut implementieren.
+`apps/ios/ARCHITECTURE.md` beschreibt die ursprüngliche iOS-Architektur und
+Roadmap. Die Roadmap ist inzwischen umgesetzt. Vor neuen Arbeiten immer den
+tatsächlichen Code, die Tests und die Git-Historie prüfen und keine frühere
+Phase ungefragt erneut implementieren.
+
+## Repository-Aufbau
+
+- `apps/ios` enthält das Xcode-Projekt, die iOS-App, das Widget und deren Tests.
+- `apps/server` enthält den Go-Server, Container-Konfiguration und
+  Deployment-Skripte.
+- Beide Anwendungen bleiben in ihrem Unterordner eigenständig baubar. Das
+  Root-`Makefile` delegiert über `ios-*` beziehungsweise `server-*` an die
+  anwendungsspezifischen Makefiles.
+- Änderungen an gemeinsam verwendeten API-Verträgen auf beiden Seiten
+  nachvollziehen und zusammen testen. Keine Quellcodedateien beiläufig zwischen
+  den Anwendungen teilen.
 
 ## Produktgrundsätze
 
@@ -21,20 +34,18 @@ erneut implementieren.
   Bestätigungen und Fachbegriffe vermeiden; relevante Unsicherheit transparent
   erklären.
 - Ernährungsschätzungen sind Schätzwerte, keine medizinische Beratung.
-- Die App ist local-first und datensparsam. Keine Analytics, Werbung, Accounts,
-  HealthKit-, Standort- oder andere zusätzliche Datenerfassung ohne
+- Die iOS-App ist local-first und datensparsam. Keine Analytics, Werbung,
+  Accounts, HealthKit-, Standort- oder andere zusätzliche Datenerfassung ohne
   ausdrücklichen Auftrag.
-- Niemals API-Schlüssel, Bildinhalte, Mahlzeitenkommentare oder andere private
-  Nutzerdaten protokollieren oder in das Repository aufnehmen.
+- Niemals API-Schlüssel, Bildinhalte, Mahlzeitenkommentare, Anfrageinhalte oder
+  andere private Nutzerdaten protokollieren oder in das Repository aufnehmen.
 
-## Aktuelle verbindliche Produktlogik
-
-### KI-Analyse und Rückfragen
+## Verbindliche systemweite Analyse-Logik
 
 - Eine Mahlzeitenanalyse führt standardmäßig genau eine Anfrage mit dem
-  ausgewählten OpenRouter-Modell aus. Nur eine unlesbare, technisch fehlgeschlagene
-  oder lokal als widersprüchlich erkannte Antwort darf genau einen weiteren
-  Korrekturversuch auslösen.
+  ausgewählten OpenRouter-Modell aus. Nur eine unlesbare, technisch
+  fehlgeschlagene oder lokal als widersprüchlich erkannte Antwort darf genau
+  einen weiteren Korrekturversuch auslösen.
 - Bei einer initialen Analyse mit Bild werden zwei weitere unabhängige
   Schätzungen parallel angefordert, sofern weder ein Nährwertetikett erkannt
   noch eine belastbare Maßangabe wie Gramm oder Milliliter genannt wurde und
@@ -43,167 +54,77 @@ erneut implementieren.
   Schätzungen wird das vollständige Ergebnis mit dem mittleren kcal-Wert
   übernommen; bei einer ungültigen Zusatzschätzung bleibt das erste gültige
   Ergebnis maßgeblich.
-- Vor der Anfrage liest die App Verpackungstext lokal mit Vision-OCR. Der erkannte
-  Text unterstützt das Modell zusätzlich zu den Bildern und Nutzerangaben.
+- Vor der Anfrage liest die iOS-App Verpackungstext lokal mit Vision-OCR. Der
+  erkannte Text unterstützt das Modell zusätzlich zu Bildern und
+  Nutzerangaben.
 - Das strukturierte Ergebnis enthält pro Bestandteil Gewicht sowie Energie,
   Protein, Kohlenhydrate, Fett und Ballaststoffe. Bei Etikettwerten pro 100 g
-  skaliert die App diese deterministisch auf die gegessene Menge und summiert
-  Bestandteile zu den Gesamtwerten.
+  werden diese deterministisch auf die gegessene Menge skaliert und die
+  Bestandteile zu Gesamtwerten summiert.
 - Der Analyseverlauf zeigt jeden tatsächlichen Aufruf mit Modellkennung, falls
   vorhanden Provider, kcal-Ergebnis und konkretem Validierungsfehler.
 - Erfolgt eine gültige Schätzung ohne vorherige Rückfrage, wird sie automatisch
   bestätigt. Nur wenn es zuvor eine Rückfrage gab, bleibt das anschließende
   Ergebnis zur manuellen Bestätigung offen.
-- Die bestehende finale Rückfrage und Antwort werden im Analyseverlauf über die
-  vorhandenen Felder der Revision dargestellt. Keine neue Persistenz nur für
-  rohe Rückfragen einzelner Modellaufrufe einführen.
+- Die bestehende finale Rückfrage und Antwort werden über die vorhandenen
+  Felder der Revision dargestellt. Keine neue Persistenz nur für rohe
+  Rückfragen einzelner Modellaufrufe einführen.
 - Änderungen an Plausibilitätsgrenzen, Berechnung, Statusübergängen oder
   Rückfrageauswahl brauchen gezielte Unit-Tests, insbesondere für Grenzwerte.
 
-### Aufnahme und Schnellzugriff
+## Gemeinsamer Datenschutz- und API-Vertrag
 
-- Der Action-Button beziehungsweise App Intent öffnet unmittelbar die Kamera,
-  auch wenn Quant bereits im Vordergrund ist.
-- Vor dem Sprung zur Kamera müssen präsentierte Mahlzeitendetails, Review-Sheets,
-  Dialoge und andere Modals zuverlässig geschlossen werden.
-- In der Aufnahmeansicht steht unten eine standardmäßig eingeklappte Karte
-  „Details“ mit dem Zeitpunkt. Eine Mahlzeitenart wird nicht abgefragt; neue
-  Mahlzeiten erhalten den neutralen Kategoriewert `unspecified`.
-- Mahlzeiten können gelöscht werden. Dabei auch zugehörige Analysedaten und von
-  der App verwaltete Bilddateien konsistent entfernen.
-
-### Heute, Mahlzeiten und Analyseverlauf
-
-- Für Tag, Woche und Monat steht die kcal-Summe rechts in der jeweiligen
-  Abschnittsüberschrift. Vorläufige Summen mit `~` markieren; ohne Energiewert
-  `— kcal` anzeigen.
-- Der Analyseverlauf bewahrt Revisionen und tatsächliche Modellaufrufe
-  nachvollziehbar und aufklappbar auf.
-
-### OpenRouter-Einstellungen
-
-- Die Modellauswahl ist ein verständliches Menü beziehungsweise Dropdown. Die
-  App lädt geeignete Modelle über die OpenRouter-Model-API und bietet zusätzlich
-  eine manuelle Modellkennung als fortgeschrittene Option an.
-- Nur Modelle anbieten, die die für Quant erforderlichen Bild- und strukturierten
-  Ausgaben unterstützen. Die Liste wird nach der von OpenRouter gelieferten
-  Popularitätsinformation sortiert; diese Herkunft in der UI verständlich
-  machen.
-- Den Nutzer darauf hinweisen, dass normalerweise ein Modellaufruf anfällt, bei
-  Tellerfotos ohne erkanntes Etikett oder belastbare Maßangabe drei Aufrufe
-  erfolgen und bei einer fehlerhaften Antwort einmalig ein Korrekturaufruf
-  folgen kann.
-- Der OpenRouter-Schlüssel gehört ausschließlich in die Keychain. Die gewählte
-  Modellkennung darf in UserDefaults gespeichert werden.
-
-## Datenhaltung und Migrationen
-
-- SwiftData ist die dauerhafte Quelle für strukturierte App-Daten. Bilder liegen
-  als app-eigene Dateien unter Application Support; SwiftData speichert nur
-  relative Schlüssel und Metadaten.
-- Aktuell ist CloudKit absichtlich nicht aktiv (`cloudKitDatabase: .none`). Es
-  darf nicht beiläufig eingeschaltet werden: Dafür sind ein geeignetes Apple
-  Developer Team, Entitlements, Container, Migrationstests und eine separate
-  Synchronisationsstrategie für Bilddateien erforderlich.
-- Das Löschen der App entfernt derzeit lokale SwiftData-Daten und lokale Bilder.
-  Eine Neuinstallation über Xcode soll den App-Container dagegen bewahren.
-- Persistierte Enum-Rohwerte, Modellfelder und Beziehungen stabil halten.
-  Schemaänderungen über eine neue versionierte SwiftData-Schema-Version und
-  einen expliziten Migrationsschritt durchführen.
-- Keine destruktive Migration und kein Löschen des App-Containers als bequeme
-  Fehlerbehebung. Bestehende Nutzerdaten haben Vorrang.
-- `providerMetadata` enthält bereits codierte Zusammenfassungen früherer
-  Dreifachanalysen und aktueller Einzelaufrufe. Das Format nur rückwärtskompatibel
-  weiterentwickeln.
-
-## Architektur und Implementierung
-
-- Die bestehende, feature-orientierte Struktur beibehalten:
-  `App`, `Domain`, `Features`, `Infrastructure` und `Shared`.
-- SwiftUI-Views rendern Zustand und leiten Aktionen weiter. Berechnungen,
-  Aggregation, Validierung und Statusübergänge gehören in kleine, möglichst
-  deterministische Domain-Services oder Builder.
-- Netzwerk-, Datei- und Keychain-Zugriffe hinter Protokollen kapseln und
-  Abhängigkeiten injizieren, damit sie testbar bleiben.
-- Swift Concurrency (`async`/`await`) verwenden. UI-Mutationen laufen auf dem
-  Main Actor; Netzwerk- und Dateiarbeit darf die Oberfläche nicht blockieren.
-- Analyse-Revisionen sind unveränderlich-in-practice: Korrekturen und erneute
-  Analysen erzeugen neue Revisionen statt alte Ergebnisse zu überschreiben.
-- Datumsgruppierung immer mit einem expliziten Kalender vornehmen und keine
-  festen 86.400-Sekunden-Tage annehmen.
-- Das Projekt verwendet Xcodes file-system-synchronised groups. Neue Swift-Dateien
-  in den vorhandenen Target-Ordnern benötigen normalerweise keine manuelle
-  Änderung an `project.pbxproj`.
-- Die bestehende Mindestversion iOS 26.2 nicht ohne ausdrücklichen Grund ändern.
+- Der OpenRouter-Schlüssel liegt auf dem iPhone ausschließlich in der Keychain.
+  Der Server darf ihn nur für die Laufzeit des zugehörigen Jobs im
+  Prozessspeicher halten und niemals persistieren oder protokollieren.
+- Bilder, Mahlzeitentexte und vollständige Anfrageinhalte dürfen auf dem Server
+  nicht dauerhaft gespeichert oder protokolliert werden. Persistierte Jobdaten
+  enthalten nur notwendige Besitzmetadaten, Status und das Ergebnis und werden
+  entsprechend der Aufbewahrungsregeln gelöscht.
+- Änderungen an Endpunkten, DTOs oder Validierung zwischen iOS-App und Server
+  müssen rückwärtskompatibel sein oder in beiden Anwendungen gemeinsam
+  migriert werden.
 
 ## Tests und Qualitätskontrolle
 
 - Für jede Verhaltensänderung zuerst die nächstgelegenen vorhandenen Tests
-  erweitern. Neue reine Geschäftslogik mit Unit-Tests absichern; Routing,
-  Präsentation und kritische Nutzerabläufe mit UI-Tests abdecken.
+  erweitern. Neue reine Geschäftslogik mit Unit-Tests absichern; kritische
+  Nutzer- und Serverabläufe einschließlich Fehlerpfaden berücksichtigen.
 - Mindestens die fokussierten Tests der Änderung ausführen. Vor einem Commit mit
-  breiter Wirkung zusätzlich die vollständige Unit-Test-Suite ausführen.
-- Für Build-, Test-, Simulator- und Geräteabläufe die Ziele im `Makefile`
-  verwenden. `make help` listet die verfügbaren Befehle auf; fokussierte Tests
-  laufen über `make test TEST_TARGET=...`.
-- Verfügbare Simulatoren bei Bedarf mit `make simulators` prüfen und keine
-  Simulator-UUID dauerhaft voraussetzen. Einen abweichenden Simulator über
-  `SIMULATOR_NAME` beziehungsweise `SIMULATOR_OS` auswählen.
-- Einen erfolgreichen Build oder Test nur melden, wenn `xcodebuild` tatsächlich
-  mit `BUILD SUCCEEDED` beziehungsweise `TEST SUCCEEDED` abgeschlossen wurde.
-- UI-Texte auf kleinen Displays, mit Dynamic Type und VoiceOver-tauglichen
-  Labels prüfen. Kamera-, Netzwerk-, Offline-, Abbruch- und Fehlerpfade nicht
-  nur den Happy Path berücksichtigen.
+  breiter Wirkung zusätzlich die vollständige passende Unit-Test-Suite
+  ausführen.
+- Build- und Testziele über die Makefiles verwenden. Vom Root aus stehen sie
+  als `make ios-<target>` und `make server-<target>` zur Verfügung; innerhalb
+  einer Anwendung weiterhin als `make <target>`.
+- Einen erfolgreichen Build oder Test nur melden, wenn das jeweilige Werkzeug
+  tatsächlich erfolgreich abgeschlossen wurde. Für Xcode sind dafür
+  insbesondere `BUILD SUCCEEDED` beziehungsweise `TEST SUCCEEDED` maßgeblich.
 
 ## Git- und Commit-Regeln
 
-- In diesem Repository ausschließlich normales Git über die `git`-CLI verwenden.
-  GitButler, die `but`-CLI und den GitButler-Skill hier nicht verwenden, auch
-  nicht für Commits, Branches oder die Prüfung von Diffs und Status.
-- Vor Änderungen `git status` prüfen. Bereits vorhandene Änderungen gehören dem
-  Nutzer; nicht überschreiben, zurücksetzen oder ungefragt in eigene Commits
-  aufnehmen.
-- Standard für abgeschlossene Implementierungsarbeit in diesem Projekt ist ein
-  kleiner, fokussierter Commit pro fachlichem Punkt beziehungsweise Iteration.
+- In diesem Repository ausschließlich normales Git über die `git`-CLI
+  verwenden. GitButler, die `but`-CLI und den GitButler-Skill nicht verwenden.
+- Vor Änderungen `git status` prüfen. Bereits vorhandene Änderungen gehören
+  dem Nutzer; nicht überschreiben, zurücksetzen oder ungefragt in eigene
+  Commits aufnehmen.
+- Standard für abgeschlossene Implementierungsarbeit ist ein kleiner,
+  fokussierter Commit pro fachlichem Punkt beziehungsweise Iteration.
 - Gibt der Nutzer mehrere Punkte vor, jeden Punkt vollständig umsetzen, testen
-  und separat committen, bevor der nächste Punkt begonnen wird. Keine
-  Sammelcommits für unabhängige Änderungen.
-- Vom Nutzer oder von Xcode erzeugte Änderungen nur dann separat committen, wenn
-  der Nutzer dies ausdrücklich verlangt.
+  und separat committen, bevor der nächste begonnen wird. Keine Sammelcommits
+  für unabhängige Änderungen.
+- Vom Nutzer oder von Entwicklungswerkzeugen erzeugte Änderungen nur dann
+  separat committen, wenn der Nutzer dies ausdrücklich verlangt.
 - Entwürfe und Dateien zur Review nicht committen. Eine ausdrückliche Anweisung
   wie „noch nicht committen“ hat Vorrang.
 - Keine Remote-Pushes, Branch-Rewrites, Resets oder sonstigen destruktiven
   Git-Aktionen ohne ausdrücklichen Auftrag.
-- Commit-Nachrichten kurz, auf Englisch und im Imperativ formulieren, passend zur
-  bestehenden Historie.
-
-## Installation auf das iPhone des Entwicklers
-
-- „Auf mein Handy spielen“ oder „auf das iPhone pushen“ bedeutet in diesem
-  Projekt: bauen, installieren und möglichst starten. Es bedeutet nicht
-  automatisch einen Git-Push.
-- Nur installieren, wenn der Nutzer dies für die aktuelle Änderung verlangt.
-  Zuvor committen, falls ebenfalls verlangt, und anschließend
-  `make deploy-device` verwenden. Für einzelne Schritte stehen `build-device`,
-  `install-device` und `launch-device` bereit.
-- Das Makefile adressiert standardmäßig `Clemens-iPhone2` über den Gerätenamen
-  statt über eine dauerhaft gespeicherte UUID. Bei Bedarf zuerst
-  `make devices` ausführen und ein anderes Gerät über `DEVICE=...` wählen.
-- Geräte-Builds verwenden ausschließlich vorhandene lokale Signierungsdaten.
-  Niemals `-allowProvisioningUpdates` für den normalen Build oder die
-  Installation verwenden. Ist das Personal-Team-Profil abgelaufen oder fehlt
-  es, den Nutzer darüber informieren und die Erneuerung bewusst in Xcode
-  durchführen lassen.
-- Die App niemals vorher löschen, da dadurch lokale Mahlzeiten und Bilder
-  verloren gehen können. Eine normale Xcode-/devicectl-Installation aktualisiert
-  die App und erhält den Container.
-- Nach Installation das tatsächliche Ergebnis melden: Commit, Build,
-  Installation und Start jeweils getrennt und wahrheitsgemäß angeben.
+- Commit-Nachrichten kurz, auf Englisch und im Imperativ formulieren, passend
+  zur bestehenden Historie.
 
 ## Abschluss eines Auftrags
 
-Ein Punkt ist erst fertig, wenn Implementierung, passende Tests und eine Prüfung
-des Git-Diffs abgeschlossen sind. Bei mehreren verlangten Commits muss jeder
-Commit genau seinen Punkt enthalten. In der Abschlussmeldung kurz nennen, was
-geändert und getestet wurde, ob ein Commit erstellt wurde und ob die App auf dem
-iPhone installiert wurde.
+Ein Punkt ist erst fertig, wenn Implementierung, passende Tests und eine
+Prüfung des Git-Diffs abgeschlossen sind. Bei mehreren verlangten Commits muss
+jeder Commit genau seinen Punkt enthalten. In der Abschlussmeldung kurz nennen,
+was geändert und getestet wurde, welche Commits erstellt wurden und ob eine
+Anwendung installiert, gestartet, deployed oder gepusht wurde.
