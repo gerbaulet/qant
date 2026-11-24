@@ -764,6 +764,7 @@ struct MealReviewView: View {
             .padding(.horizontal, QuantLayout.pageInset)
             .padding(.vertical, 12)
             .background(.bar)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("meal.actionBar")
     }
 
@@ -878,6 +879,9 @@ struct MealReviewView: View {
         Task {
             do {
                 try await onDuplicate(meal)
+                withAnimation {
+                    successMessage = "Mahlzeit dupliziert"
+                }
             } catch {
                 alertMessage = "Die Mahlzeit konnte nicht dupliziert werden."
             }

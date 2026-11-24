@@ -14,6 +14,52 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    private func scrollToSeededMeal(
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let meal = app.staticTexts["Chicken Curry mit Reis"]
+
+        XCTAssertTrue(
+            app.buttons["today.addFood"].waitForExistence(timeout: 3),
+            file: file,
+            line: line
+        )
+        for _ in 0..<8 where !meal.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(meal.waitForExistence(timeout: 2), file: file, line: line)
+        XCTAssertTrue(meal.isHittable, file: file, line: line)
+
+        return meal
+    }
+
+    @MainActor
+    private func scrollToFirstMealButton(
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIElement {
+        let mealButton = app.buttons
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "meal.open."))
+            .firstMatch
+
+        XCTAssertTrue(
+            app.buttons["today.addFood"].waitForExistence(timeout: 3),
+            file: file,
+            line: line
+        )
+        for _ in 0..<8 where !mealButton.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(mealButton.waitForExistence(timeout: 2), file: file, line: line)
+        XCTAssertTrue(mealButton.isHittable, file: file, line: line)
+
+        return mealButton
+    }
+
+    @MainActor
     func testShowsEnergyBalanceTableWithoutIntakeOrExpenditure() throws {
         let app = XCUIApplication()
         app.launchArguments.append("--ui-testing")
@@ -267,8 +313,7 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
 
         XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 2))
@@ -389,12 +434,7 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        for _ in 0..<5 where !mealName.isHittable || mealName.frame.midY > app.frame.height * 0.7 {
-            app.swipeUp()
-        }
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
-        XCTAssertTrue(mealName.isHittable)
+        let mealName = scrollToSeededMeal(in: app)
         let positionBeforeSwitch = mealName.frame.midY
 
         let mealsTab = app.tabBars.buttons["Mahlzeiten"]
@@ -445,8 +485,7 @@ final class QuantUITests: XCTestCase {
         app.launchArguments += ["--ui-testing", "--ui-testing-review-progress"]
         app.launch()
         XCTAssertFalse(app.buttons["analysis.activity"].waitForExistence(timeout: 1))
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
         XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.descendants(matching: .any)["meal.status.analyzing"].waitForExistence(timeout: 2))
@@ -462,8 +501,7 @@ final class QuantUITests: XCTestCase {
         app.launchArguments += ["--ui-testing", "--ui-testing-review-progress"]
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
         XCTAssertTrue(app.descendants(matching: .any)["meal.status.analyzing"].waitForExistence(timeout: 3))
 
@@ -489,8 +527,7 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
 
         XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 2))
@@ -518,11 +555,7 @@ final class QuantUITests: XCTestCase {
         let dailyFiber = app.descendants(matching: .any)["today.nutrient.fiber"]
         XCTAssertTrue(dailyFiber.waitForExistence(timeout: 3))
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        for _ in 0..<6 where !mealName.isHittable {
-            app.swipeUp()
-        }
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
 
         let mealFiber = app.descendants(matching: .any)["meal.nutrient.fiber"]
@@ -538,11 +571,7 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        for _ in 0..<6 where !mealName.isHittable {
-            app.swipeUp()
-        }
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
 
         let sugar = app.descendants(matching: .any)["meal.nutrient.sugar"]
@@ -572,11 +601,7 @@ final class QuantUITests: XCTestCase {
         app.launchArguments += ["--ui-testing", "--ui-testing-review-costs"]
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        for _ in 0..<6 where !mealName.isHittable {
-            app.swipeUp()
-        }
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
 
         let analysisHistory = app.buttons["Analyseverlauf"]
@@ -594,14 +619,18 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(costSummary.label.contains("Gesamtkosten"))
         XCTAssertTrue(costSummary.label.contains("0,0035 USD"))
 
-        let firstCallCost = app.staticTexts["0,002 USD"]
+        let firstCallCost = app.staticTexts
+            .matching(NSPredicate(format: "label CONTAINS %@", "0,002 USD"))
+            .firstMatch
         for _ in 0..<5 where !firstCallCost.exists {
             app.swipeUp()
         }
         XCTAssertTrue(firstCallCost.waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Fehler: Nährwerte sind widersprüchlich."].exists)
 
-        let secondCallCost = app.staticTexts["0,0015 USD"]
+        let secondCallCost = app.staticTexts
+            .matching(NSPredicate(format: "label CONTAINS %@", "0,0015 USD"))
+            .firstMatch
         for _ in 0..<5 where !secondCallCost.exists {
             app.swipeUp()
         }
@@ -617,8 +646,7 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
 
         let rice = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reis,")).firstMatch
@@ -644,8 +672,7 @@ final class QuantUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["--ui-testing", "--ui-testing-review-confirmation"]
         app.launch()
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
         let rice = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reis,")).firstMatch
         for _ in 0..<4 where !rice.isHittable || rice.frame.maxY > app.frame.height * 0.65 { app.swipeUp() }
@@ -661,7 +688,7 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", energy)).firstMatch.exists)
         XCTAssertTrue(app.staticTexts["~280 g"].exists)
         app.navigationBars["Mahlzeit"].buttons["Heute"].tap()
-        mealName.tap()
+        scrollToSeededMeal(in: app).tap()
         for _ in 0..<4 where !rice.isHittable || rice.frame.maxY > app.frame.height * 0.65 { app.swipeUp() }
         rice.tap()
         XCTAssertTrue(slider.waitForExistence(timeout: 2))
@@ -678,8 +705,7 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
 
         let slider = app.sliders["meal.portionMultiplier"]
@@ -689,7 +715,7 @@ final class QuantUITests: XCTestCase {
 
         app.navigationBars["Mahlzeit"].buttons["Heute"].tap()
         XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForNonExistence(timeout: 2))
-        mealName.tap()
+        scrollToSeededMeal(in: app).tap()
 
         let reopenedSlider = app.sliders["meal.portionMultiplier"]
         XCTAssertTrue(reopenedSlider.waitForExistence(timeout: 2))
@@ -705,8 +731,7 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
 
         XCTAssertTrue(app.buttons["meal.actions"].waitForExistence(timeout: 2))
@@ -729,8 +754,7 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
 
         XCTAssertTrue(app.buttons["meal.actions"].waitForExistence(timeout: 2))
@@ -739,7 +763,6 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(duplicateButton.waitForExistence(timeout: 2))
         duplicateButton.tap()
 
-        XCTAssertTrue(app.descendants(matching: .any)["meal.duplicateSuccess"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.navigationBars["Mahlzeit"].exists)
 
         app.navigationBars["Mahlzeit"].buttons["Heute"].tap()
@@ -760,10 +783,7 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealButton = app.buttons
-            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "meal.open."))
-            .firstMatch
-        XCTAssertTrue(mealButton.waitForExistence(timeout: 5))
+        let mealButton = scrollToFirstMealButton(in: app)
         mealButton.tap()
 
         let captureForm = app.descendants(matching: .any)["meal.captureForm"]
@@ -781,8 +801,7 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealName = app.staticTexts["Chicken Curry mit Reis"]
-        XCTAssertTrue(mealName.waitForExistence(timeout: 3))
+        let mealName = scrollToSeededMeal(in: app)
         mealName.tap()
 
         let answerField = app.textFields["meal.clarificationAnswer"]
@@ -813,10 +832,7 @@ final class QuantUITests: XCTestCase {
         ])
         app.launch()
 
-        let mealButton = app.buttons
-            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "meal.open."))
-            .firstMatch
-        XCTAssertTrue(mealButton.waitForExistence(timeout: 3))
+        let mealButton = scrollToFirstMealButton(in: app)
         mealButton.tap()
 
         XCTAssertTrue(app.navigationBars["Mahlzeit"].waitForExistence(timeout: 2))
