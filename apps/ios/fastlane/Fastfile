@@ -1,0 +1,93 @@
+require "tmpdir"
+
+APP_IDENTIFIER = "de.clemensgerbaulet.quantified-self"
+TEAM_ID = "6948ZYZ67T"
+INTERNAL_GROUP = "Tester"
+EXTERNAL_GROUP = "Externe Tester"
+
+fastlane_version "2.242.0"
+default_platform(:ios)
+opt_out_usage
+
+def required_environment_value(name)
+  value = ENV[name]&.strip
+  UI.user_error!("#{name} fehlt in fastlane/.env. Siehe fastlane/.env.example.") if value.to_s.empty?
+  value
+end
+
+platform :ios do
+  desc "Archive, upload, and distribute the next Quant TestFlight build"
+  lane :deploy_testflight do
+    changelog = prompt(text: "Was wurde seit dem letzten TestFlight-Build geändert?").strip
+    UI.user_error!("Das Changelog darf nicht leer sein.") if changelog.empty?
+
+    api_key = app_store_connect_api_key(
+      key_id: required_environment_value("ASC_KEY_ID"),
+      issuer_id: required_environment_value("ASC_ISSUER_ID"),
+      key_filepath: File.expand_path(required_environment_value("ASC_KEY_FILE")),
+      duration: 1_200,
+      in_house: false
+    )
+
+    version = get_version_number(
+      xcodeproj: "quantified_self.xcodeproj",
+      target: "Quant"
+    )
+    latest_build = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: APP_IDENTIFIER,
+      version: version,
+      initial_build_number: 0
+    )
+    next_build = latest_build.to_i + 1
+
+    UI.message("")
+    UI.message("TestFlight-Veröffentlichung")
+    UI.message("  Version: #{version} (Build #{next_build})")
+    UI.message("  Intern:  #{INTERNAL_GROUP} (automatische Verteilung in App Store Connect)")
+    UI.message("  Extern:  #{EXTERNAL_GROUP}")
+    UI.message("  Changelog: #{changelog}")
+    UI.message("")
+
+    unless UI.confirm("Jetzt archivieren, hochladen und an beide Gruppen verteilen?")
+      UI.important("Abgebrochen. Es wurde nichts gebaut oder hochgeladen.")
+      next
+    end
+
+    Dir.mktmpdir("quant-testflight-") do |build_root|
+      build_app(
+        project: "quantified_self.xcodeproj",
+        scheme: "Quant",
+        configuration: "Release",
+        clean: true,
+        export_method: "app-store-connect",
+        output_directory: build_root,
+        output_name: "Quant-#{version}-#{next_build}.ipa",
+        archive_path: File.join(build_root, "Quant-#{version}-#{next_build}.xcarchive"),
+        derived_data_path: File.join(build_root, "DerivedData"),
+        xcargs: "CURRENT_PROJECT_VERSION=#{next_build}",
+        export_options: {
+          method: "app-store-connect",
+          signingStyle: "automatic",
+          teamID: TEAM_ID,
+          manageAppVersionAndBuildNumber: false,
+          uploadSymbols: true
+        }
+      )
+
+      upload_to_testflight(
+        api_key: api_key,
+        app_identifier: APP_IDENTIFIER,
+        ipa: lane_context[SharedValues::IPA_OUTPUT_PATH],
+        changelog: changelog,
+        distribute_external: true,
+        groups: [EXTERNAL_GROUP],
+        notify_external_testers: true,
+        skip_waiting_for_build_processing: false,
+        uses_non_exempt_encryption: false
+      )
+    end
+
+    UI.success("Build #{next_build} wurde hochgeladen und für die TestFlight-Gruppen verteilt.")
+  end
+end

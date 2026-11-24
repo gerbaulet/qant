@@ -8,6 +8,10 @@ override PROJECT := quantified_self.xcodeproj
 override SCHEME := Quant
 override BUNDLE_ID := de.clemensgerbaulet.quantified-self
 
+BREW ?= brew
+BREW_PREFIX ?= $(shell $(BREW) --prefix 2>/dev/null)
+BREW_BUNDLE ?= $(BREW_PREFIX)/opt/ruby/bin/bundle
+
 CONFIGURATION ?= Debug
 DERIVED_DATA ?= /tmp/quant-derived
 DEVICE_DERIVED_DATA ?= /tmp/quant-device
@@ -54,7 +58,9 @@ XCODEBUILD = xcodebuild -project "$(PROJECT)" -scheme "$(SCHEME)" -configuration
 	build-device \
 	install-device \
 	launch-device \
-	deploy-device
+	deploy-device \
+	testflight-setup \
+	testflight
 
 help: ## Show available Quant development commands.
 	@awk 'BEGIN { FS = ":.*## " } /^[a-z-]+:.*## / { printf "  %-26s %s\n", $$1, $$2 }' "$(firstword $(MAKEFILE_LIST))"
@@ -126,3 +132,18 @@ deploy-device: ## Build, install, and launch Quant; accepts a quoted device name
 	$(MAKE) build-device DEVICE="$(DEVICE)"
 	$(MAKE) install-device DEVICE="$(DEVICE)"
 	$(MAKE) launch-device DEVICE="$(DEVICE)"
+
+testflight-setup: ## Install the pinned local Fastlane toolchain.
+	command -v "$(BREW)" >/dev/null
+	$(BREW) list --versions ruby >/dev/null 2>&1 || $(BREW) install ruby
+	test -x "$(BREW_BUNDLE)"
+	"$(BREW_BUNDLE)" config set --local path vendor/bundle
+	"$(BREW_BUNDLE)" install
+
+testflight: ## Prompt, confirm, upload, and distribute the next TestFlight build.
+	test -f fastlane/.env || { echo "Missing fastlane/.env; see TESTFLIGHT.md" >&2; exit 2; }
+	test -x "$(BREW_BUNDLE)" || { echo "Missing Homebrew Ruby; run make testflight-setup" >&2; exit 2; }
+	"$(BREW_BUNDLE)" check >/dev/null || { echo "Missing Fastlane gems; run make testflight-setup" >&2; exit 2; }
+	FASTLANE_OPT_OUT_USAGE=1 FASTLANE_SKIP_UPDATE_CHECK=1 \
+		LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
+		"$(BREW_BUNDLE)" exec fastlane ios deploy_testflight
