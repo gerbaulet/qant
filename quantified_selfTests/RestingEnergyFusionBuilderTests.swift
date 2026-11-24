@@ -179,6 +179,24 @@ struct RestingEnergyFusionBuilderTests {
         #expect(!incomplete.isComplete)
     }
 
+    @Test("Live features tolerate up to two unresolved hours")
+    func liveFeatureToleranceBoundary() {
+        let tolerated = RestingEnergyCoverage(
+            expectedDuration: 24 * 60 * 60,
+            primaryDuration: 22 * 60 * 60,
+            iPhoneFallbackDuration: 0
+        )
+        let rejected = RestingEnergyCoverage(
+            expectedDuration: 24 * 60 * 60,
+            primaryDuration: 22 * 60 * 60 - 1,
+            iPhoneFallbackDuration: 0
+        )
+
+        #expect(!tolerated.isComplete)
+        #expect(tolerated.isUsableForLiveFeatures)
+        #expect(!rejected.isUsableForLiveFeatures)
+    }
+
     @Test("An unfinished current hour does not make today's coverage incomplete")
     func toleratesPendingCurrentHour() {
         let coverage = RestingEnergyCoverage(

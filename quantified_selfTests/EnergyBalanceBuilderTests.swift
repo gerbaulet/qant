@@ -167,6 +167,32 @@ struct EnergyBalanceBuilderTests {
         #expect(balance.isCurrentDay)
     }
 
+    @Test("A short current-day resting energy gap keeps the balance evaluable")
+    func toleratesShortCurrentDayRestingEnergyGap() {
+        let day = date(2026, 11, 22, 12)
+        let balance = EnergyBalanceBuilder.makeBalance(
+            for: day,
+            meals: [meal(at: day, state: .confirmed, energy: 2_000)],
+            expenditure: DailyEnergyExpenditure(
+                date: day,
+                activeKilocalories: 400,
+                restingKilocalories: 1_500,
+                restingEnergyCoverage: RestingEnergyCoverage(
+                    expectedDuration: 23 * 60 * 60,
+                    primaryDuration: 21 * 60 * 60,
+                    iPhoneFallbackDuration: 0
+                )
+            ),
+            now: date(2026, 11, 22, 23),
+            calendar: calendar
+        )
+
+        #expect(balance.completeness == .complete)
+        #expect(balance.isCurrentDay)
+        #expect(balance.restingEnergyCoverage?.isComplete == false)
+        #expect(balance.restingEnergyCoverage?.isUsableForLiveFeatures == true)
+    }
+
     @Test("Open meal analyses make the balance provisional")
     func provisionalMeal() {
         let day = date(2026, 11, 10, 12)

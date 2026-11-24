@@ -88,6 +88,9 @@ enum EnergyBalanceBuilder {
         let hasProvisionalMeal = usableRevisions.contains {
             $0.status.isProvisionalNutritionEstimate
         }
+        let hasSufficientRestingEnergyCoverage = expenditure?.restingEnergyCoverage.map {
+            isCurrentDay ? $0.isUsableForLiveFeatures : $0.isComplete
+        } ?? true
 
         let completeness: EnergyBalanceCompleteness
         if meals.isEmpty || intake == nil {
@@ -96,7 +99,7 @@ enum EnergyBalanceBuilder {
             completeness = .missingActiveEnergy
         } else if expenditure?.restingKilocalories == nil {
             completeness = .missingRestingEnergy
-        } else if expenditure?.restingEnergyCoverage?.isComplete == false {
+        } else if !hasSufficientRestingEnergyCoverage {
             completeness = .incompleteRestingEnergy
         } else if hasIncompleteMeal || hasProvisionalMeal {
             completeness = .provisionalIntake

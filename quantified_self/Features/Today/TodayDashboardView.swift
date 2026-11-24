@@ -122,7 +122,7 @@ struct TodayDashboardView: View {
 
                 restingEnergyCoverageNotice(balance)
 
-                if balance?.restingEnergyCoverage?.isComplete != false,
+                if hasSufficientRestingEnergyCoverage(balance),
                    balance?.isCurrentDay ?? true,
                    intakeForecast == nil || expenditureForecast == nil {
                     Label("Für die Hochrechnung fehlen noch Verlaufsdaten.", systemImage: "clock.arrow.circlepath")
@@ -155,8 +155,8 @@ struct TodayDashboardView: View {
 
     @ViewBuilder
     private func restingEnergyCoverageNotice(_ balance: DailyEnergyBalance?) -> some View {
-        if let coverage = balance?.restingEnergyCoverage {
-            if !coverage.isComplete {
+        if let balance, let coverage = balance.restingEnergyCoverage {
+            if !hasSufficientRestingEnergyCoverage(balance) {
                 Label(
                     "Ruheenergiedaten unvollständig – Bilanz und Prognose sind vorläufig.",
                     systemImage: "exclamationmark.triangle"
@@ -164,6 +164,14 @@ struct TodayDashboardView: View {
                 .font(.caption2)
                 .foregroundStyle(.orange)
                 .accessibilityIdentifier("today.restingEnergyIncomplete")
+            } else if balance.isCurrentDay && !coverage.isComplete {
+                Label(
+                    "Ruheenergiedaten werden noch ergänzt; die Prognose bleibt verfügbar.",
+                    systemImage: "clock.arrow.circlepath"
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("today.restingEnergyPending")
             } else if coverage.usesIPhoneFallback {
                 Label(
                     "Ruheenergie teilweise mit iPhone-Daten ergänzt.",
@@ -174,6 +182,15 @@ struct TodayDashboardView: View {
                 .accessibilityIdentifier("today.restingEnergyFallback")
             }
         }
+    }
+
+    private func hasSufficientRestingEnergyCoverage(
+        _ balance: DailyEnergyBalance?
+    ) -> Bool {
+        guard let balance, let coverage = balance.restingEnergyCoverage else {
+            return true
+        }
+        return balance.isCurrentDay ? coverage.isUsableForLiveFeatures : coverage.isComplete
     }
 
     @ViewBuilder

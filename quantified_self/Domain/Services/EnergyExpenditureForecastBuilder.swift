@@ -40,7 +40,7 @@ enum EnergyExpenditureForecastBuilder {
     ) -> EnergyExpenditureForecast? {
         guard let currentActive = current?.activeKilocalories,
               let currentResting = current?.restingKilocalories,
-              current?.restingEnergyCoverage?.isComplete != false else {
+              current?.restingEnergyCoverage?.isUsableForLiveFeatures != false else {
             return nil
         }
 

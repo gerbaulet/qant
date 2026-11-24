@@ -187,6 +187,40 @@ struct EnergyExpenditureForecastBuilderTests {
         #expect(forecast == nil)
     }
 
+    @Test("Forecast tolerates a short current resting energy gap")
+    func toleratesShortCurrentRestingEnergyGap() throws {
+        let reference = date(2026, 8, 24, 14)
+        let daily = (17...23).map {
+            DailyEnergyExpenditure(
+                date: date(2026, 8, $0),
+                activeKilocalories: 500,
+                restingKilocalories: 1_500
+            )
+        }
+        let current = DailyEnergyExpenditure(
+            date: reference,
+            activeKilocalories: 250,
+            restingKilocalories: 900,
+            restingEnergyCoverage: RestingEnergyCoverage(
+                expectedDuration: 14 * 60 * 60,
+                primaryDuration: 12 * 60 * 60,
+                iPhoneFallbackDuration: 0
+            )
+        )
+
+        let forecast = try #require(EnergyExpenditureForecastBuilder.makeForecast(
+            for: reference,
+            current: current,
+            dailyExpenditures: daily,
+            hourlyExpenditures: [],
+            calendar: calendar
+        ))
+
+        #expect(forecast.activeKilocalories == 500)
+        #expect(forecast.restingKilocalories == 1_500)
+        #expect(forecast.historicalDayCount == 7)
+    }
+
     @Test("Forecast excludes incomplete historical resting energy")
     func excludesIncompleteHistoricalRestingEnergy() {
         let reference = date(2026, 8, 24, 14)
