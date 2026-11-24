@@ -222,6 +222,18 @@ struct RestingEnergyFusionBuilderTests {
         #expect(!coverage.isComplete)
     }
 
+    @Test("A pending current hour still counts toward the live eighteen-hour limit")
+    func pendingHourCountsTowardLiveLimit() {
+        let coverage = RestingEnergyCoverage(
+            expectedDuration: 19 * 60 * 60,
+            primaryDuration: 60 * 60,
+            iPhoneFallbackDuration: 0,
+            pendingDuration: 60 * 60
+        )
+
+        #expect(!coverage.isUsableForLiveFeatures)
+    }
+
     @Test("Aggregating intervals keeps energy and provenance consistent")
     func aggregatesIntervals() throws {
         let start = Date.now
@@ -246,23 +258,40 @@ struct RestingEnergyFusionBuilderTests {
             ),
             FusedRestingEnergyInterval(
                 interval: DateInterval(start: start.addingTimeInterval(7_200), duration: 3_600),
-                kilocalories: nil,
+                kilocalories: 68,
+                estimatedKilocalories: 68,
                 coverage: RestingEnergyCoverage(
                     expectedDuration: 3_600,
                     primaryDuration: 0,
                     iPhoneFallbackDuration: 0,
-                    pendingDuration: 3_600
+                    estimatedDuration: 3_600
                 )
             ),
         ]
 
         let aggregate = RestingEnergyFusionBuilder.aggregate(values)
 
-        #expect(aggregate.kilocalories == 142)
+        #expect(aggregate.kilocalories == 210)
+        #expect(aggregate.estimatedKilocalories == 68)
         #expect(aggregate.coverage?.expectedDuration == 10_800)
         #expect(aggregate.coverage?.primaryDuration == 3_600)
         #expect(aggregate.coverage?.iPhoneFallbackDuration == 3_600)
-        #expect(aggregate.coverage?.pendingDuration == 3_600)
+        #expect(aggregate.coverage?.estimatedDuration == 3_600)
         #expect(aggregate.coverage?.isComplete == true)
+    }
+
+    @Test("Estimated duration makes historical coverage complete and remains identifiable")
+    func estimatedCoverageIsComplete() {
+        let coverage = RestingEnergyCoverage(
+            expectedDuration: 24 * 60 * 60,
+            primaryDuration: 8 * 60 * 60,
+            iPhoneFallbackDuration: 0,
+            estimatedDuration: 16 * 60 * 60
+        )
+
+        #expect(coverage.isComplete)
+        #expect(coverage.usesEstimate)
+        #expect(coverage.measuredDuration == 8 * 60 * 60)
+        #expect(coverage.coveredDuration == 24 * 60 * 60)
     }
 }

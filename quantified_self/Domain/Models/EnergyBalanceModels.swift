@@ -7,29 +7,39 @@ struct RestingEnergyCoverage: Sendable, Equatable {
     let expectedDuration: TimeInterval
     let primaryDuration: TimeInterval
     let iPhoneFallbackDuration: TimeInterval
+    let estimatedDuration: TimeInterval
     let pendingDuration: TimeInterval
+    let hasExcessiveGap: Bool
 
     init(
         expectedDuration: TimeInterval,
         primaryDuration: TimeInterval,
         iPhoneFallbackDuration: TimeInterval,
-        pendingDuration: TimeInterval = 0
+        estimatedDuration: TimeInterval = 0,
+        pendingDuration: TimeInterval = 0,
+        hasExcessiveGap: Bool = false
     ) {
         self.expectedDuration = expectedDuration
         self.primaryDuration = primaryDuration
         self.iPhoneFallbackDuration = iPhoneFallbackDuration
+        self.estimatedDuration = estimatedDuration
         self.pendingDuration = pendingDuration
+        self.hasExcessiveGap = hasExcessiveGap
+    }
+
+    var measuredDuration: TimeInterval {
+        min(max(primaryDuration + iPhoneFallbackDuration, 0), expectedDuration)
     }
 
     var coveredDuration: TimeInterval {
-        min(max(primaryDuration + iPhoneFallbackDuration, 0), expectedDuration)
+        min(max(measuredDuration + estimatedDuration, 0), expectedDuration)
     }
 
     var missingDuration: TimeInterval {
         max(expectedDuration - coveredDuration, 0)
     }
 
-    private var unresolvedMissingDuration: TimeInterval {
+    var unresolvedMissingDuration: TimeInterval {
         max(missingDuration - min(max(pendingDuration, 0), expectedDuration), 0)
     }
 
@@ -39,19 +49,23 @@ struct RestingEnergyCoverage: Sendable, Equatable {
             Self.maximumToleratedMissingDuration,
             proportionalTolerance
         )
-        return expectedDuration > 0 && coveredDuration > 0 &&
+        return !hasExcessiveGap && expectedDuration > 0 && coveredDuration > 0 &&
             unresolvedMissingDuration <= toleratedMissingDuration
     }
 
-    /// HealthKit can publish iPhone resting energy in hourly batches. Keep live
-    /// features available during that delay without weakening historical data quality.
+    /// Keep live features available through short HealthKit publication delays,
+    /// but stop when an uninterrupted source gap reaches the configured limit.
     var isUsableForLiveFeatures: Bool {
-        expectedDuration > 0 && coveredDuration > 0 &&
-            unresolvedMissingDuration < Self.liveFeatureMissingDurationLimit
+        !hasExcessiveGap && expectedDuration > 0 && coveredDuration > 0 &&
+            missingDuration < Self.liveFeatureMissingDurationLimit
     }
 
     var usesIPhoneFallback: Bool {
         iPhoneFallbackDuration > 0
+    }
+
+    var usesEstimate: Bool {
+        estimatedDuration > 0
     }
 }
 
@@ -59,17 +73,20 @@ struct DailyEnergyExpenditure: Identifiable, Sendable, Equatable {
     let date: Date
     let activeKilocalories: Double?
     let restingKilocalories: Double?
+    let estimatedRestingKilocalories: Double
     let restingEnergyCoverage: RestingEnergyCoverage?
 
     init(
         date: Date,
         activeKilocalories: Double?,
         restingKilocalories: Double?,
+        estimatedRestingKilocalories: Double = 0,
         restingEnergyCoverage: RestingEnergyCoverage? = nil
     ) {
         self.date = date
         self.activeKilocalories = activeKilocalories
         self.restingKilocalories = restingKilocalories
+        self.estimatedRestingKilocalories = estimatedRestingKilocalories
         self.restingEnergyCoverage = restingEnergyCoverage
     }
 
@@ -85,17 +102,20 @@ struct HourlyEnergyExpenditure: Identifiable, Sendable, Equatable {
     let date: Date
     let activeKilocalories: Double?
     let restingKilocalories: Double?
+    let estimatedRestingKilocalories: Double
     let restingEnergyCoverage: RestingEnergyCoverage?
 
     init(
         date: Date,
         activeKilocalories: Double?,
         restingKilocalories: Double?,
+        estimatedRestingKilocalories: Double = 0,
         restingEnergyCoverage: RestingEnergyCoverage? = nil
     ) {
         self.date = date
         self.activeKilocalories = activeKilocalories
         self.restingKilocalories = restingKilocalories
+        self.estimatedRestingKilocalories = estimatedRestingKilocalories
         self.restingEnergyCoverage = restingEnergyCoverage
     }
 

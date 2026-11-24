@@ -61,8 +61,8 @@ struct HealthMetricsModelTests {
             start: calendar.date(byAdding: .day, value: -7, to: day)!,
             end: calendar.date(byAdding: .day, value: 1, to: day)!
         )
-        let currentDayInterval = DateInterval(
-            start: day,
+        let reconciliationInterval = DateInterval(
+            start: calendar.date(byAdding: .day, value: -6, to: day)!,
             end: interval.end
         )
 
@@ -87,7 +87,7 @@ struct HealthMetricsModelTests {
         )
 
         #expect(provider.queryCount == 2)
-        #expect(provider.queriedIntervals == [interval, currentDayInterval])
+        #expect(provider.queriedIntervals == [interval, reconciliationInterval])
         #expect(model.energyExpenditures == [expenditure])
         #expect(model.energyStatus == .available)
     }
@@ -157,7 +157,10 @@ struct HealthMetricsModelTests {
             start: calendar.date(byAdding: .day, value: -7, to: day)!,
             end: calendar.date(byAdding: .day, value: 1, to: day)!
         )
-        let currentDayInterval = DateInterval(start: day, end: interval.end)
+        let reconciliationInterval = DateInterval(
+            start: calendar.date(byAdding: .day, value: -6, to: day)!,
+            end: interval.end
+        )
 
         await model.loadEnergy(
             from: interval.start,
@@ -179,7 +182,7 @@ struct HealthMetricsModelTests {
         )
 
         #expect(provider.queryCount == 2)
-        #expect(provider.queriedIntervals == [interval, currentDayInterval])
+        #expect(provider.queriedIntervals == [interval, reconciliationInterval])
         #expect(model.hourlyEnergyExpenditures == [expenditure])
     }
 

@@ -10,7 +10,7 @@ struct RestingEnergyDiagnosticsView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
-                Text("Die Gesamtzeile zeigt den tatsächlich von Quant importierten Wert. Watch-Daten haben Vorrang; iPhone-Daten füllen nur Lücken. Die Diagramme zeigen die gelesenen Daten der letzten sieben Tage stündlich.")
+                Text("Die Gesamtzeile zeigt den von Quant verwendeten Wert. Watch-Daten haben Vorrang, danach folgen iPhone-Daten und klar ausgewiesene Quant-Schätzungen. Nachgetragene Health-Daten ersetzen Schätzungen automatisch. Die Diagramme zeigen die letzten sieben Tage stündlich.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -228,6 +228,7 @@ private struct RestingEnergyDiagnosticSeriesCard: View {
     private var tint: Color {
         switch series.role {
         case .importedTotal: .blue
+        case .estimated: .green
         case .iPhoneCategory: .cyan
         case .appleWatchCategory: .orange
         case .individualSource: .purple
@@ -237,6 +238,7 @@ private struct RestingEnergyDiagnosticSeriesCard: View {
     private var systemImage: String {
         switch series.role {
         case .importedTotal: "sum"
+        case .estimated: "waveform.path.ecg.rectangle"
         case .iPhoneCategory: "iphone"
         case .appleWatchCategory: "applewatch"
         case .individualSource: "waveform.path.ecg"

@@ -324,9 +324,14 @@ private struct TodayDashboardContainer: View {
     private func refreshCurrentDayEnergy() async {
         guard healthMetrics.hasRequestedEnergyAccess else { return }
         let calendar = Calendar.autoupdatingCurrent
-        guard let dayInterval = calendar.dateInterval(of: .day, for: .now) else { return }
+        guard let dayInterval = calendar.dateInterval(of: .day, for: .now),
+              let reconciliationStart = calendar.date(
+                byAdding: .day,
+                value: -(HealthMetricsModel.recentEnergyReconciliationDayCount - 1),
+                to: dayInterval.start
+              ) else { return }
         await healthMetrics.loadEnergy(
-            from: dayInterval.start,
+            from: reconciliationStart,
             to: dayInterval.end,
             calendar: calendar,
             force: true

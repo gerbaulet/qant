@@ -34,8 +34,8 @@ enum RestingEnergyDiagnosticsBuilder {
 
         let total = RestingEnergyDiagnosticSeries(
             id: "total",
-            title: "Quant-Import (Gesamt)",
-            details: "HealthKit-priorisiert, anschließend mit iPhone-Lücken ergänzt",
+            title: "Quant-Gesamt",
+            details: "Watch vor iPhone vor persönlicher Quant-Schätzung",
             role: .importedTotal,
             days: dayStarts.map { day in
                 let imported = importedByDay[day]
@@ -52,6 +52,37 @@ enum RestingEnergyDiagnosticsBuilder {
                     date: hour,
                     kilocalories: imported?.kilocalories,
                     coveredDuration: imported?.coveredDuration
+                )
+            }
+        )
+        let estimated = RestingEnergyDiagnosticSeries(
+            id: "estimated",
+            title: "Quant-Schätzung",
+            details: "Lücken unter 18 Stunden, geschätzt aus dem persönlichen 28-Tage-Profil",
+            role: .estimated,
+            days: dayStarts.map { day in
+                let imported = importedByDay[day]
+                return RestingEnergyDiagnosticDay(
+                    date: day,
+                    kilocalories: imported.flatMap {
+                        $0.estimatedDuration > 0 ? $0.estimatedKilocalories : nil
+                    },
+                    coveredDuration: imported.flatMap {
+                        $0.estimatedDuration > 0 ? $0.estimatedDuration : nil
+                    },
+                    sampleCount: nil
+                )
+            },
+            hours: hourStarts.map { hour in
+                let imported = importedByHour[hour]
+                return RestingEnergyDiagnosticHour(
+                    date: hour,
+                    kilocalories: imported.flatMap {
+                        $0.estimatedDuration > 0 ? $0.estimatedKilocalories : nil
+                    },
+                    coveredDuration: imported.flatMap {
+                        $0.estimatedDuration > 0 ? $0.estimatedDuration : nil
+                    }
                 )
             }
         )
@@ -99,7 +130,7 @@ enum RestingEnergyDiagnosticsBuilder {
 
         return RestingEnergyDiagnosticsSnapshot(
             interval: interval,
-            series: [total, iPhone, watch] + sources
+            series: [total, estimated, iPhone, watch] + sources
         )
     }
 

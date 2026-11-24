@@ -254,6 +254,40 @@ struct EnergyExpenditureForecastBuilderTests {
         #expect(forecast == nil)
     }
 
+    @Test("Forecast includes historical days completed by personal estimates")
+    func includesEstimatedHistoricalRestingEnergy() throws {
+        let reference = date(2026, 8, 24, 14)
+        let daily = (17...23).map { day in
+            DailyEnergyExpenditure(
+                date: date(2026, 8, day),
+                activeKilocalories: 500,
+                restingKilocalories: 1_500,
+                estimatedRestingKilocalories: 1_000,
+                restingEnergyCoverage: RestingEnergyCoverage(
+                    expectedDuration: 24 * 60 * 60,
+                    primaryDuration: 8 * 60 * 60,
+                    iPhoneFallbackDuration: 0,
+                    estimatedDuration: 16 * 60 * 60
+                )
+            )
+        }
+
+        let forecast = try #require(EnergyExpenditureForecastBuilder.makeForecast(
+            for: reference,
+            current: DailyEnergyExpenditure(
+                date: reference,
+                activeKilocalories: 250,
+                restingKilocalories: 900
+            ),
+            dailyExpenditures: daily,
+            hourlyExpenditures: [],
+            calendar: calendar
+        ))
+
+        #expect(forecast.historicalDayCount == 7)
+        #expect(forecast.restingKilocalories == 1_500)
+    }
+
     @Test("Forecast history covers ninety calendar days through the selected day")
     func historyIntervalUsesCalendarDays() throws {
         let reference = date(2026, 3, 30, 14)

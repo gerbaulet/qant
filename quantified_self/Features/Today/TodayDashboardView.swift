@@ -172,6 +172,14 @@ struct TodayDashboardView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("today.restingEnergyPending")
+            } else if coverage.usesEstimate {
+                Label(
+                    "Ruheenergie teilweise aus deinem persönlichen Verlauf geschätzt.",
+                    systemImage: "waveform.path.ecg.rectangle"
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("today.restingEnergyEstimated")
             } else if coverage.usesIPhoneFallback {
                 Label(
                     "Ruheenergie teilweise mit iPhone-Daten ergänzt.",

@@ -21,14 +21,18 @@ struct RestingEnergyDiagnosticsBuilderTests {
                 RestingEnergyDiagnosticImportedDay(
                     date: start,
                     kilocalories: 1_500,
-                    coveredDuration: 24 * 60 * 60
+                    coveredDuration: 24 * 60 * 60,
+                    estimatedKilocalories: 400,
+                    estimatedDuration: 8 * 60 * 60
                 ),
             ],
             importedHours: [
                 RestingEnergyDiagnosticImportedHour(
                     date: start,
                     kilocalories: 62,
-                    coveredDuration: 60 * 60
+                    coveredDuration: 60 * 60,
+                    estimatedKilocalories: 20,
+                    estimatedDuration: 20 * 60
                 ),
             ],
             samples: [
@@ -59,12 +63,13 @@ struct RestingEnergyDiagnosticsBuilderTests {
             calendar: calendar
         )
 
-        #expect(snapshot.series.prefix(3).map(\.id) == [
+        #expect(snapshot.series.prefix(4).map(\.id) == [
             "total",
+            "estimated",
             "category.iphone",
             "category.watch",
         ])
-        #expect(snapshot.series.count == 6)
+        #expect(snapshot.series.count == 7)
         #expect(snapshot.series.allSatisfy { $0.days.count == 7 })
         #expect(snapshot.series.allSatisfy { $0.hours.count == 168 })
 
@@ -73,6 +78,15 @@ struct RestingEnergyDiagnosticsBuilderTests {
         #expect(total.days[1].kilocalories == nil)
         #expect(total.hours[0].kilocalories == 62)
         #expect(total.hours[1].kilocalories == nil)
+
+        let estimated = try #require(snapshot.series.first { $0.id == "estimated" })
+        #expect(estimated.role == .estimated)
+        #expect(estimated.days[0].kilocalories == 400)
+        #expect(estimated.days[0].coveredDuration == Double(8 * 60 * 60))
+        #expect(estimated.days[1].kilocalories == nil)
+        #expect(estimated.hours[0].kilocalories == 20)
+        #expect(estimated.hours[0].coveredDuration == Double(20 * 60))
+        #expect(estimated.hours[1].kilocalories == nil)
 
         let iPhone = try #require(snapshot.series.first { $0.id == "category.iphone" })
         #expect(iPhone.days[1].kilocalories == 60)
@@ -109,6 +123,7 @@ struct RestingEnergyDiagnosticsBuilderTests {
 
         #expect(snapshot.series.map(\.id) == [
             "total",
+            "estimated",
             "category.iphone",
             "category.watch",
         ])

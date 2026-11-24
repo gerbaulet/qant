@@ -142,6 +142,33 @@ struct EnergyBalanceBuilderTests {
         #expect(balance.restingEnergyCoverage?.usesIPhoneFallback == true)
     }
 
+    @Test("Estimated resting energy remains evaluable in historical balances")
+    func completeEstimatedRestingEnergy() {
+        let day = date(2026, 11, 10, 12)
+        let coverage = RestingEnergyCoverage(
+            expectedDuration: 24 * 60 * 60,
+            primaryDuration: 8 * 60 * 60,
+            iPhoneFallbackDuration: 0,
+            estimatedDuration: 16 * 60 * 60
+        )
+        let balance = EnergyBalanceBuilder.makeBalance(
+            for: day,
+            meals: [meal(at: day, state: .confirmed, energy: 2_000)],
+            expenditure: DailyEnergyExpenditure(
+                date: day,
+                activeKilocalories: 400,
+                restingKilocalories: 1_500,
+                estimatedRestingKilocalories: 1_000,
+                restingEnergyCoverage: coverage
+            ),
+            now: date(2026, 11, 11, 12),
+            calendar: calendar
+        )
+
+        #expect(balance.completeness == .complete)
+        #expect(balance.restingEnergyCoverage?.usesEstimate == true)
+    }
+
     @Test("The unpublished current hour keeps today's balance evaluable")
     func pendingCurrentHour() {
         let day = date(2026, 11, 22, 12)

@@ -119,6 +119,7 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                 date: hour,
                 activeKilocalories: active[hour],
                 restingKilocalories: resting.kilocalories,
+                estimatedRestingKilocalories: resting.estimatedKilocalories,
                 restingEnergyCoverage: resting.coverage
             )
         }
@@ -132,6 +133,7 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                 date: day,
                 activeKilocalories: activeByDay[day],
                 restingKilocalories: resting.kilocalories,
+                estimatedRestingKilocalories: resting.estimatedKilocalories,
                 restingEnergyCoverage: resting.coverage
             )
         }
@@ -180,14 +182,18 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                 RestingEnergyDiagnosticImportedDay(
                     date: $0.date,
                     kilocalories: $0.restingKilocalories,
-                    coveredDuration: $0.restingEnergyCoverage?.coveredDuration
+                    coveredDuration: $0.restingEnergyCoverage?.coveredDuration,
+                    estimatedKilocalories: $0.estimatedRestingKilocalories,
+                    estimatedDuration: $0.restingEnergyCoverage?.estimatedDuration ?? 0
                 )
             },
             importedHours: imported.hourly.map {
                 RestingEnergyDiagnosticImportedHour(
                     date: $0.date,
                     kilocalories: $0.restingKilocalories,
-                    coveredDuration: $0.restingEnergyCoverage?.coveredDuration
+                    coveredDuration: $0.restingEnergyCoverage?.coveredDuration,
+                    estimatedKilocalories: $0.estimatedRestingKilocalories,
+                    estimatedDuration: $0.restingEnergyCoverage?.estimatedDuration ?? 0
                 )
             },
             samples: diagnosticSamples,
@@ -203,25 +209,30 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
         calendar: Calendar,
         pendingHour: DateInterval?
     ) async throws -> [FusedRestingEnergyInterval] {
+        let contextStart = calendar.date(
+            byAdding: .day,
+            value: -RestingEnergyInterpolationBuilder.lookbackDayCount,
+            to: startDate
+        ) ?? startDate
         let type = HKQuantityType(.basalEnergyBurned)
         async let primaryCollection = statisticsCollection(
             for: type,
-            from: startDate,
+            from: contextStart,
             to: endDate,
             calendar: calendar,
             interval: .hour,
             options: [.cumulativeSum, .duration]
         )
         async let iPhoneBuckets = iPhoneRestingEnergyBuckets(
-            from: startDate,
+            from: contextStart,
             to: endDate,
             calendar: calendar
         )
         let (primary, iPhoneByHour) = try await (primaryCollection, iPhoneBuckets)
 
         var values: [FusedRestingEnergyInterval] = []
-        primary.enumerateStatistics(from: startDate, to: endDate) { statistics, _ in
-            let intervalStart = max(statistics.startDate, startDate)
+        primary.enumerateStatistics(from: contextStart, to: endDate) { statistics, _ in
+            let intervalStart = max(statistics.startDate, contextStart)
             let intervalEnd = min(statistics.endDate, endDate)
             guard intervalStart < intervalEnd else { return }
             let pendingDuration = self.overlapDuration(
@@ -264,7 +275,12 @@ final class HealthKitEnergyProvider: HealthEnergyProviding {
                 )
             ))
         }
-        return values
+        return RestingEnergyInterpolationBuilder.fillGaps(
+            in: values,
+            from: startDate,
+            to: endDate,
+            calendar: calendar
+        )
     }
 
     private func overlapDuration(

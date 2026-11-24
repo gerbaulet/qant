@@ -4,6 +4,8 @@ import Observation
 @Observable
 @MainActor
 final class HealthMetricsModel {
+    static let recentEnergyReconciliationDayCount = 7
+
     private(set) var energyStatus: HealthDataStatus
     private(set) var energyExpenditures: [DailyEnergyExpenditure] = []
     private(set) var hourlyEnergyExpenditures: [HourlyEnergyExpenditure] = []
@@ -273,20 +275,49 @@ final class HealthMetricsModel {
         }
 
         let referenceDate = now()
-        guard let currentDayInterval = currentDayIntersection(
+        guard currentDayIntersection(
             with: requestedInterval,
             referenceDate: referenceDate,
             calendar: calendar
-        ) else { return nil }
+        ) != nil else { return nil }
         guard let lastCurrentDayLoadDate,
               let currentHour = calendar.dateInterval(of: .hour, for: referenceDate)?.start,
               let loadedHour = calendar.dateInterval(
                 of: .hour,
                 for: lastCurrentDayLoadDate
               )?.start else {
-            return currentDayInterval
+            return recentEnergyReconciliationInterval(
+                within: requestedInterval,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
         }
-        return loadedHour == currentHour ? nil : currentDayInterval
+        return loadedHour == currentHour
+            ? nil
+            : recentEnergyReconciliationInterval(
+                within: requestedInterval,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
+    }
+
+    private func recentEnergyReconciliationInterval(
+        within interval: DateInterval,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> DateInterval? {
+        guard let currentDay = calendar.dateInterval(of: .day, for: referenceDate),
+              let reconciliationStart = calendar.date(
+                byAdding: .day,
+                value: -(Self.recentEnergyReconciliationDayCount - 1),
+                to: currentDay.start
+              ) else {
+            return nil
+        }
+        let start = max(interval.start, reconciliationStart)
+        let end = min(interval.end, currentDay.end)
+        guard start < end else { return nil }
+        return DateInterval(start: start, end: end)
     }
 
     private func currentDayIntersection(

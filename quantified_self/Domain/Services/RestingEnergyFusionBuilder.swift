@@ -34,7 +34,20 @@ struct RestingEnergyIntervalValue: Sendable, Equatable {
 struct FusedRestingEnergyInterval: Sendable, Equatable {
     let interval: DateInterval
     let kilocalories: Double?
+    let estimatedKilocalories: Double
     let coverage: RestingEnergyCoverage
+
+    init(
+        interval: DateInterval,
+        kilocalories: Double?,
+        estimatedKilocalories: Double = 0,
+        coverage: RestingEnergyCoverage
+    ) {
+        self.interval = interval
+        self.kilocalories = kilocalories
+        self.estimatedKilocalories = estimatedKilocalories
+        self.coverage = coverage
+    }
 }
 
 enum RestingEnergyFusionBuilder {
@@ -89,6 +102,7 @@ enum RestingEnergyFusionBuilder {
         return FusedRestingEnergyInterval(
             interval: value.interval,
             kilocalories: kilocalories,
+            estimatedKilocalories: 0,
             coverage: RestingEnergyCoverage(
                 expectedDuration: expectedDuration,
                 primaryDuration: primaryDuration,
@@ -100,8 +114,12 @@ enum RestingEnergyFusionBuilder {
 
     static func aggregate(
         _ values: [FusedRestingEnergyInterval]
-    ) -> (kilocalories: Double?, coverage: RestingEnergyCoverage?) {
-        guard !values.isEmpty else { return (nil, nil) }
+    ) -> (
+        kilocalories: Double?,
+        estimatedKilocalories: Double,
+        coverage: RestingEnergyCoverage?
+    ) {
+        guard !values.isEmpty else { return (nil, 0, nil) }
         let kilocalories = values.compactMap(\.kilocalories)
         let coverage = RestingEnergyCoverage(
             expectedDuration: values.reduce(0) { $0 + $1.coverage.expectedDuration },
@@ -109,12 +127,17 @@ enum RestingEnergyFusionBuilder {
             iPhoneFallbackDuration: values.reduce(0) {
                 $0 + $1.coverage.iPhoneFallbackDuration
             },
+            estimatedDuration: values.reduce(0) {
+                $0 + $1.coverage.estimatedDuration
+            },
             pendingDuration: values.reduce(0) {
                 $0 + $1.coverage.pendingDuration
-            }
+            },
+            hasExcessiveGap: values.contains { $0.coverage.hasExcessiveGap }
         )
         return (
             kilocalories.isEmpty ? nil : kilocalories.reduce(0, +),
+            values.reduce(0) { $0 + $1.estimatedKilocalories },
             coverage
         )
     }
