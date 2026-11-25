@@ -449,6 +449,90 @@ struct NutritionTrendsBuilderTests {
         #expect(trend.forecastPoints.isEmpty)
     }
 
+    @Test("Forecast comparison uses today's meals for both strategies")
+    func forecastComparisonUsesTodayForBothStrategies() {
+        let today = [
+            meal(at: date(2026, 8, 24, 8), state: .confirmed, energy: 450, protein: 22),
+            meal(at: date(2026, 8, 24, 13), state: .confirmed, energy: 600, protein: 30),
+            meal(at: date(2026, 8, 24, 17), state: .confirmed, energy: 780, protein: 39),
+        ]
+
+        let comparison = IntakeForecastComparisonBuilder.makeComparison(
+            for: date(2026, 8, 24, 18),
+            meals: historicalMainMeals() + today,
+            calendar: calendar
+        )
+
+        #expect(comparison.actualEnergyKilocalories == 1_830)
+        #expect(comparison.mealAwareEnergyKilocalories == 1_830)
+        #expect(comparison.historicalRemainderEnergyKilocalories == 2_630)
+        #expect(comparison.historicalDayCount == 3)
+        #expect(comparison.difference == .mealAwareLower(800))
+    }
+
+    @Test("Forecast comparison reports equal projections")
+    func forecastComparisonReportsEqualProjections() {
+        let history = [
+            meal(at: date(2026, 8, 21, 8), state: .confirmed, energy: 400, protein: 20),
+            meal(at: date(2026, 8, 22, 9), state: .confirmed, energy: 500, protein: 25),
+            meal(at: date(2026, 8, 23, 10), state: .confirmed, energy: 600, protein: 30),
+        ]
+
+        let comparison = IntakeForecastComparisonBuilder.makeComparison(
+            for: date(2026, 8, 24, 7),
+            meals: history,
+            calendar: calendar
+        )
+
+        #expect(comparison.actualEnergyKilocalories == 0)
+        #expect(comparison.mealAwareEnergyKilocalories == 500)
+        #expect(comparison.historicalRemainderEnergyKilocalories == 500)
+        #expect(comparison.difference == .equal)
+    }
+
+    @Test("Forecast comparison remains unavailable with fewer than three historical days")
+    func forecastComparisonRequiresThreeDays() {
+        let history = [
+            meal(at: date(2026, 8, 22, 18), state: .confirmed, energy: 500, protein: 25),
+            meal(at: date(2026, 8, 23, 18), state: .confirmed, energy: 600, protein: 30),
+        ]
+
+        let comparison = IntakeForecastComparisonBuilder.makeComparison(
+            for: date(2026, 8, 24, 14),
+            meals: history,
+            calendar: calendar
+        )
+
+        #expect(comparison.historicalDayCount == 2)
+        #expect(comparison.mealAwareEnergyKilocalories == nil)
+        #expect(comparison.historicalRemainderEnergyKilocalories == nil)
+        #expect(comparison.difference == nil)
+    }
+
+    @Test("Forecast comparison distinguishes provisional history from today's intake")
+    func forecastComparisonProvisionalMarkers() {
+        let history = [
+            meal(at: date(2026, 8, 21, 18), state: .confirmed, energy: 400, protein: 20),
+            meal(at: date(2026, 8, 22, 18), state: .needsClarification, energy: 500, protein: 25),
+            meal(at: date(2026, 8, 23, 18), state: .confirmed, energy: 600, protein: 30),
+        ]
+        let today = meal(
+            at: date(2026, 8, 24, 8),
+            state: .confirmed,
+            energy: 700,
+            protein: 35
+        )
+
+        let comparison = IntakeForecastComparisonBuilder.makeComparison(
+            for: date(2026, 8, 24, 14),
+            meals: history + [today],
+            calendar: calendar
+        )
+
+        #expect(comparison.actualHasProvisionalValues == false)
+        #expect(comparison.forecastHasProvisionalValues == true)
+    }
+
     @Test("Period chart replaces today's partial value with the forecast")
     func periodChartUsesForecastForToday() {
         let meals = [

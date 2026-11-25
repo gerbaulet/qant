@@ -10,6 +10,7 @@ struct OpenRouterSettingsView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
+    @Query(sort: \Meal.timestamp, order: .reverse) private var meals: [Meal]
     @State private var viewModel: OpenRouterSettingsViewModel
     @AppStorage("weeklySummaryReminderEnabled") private var weeklyReminderEnabled = false
     @AppStorage(IntakeForecastPreferences.mealAwareEnabledKey)
@@ -52,10 +53,30 @@ struct OpenRouterSettingsView: View {
                         isOn: $mealAwareIntakeForecastEnabled
                     )
                     .accessibilityIdentifier("settings.mealAwareIntakeForecast")
+
+                    NavigationLink {
+                        IntakeForecastComparisonView(
+                            meals: meals,
+                            mealAwareEnabled: mealAwareIntakeForecastEnabled
+                        )
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Verfahren vergleichen")
+                                Text("Mit deinen heutigen Mahlzeiten")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "chart.xyaxis.line")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                    .accessibilityIdentifier("settings.intakeForecastComparison")
                 } header: {
                     Text("Kalorienprognose")
                 } footer: {
-                    Text("Standardmäßig verwendet Quant den bisherigen zeitbasierten Verlauf. Die experimentelle Variante ordnet heutige Mahlzeiten ähnlichen persönlichen Mahlzeiten zu und berücksichtigt dadurch frühe oder verspätete Mahlzeiten. Die Berechnung bleibt vollständig auf diesem iPhone.")
+                    Text("Standardmäßig verwendet Quant den bisherigen zeitbasierten Verlauf. Die mahlzeitenbewusste Variante ordnet heutige Mahlzeiten ähnlichen persönlichen Mahlzeiten zu und berücksichtigt dadurch frühe oder verspätete Mahlzeiten. Die Berechnung bleibt vollständig auf diesem iPhone.")
                 }
 
                 Section {

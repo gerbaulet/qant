@@ -345,6 +345,36 @@ final class QuantUITests: XCTestCase {
     }
 
     @MainActor
+    func testPresentsIntakeForecastComparisonFromSettings() throws {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let settingsButton = app.buttons["settings.open"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 3))
+        settingsButton.tap()
+
+        let comparisonButton = app.buttons["settings.intakeForecastComparison"]
+        for _ in 0..<5 where !comparisonButton.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(comparisonButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(comparisonButton.isHittable)
+        comparisonButton.tap()
+
+        XCTAssertTrue(app.navigationBars["Aufnahmeprognose"].waitForExistence(timeout: 2))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["settings.intakeForecastComparison.screen"]
+                .waitForExistence(timeout: 2)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["settings.intakeForecastComparison.unavailable"]
+                .waitForExistence(timeout: 2)
+        )
+        XCTAssertFalse(app.staticTexts["Experimentell"].exists)
+    }
+
+    @MainActor
     func testOpensMealPhotoViewer() throws {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [
