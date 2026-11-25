@@ -468,7 +468,10 @@ struct TodayDashboardView: View {
             )
             energyTableRow(
                 title: "Verbrauch",
-                current: balance?.expenditureKilocalories.map { -$0 },
+                current: TodayEnergyValueResolver.currentExpenditure(
+                    recorded: balance?.expenditureKilocalories,
+                    trendPoints: energyTrend?.expenditureActualPoints ?? []
+                ).map { -$0 },
                 forecast: showsForecastColumn ? expenditureForecast.map { -$0.totalKilocalories } : nil,
                 forecastIdentifier: "today.expenditureForecast",
                 showsForecastColumn: showsForecastColumn,
@@ -811,6 +814,15 @@ struct TodayDashboardView: View {
 
     private func wholeNumber(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0)))
+    }
+}
+
+enum TodayEnergyValueResolver {
+    static func currentExpenditure(
+        recorded: Double?,
+        trendPoints: [TodayEnergyTrendPoint]
+    ) -> Double? {
+        trendPoints.last(where: { $0.hour > 0 })?.value ?? recorded
     }
 }
 
