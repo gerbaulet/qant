@@ -54,10 +54,10 @@ struct RestingEnergyCoverage: Sendable, Equatable {
     }
 
     /// Keep live features available through short HealthKit publication delays,
-    /// but stop when an uninterrupted source gap reaches the configured limit.
+    /// but stop when an uninterrupted source gap exceeds the configured limit.
     var isUsableForLiveFeatures: Bool {
         !hasExcessiveGap && expectedDuration > 0 && coveredDuration > 0 &&
-            missingDuration < Self.liveFeatureMissingDurationLimit
+            missingDuration <= Self.liveFeatureMissingDurationLimit
     }
 
     var usesIPhoneFallback: Bool {

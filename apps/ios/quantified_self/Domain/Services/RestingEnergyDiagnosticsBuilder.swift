@@ -58,7 +58,7 @@ enum RestingEnergyDiagnosticsBuilder {
         let estimated = RestingEnergyDiagnosticSeries(
             id: "estimated",
             title: "Quant-Schätzung",
-            details: "Lücken unter 18 Stunden, geschätzt aus dem persönlichen 28-Tage-Profil",
+            details: "Lücken bis zu 18 Stunden, geschätzt aus dem persönlichen 28-Tage-Profil",
             role: .estimated,
             days: dayStarts.map { day in
                 let imported = importedByDay[day]

@@ -179,16 +179,16 @@ struct RestingEnergyFusionBuilderTests {
         #expect(!incomplete.isComplete)
     }
 
-    @Test("Live features stop at eighteen unresolved hours")
+    @Test("Live features include exactly eighteen unresolved hours")
     func liveFeatureToleranceBoundary() {
         let tolerated = RestingEnergyCoverage(
             expectedDuration: 24 * 60 * 60,
-            primaryDuration: 6 * 60 * 60 + 1,
+            primaryDuration: 6 * 60 * 60,
             iPhoneFallbackDuration: 0
         )
         let rejected = RestingEnergyCoverage(
             expectedDuration: 24 * 60 * 60,
-            primaryDuration: 6 * 60 * 60,
+            primaryDuration: 6 * 60 * 60 - 1,
             iPhoneFallbackDuration: 0
         )
 
@@ -222,7 +222,7 @@ struct RestingEnergyFusionBuilderTests {
         #expect(!coverage.isComplete)
     }
 
-    @Test("A pending current hour still counts toward the live eighteen-hour limit")
+    @Test("A pending current hour is included in the live eighteen-hour limit")
     func pendingHourCountsTowardLiveLimit() {
         let coverage = RestingEnergyCoverage(
             expectedDuration: 19 * 60 * 60,
@@ -231,7 +231,7 @@ struct RestingEnergyFusionBuilderTests {
             pendingDuration: 60 * 60
         )
 
-        #expect(!coverage.isUsableForLiveFeatures)
+        #expect(coverage.isUsableForLiveFeatures)
     }
 
     @Test("Aggregating intervals keeps energy and provenance consistent")

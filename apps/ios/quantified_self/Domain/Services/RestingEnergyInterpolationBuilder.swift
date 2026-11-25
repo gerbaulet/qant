@@ -34,7 +34,7 @@ enum RestingEnergyInterpolationBuilder {
             let missingDuration = group.reduce(0) {
                 $0 + result[$1].coverage.missingDuration
             }
-            guard missingDuration < RestingEnergyCoverage.liveFeatureMissingDurationLimit else {
+            guard missingDuration <= RestingEnergyCoverage.liveFeatureMissingDurationLimit else {
                 markExcessiveGap(
                     group,
                     in: &result,

@@ -37,8 +37,8 @@ struct RestingEnergyInterpolationBuilderTests {
         }
     }
 
-    @Test("An exact eighteen-hour gap is not estimated")
-    func rejectsEighteenHourGap() throws {
+    @Test("An exact eighteen-hour gap is estimated")
+    func fillsEighteenHourGap() throws {
         let calendar = utcCalendar
         let start = try #require(calendar.date(from: DateComponents(
             year: 2026,
@@ -62,13 +62,43 @@ struct RestingEnergyInterpolationBuilderTests {
             calendar: calendar
         )
 
+        #expect(filled.allSatisfy { $0.kilocalories != nil })
+        #expect(filled.allSatisfy { $0.coverage.estimatedDuration == 3_600 })
+        #expect(filled.allSatisfy { !$0.coverage.hasExcessiveGap })
+    }
+
+    @Test("A gap over eighteen hours is not estimated")
+    func rejectsGapOverEighteenHours() throws {
+        let calendar = utcCalendar
+        let start = try #require(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 11,
+            day: 20
+        )))
+        let targetStart = try #require(calendar.date(byAdding: .day, value: 2, to: start))
+        let targetEnd = try #require(calendar.date(byAdding: .hour, value: 19, to: targetStart))
+        var values = measuredProfile(from: start, dayCount: 2, calendar: calendar)
+        values += hourlyIntervals(
+            from: targetStart,
+            hourCount: 19,
+            kilocalories: nil,
+            calendar: calendar
+        )
+
+        let filled = RestingEnergyInterpolationBuilder.fillGaps(
+            in: values,
+            from: targetStart,
+            to: targetEnd,
+            calendar: calendar
+        )
+
         #expect(filled.allSatisfy { $0.kilocalories == nil })
         #expect(filled.allSatisfy { $0.coverage.estimatedDuration == 0 })
         #expect(filled.allSatisfy { $0.coverage.hasExcessiveGap })
     }
 
-    @Test("An eighteen-hour gap remains unavailable across a day boundary")
-    func preservesCrossDayGapLimit() throws {
+    @Test("An exact eighteen-hour gap is estimated across a day boundary")
+    func fillsEighteenHourGapAcrossDayBoundary() throws {
         let calendar = utcCalendar
         let start = try #require(calendar.date(from: DateComponents(
             year: 2026,
@@ -99,9 +129,10 @@ struct RestingEnergyInterpolationBuilderTests {
         let aggregate = RestingEnergyFusionBuilder.aggregate(filled)
 
         #expect(filled.count == 17)
-        #expect(filled.allSatisfy { $0.coverage.hasExcessiveGap })
-        #expect(aggregate.coverage?.missingDuration == Double(17 * 60 * 60))
-        #expect(aggregate.coverage?.isUsableForLiveFeatures == false)
+        #expect(filled.allSatisfy { $0.kilocalories != nil })
+        #expect(filled.allSatisfy { !$0.coverage.hasExcessiveGap })
+        #expect(aggregate.coverage?.missingDuration == 0)
+        #expect(aggregate.coverage?.isUsableForLiveFeatures == true)
     }
 
     @Test("Separate gaps below eighteen hours are estimated independently")
