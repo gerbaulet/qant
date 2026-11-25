@@ -30,6 +30,13 @@ when Apple requires it, and notifies external testers after approval.
 4. Download its `.p8` private key to a location outside this repository.
 5. Copy `apps/ios/fastlane/.env.example` to `apps/ios/fastlane/.env` and enter
    the key ID, issuer ID, and absolute path to the `.p8` file.
+6. Install an Apple Distribution certificate with its private key and these
+   App Store provisioning profiles:
+
+   - `de.clemensgerbaulet.quantified-self AppStore`
+   - `de.clemensgerbaulet.quantified-self.widget AppStore`
+
+   Both profiles must include the installed Apple Distribution certificate.
 
 `fastlane/.env`, private keys, archives, and generated packages are ignored by
 Git. Treat the `.p8` file like a password: it can only be downloaded once and
