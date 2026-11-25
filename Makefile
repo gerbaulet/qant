@@ -15,6 +15,7 @@ help: ## Show monorepo development commands.
 		'  make ios-build' \
 		'  make ios-test TEST_TARGET=QuantTests' \
 		'  make ios-deploy-device DEVICE=Clemens-iPhone2' \
+		'  make ios-testflight' \
 		'  make server-test' \
 		'  make server-docker-build' \
 		'  make server-config' \
