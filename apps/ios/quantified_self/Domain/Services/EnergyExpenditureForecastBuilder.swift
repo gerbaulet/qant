@@ -38,11 +38,11 @@ enum EnergyExpenditureForecastBuilder {
         hourlyExpenditures: [HourlyEnergyExpenditure],
         calendar: Calendar
     ) -> EnergyExpenditureForecast? {
-        guard let currentActive = current?.activeKilocalories,
-              let currentResting = current?.restingKilocalories,
+        guard let currentResting = current?.restingKilocalories,
               current?.restingEnergyCoverage?.isUsableForLiveFeatures != false else {
             return nil
         }
+        let currentActive = current?.activeKilocalories ?? 0
 
         let selectedDay = calendar.startOfDay(for: date)
         let selectedWeekday = calendar.component(.weekday, from: selectedDay)
