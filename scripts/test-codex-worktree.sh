@@ -175,6 +175,60 @@ wait "$lock_process"
 run_script "$worktree_five" finish >/dev/null
 assert_file_contains fifth "$repository/fifth.txt"
 
+remote_repository=$test_root/remote.git
+git init --bare "$remote_repository" >/dev/null
+git -C "$repository" remote add origin "$remote_repository"
+git -C "$repository" push --set-upstream origin main >/dev/null
+
+create_six=$(run_script "$repository" create successful-push)
+worktree_six=$(value_from_output WORKTREE_PATH "$create_six")
+printf 'sixth\n' >"$worktree_six/sixth.txt"
+git -C "$worktree_six" add sixth.txt
+git -C "$worktree_six" commit -m 'Add sixth file' >/dev/null
+run_script "$worktree_six" prepare >/dev/null
+push_output=$(run_script "$worktree_six" finish)
+assert_file_contains 'PUSH_STATUS=pushed' /dev/stdin <<EOF
+$push_output
+EOF
+[ "$(git -C "$repository" rev-parse main)" = \
+    "$(git --git-dir="$remote_repository" rev-parse main)" ] ||
+    fail 'successful finish did not push main to its upstream'
+
+create_seven=$(run_script "$repository" create disabled-push)
+worktree_seven=$(value_from_output WORKTREE_PATH "$create_seven")
+printf 'seventh\n' >"$worktree_seven/seventh.txt"
+git -C "$worktree_seven" add seventh.txt
+git -C "$worktree_seven" commit -m 'Add seventh file' >/dev/null
+run_script "$worktree_seven" prepare >/dev/null
+remote_before_no_push=$(git --git-dir="$remote_repository" rev-parse main)
+no_push_output=$(run_script "$worktree_seven" finish --no-push)
+assert_file_contains 'PUSH_STATUS=disabled' /dev/stdin <<EOF
+$no_push_output
+EOF
+[ "$(git --git-dir="$remote_repository" rev-parse main)" = \
+    "$remote_before_no_push" ] || fail '--no-push unexpectedly updated the remote'
+git -C "$repository" push origin main >/dev/null
+
+create_eight=$(run_script "$repository" create failed-push)
+worktree_eight=$(value_from_output WORKTREE_PATH "$create_eight")
+branch_eight=$(value_from_output WORKTREE_BRANCH "$create_eight")
+printf 'eighth\n' >"$worktree_eight/eighth.txt"
+git -C "$worktree_eight" add eighth.txt
+git -C "$worktree_eight" commit -m 'Add eighth file' >/dev/null
+run_script "$worktree_eight" prepare >/dev/null
+git -C "$repository" remote set-url --push origin \
+    "$test_root/missing/remote.git"
+failed_push_output=$(run_script "$worktree_eight" finish 2>/dev/null)
+assert_file_contains 'PUSH_STATUS=failed' /dev/stdin <<EOF
+$failed_push_output
+EOF
+[ ! -e "$worktree_eight" ] || fail 'failed push left its worktree behind'
+git -C "$repository" show-ref --verify --quiet "refs/heads/$branch_eight" &&
+    fail 'failed push left its temporary branch behind'
+assert_file_contains eighth "$repository/eighth.txt"
+git -C "$repository" remote set-url --push origin "$remote_repository"
+git -C "$repository" push origin main >/dev/null
+
 [ -z "$(git -C "$repository" status --porcelain)" ] ||
     fail 'main checkout is not clean after integration tests'
 [ "$(git -C "$repository" worktree list --porcelain | grep -c '^worktree ')" -eq 1 ] ||

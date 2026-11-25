@@ -122,10 +122,16 @@ Phase ungefragt erneut implementieren.
   Tests auf dem rebasierten Stand erneut ausführen und schließlich
   `scripts/codex-worktree.sh finish` aufrufen.
 - `finish` serialisiert parallele Integrationen, übernimmt den Commit per
-  Fast-Forward in den lokalen Branch `main` und entfernt danach den eigenen
-  Worktree sowie seinen temporären Branch. Meldet es einen vorübergehenden
-  Konflikt, weil `main` zwischenzeitlich fortgeschritten oder die Sperre belegt
-  ist, `prepare`, Tests und `finish` selbstständig wiederholen.
+  Fast-Forward in den lokalen Branch `main`, versucht `main` zum konfigurierten
+  Upstream zu pushen und entfernt danach den eigenen Worktree sowie seinen
+  temporären Branch. Meldet es einen vorübergehenden Konflikt, weil `main`
+  zwischenzeitlich fortgeschritten oder die Sperre belegt ist, `prepare`, Tests
+  und `finish` selbstständig wiederholen.
+- Der Push durch `finish` ist der Standard, damit abgeschlossene Arbeit auch
+  remote gesichert wird. Fehlt ein Remote oder schlägt der Push fehl, bleibt der
+  Commit lokal auf `main` erhalten; den konkreten Push-Status in der
+  Abschlussmeldung nennen. Verlangt der Nutzer ausdrücklich keinen Push,
+  `scripts/codex-worktree.sh finish --no-push` verwenden.
 - Rebase-Konflikte selbst auflösen, wenn die fachlich richtige Auflösung aus
   Auftrag, Code und Tests eindeutig hervorgeht. Andernfalls `main` unverändert
   lassen, den Worktree behalten und den konkreten Konflikt melden.
@@ -141,8 +147,9 @@ Phase ungefragt erneut implementieren.
   separat committen, wenn der Nutzer dies ausdrücklich verlangt.
 - Entwürfe und Dateien zur Review nicht committen. Eine ausdrückliche Anweisung
   wie „noch nicht committen“ hat Vorrang.
-- Keine Remote-Pushes, Branch-Rewrites, Resets oder sonstigen destruktiven
-  Git-Aktionen ohne ausdrücklichen Auftrag.
+- Außer dem standardmäßigen Push durch `finish` keine Remote-Pushes ausführen.
+  Niemals Force-Pushes, Branch-Rewrites, Resets oder sonstige destruktive
+  Git-Aktionen ohne ausdrücklichen Auftrag ausführen.
 - Commit-Nachrichten kurz, auf Englisch und im Imperativ formulieren, passend
   zur bestehenden Historie.
 

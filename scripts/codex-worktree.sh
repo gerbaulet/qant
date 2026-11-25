@@ -10,12 +10,12 @@ usage() {
 Usage:
   scripts/codex-worktree.sh create <task-slug>
   scripts/codex-worktree.sh prepare
-  scripts/codex-worktree.sh finish
+  scripts/codex-worktree.sh finish [--no-push]
 
 Commands:
   create   Create a uniquely named temporary branch and worktree.
   prepare  Rebase the current managed worktree onto the latest local main.
-  finish   Fast-forward local main under a repository lock, then clean up.
+  finish   Fast-forward and push local main under a lock, then clean up.
 EOF
 }
 
@@ -193,14 +193,62 @@ prepare_worktree() {
     printf 'WORKER_COMMIT=%s\n' "$(git -C "$worker_path" rev-parse "$worker_branch")"
 }
 
+push_main_locked() {
+    push_main_path=$1
+    push_target_branch=$2
+    push_mode=$3
+
+    if [ "$push_mode" = disabled ]; then
+        printf 'PUSH_STATUS=disabled\n'
+        return
+    fi
+
+    push_remote=$(git -C "$push_main_path" config --get \
+        "branch.$push_target_branch.remote" || true)
+    push_ref=$(git -C "$push_main_path" config --get \
+        "branch.$push_target_branch.merge" || true)
+
+    if [ -z "$push_remote" ]; then
+        if git -C "$push_main_path" remote get-url --push origin \
+            >/dev/null 2>&1; then
+            push_remote=origin
+            push_ref="refs/heads/$push_target_branch"
+        else
+            printf 'PUSH_STATUS=skipped-no-remote\n'
+            return
+        fi
+    fi
+
+    if [ "$push_remote" = . ]; then
+        printf 'PUSH_STATUS=skipped-local-upstream\n'
+        return
+    fi
+
+    [ -n "$push_ref" ] || push_ref="refs/heads/$push_target_branch"
+
+    if GIT_TERMINAL_PROMPT=0 git -C "$push_main_path" push \
+        "$push_remote" "$push_target_branch:$push_ref"; then
+        printf 'PUSH_STATUS=pushed\n'
+        printf 'PUSH_REMOTE=%s\n' "$push_remote"
+        printf 'PUSH_REF=%s\n' "$push_ref"
+    else
+        printf 'codex-worktree: push to %s failed; commit remains on local %s\n' \
+            "$push_remote" "$push_target_branch" >&2
+        printf 'PUSH_STATUS=failed\n'
+        printf 'PUSH_REMOTE=%s\n' "$push_remote"
+        printf 'PUSH_REF=%s\n' "$push_ref"
+    fi
+}
+
 fast_forward_locked() {
-    [ "$#" -eq 5 ] || fail 'invalid internal fast-forward invocation' 64
+    [ "$#" -eq 6 ] || fail 'invalid internal fast-forward invocation' 64
 
     locked_main_path=$1
     locked_worker_path=$2
     locked_worker_branch=$3
     expected_worker_head=$4
     locked_target_branch=$5
+    push_mode=$6
 
     current_main_branch=$(git -C "$locked_main_path" \
         symbolic-ref --quiet --short HEAD) ||
@@ -226,6 +274,8 @@ fast_forward_locked() {
     integrated_head=$(git -C "$locked_main_path" rev-parse "$locked_target_branch")
     [ "$integrated_head" = "$expected_worker_head" ] ||
         fail 'fast-forward did not produce the expected integration commit'
+
+    push_main_locked "$locked_main_path" "$locked_target_branch" "$push_mode"
 }
 
 run_with_lock() {
@@ -246,6 +296,16 @@ run_with_lock() {
 }
 
 finish_worktree() {
+    push_mode=enabled
+    case "$#" in
+        0) ;;
+        1)
+            [ "$1" = --no-push ] || fail 'finish only accepts --no-push' 64
+            push_mode=disabled
+            ;;
+        *) fail 'finish only accepts --no-push' 64 ;;
+    esac
+
     require_managed_worker
     main_path=$(require_main_checkout)
     [ "$worker_path" != "$main_path" ] ||
@@ -260,7 +320,7 @@ finish_worktree() {
 
     run_with_lock "$lock_file" "$script_path" __fast-forward \
         "$main_path" "$worker_path" "$worker_branch" "$worker_head" \
-        "$target_branch" || {
+        "$target_branch" "$push_mode" || {
             result=$?
             [ "$result" -ne 75 ] ||
                 printf '%s\n' \
@@ -292,8 +352,7 @@ case "$command_name" in
         prepare_worktree
         ;;
     finish)
-        [ "$#" -eq 0 ] || fail 'finish takes no arguments' 64
-        finish_worktree
+        finish_worktree "$@"
         ;;
     __fast-forward) fast_forward_locked "$@" ;;
     -h|--help|help) usage ;;
