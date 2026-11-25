@@ -1,4 +1,6 @@
+import SwiftUI
 import Testing
+import UIKit
 @testable import Quant
 
 struct TodayEnergyChartLegendBuilderTests {
@@ -44,6 +46,39 @@ struct TodayEnergyChartLegendBuilderTests {
         )
 
         #expect(legend.balanceTitle == "= Bilanz · persönlich (+180/Tag)")
+    }
+
+    @MainActor
+    @Test("Personal balance legend remains two rows on a compact dashboard")
+    func personalBalanceLegendRemainsTwoRows() {
+        let legend = TodayEnergyChartLegendBuilder.makeLegend(
+            for: makeTrend(
+                averageIntake: [0, 2_100],
+                intakeDayCount: 84,
+                expenditureDayCount: 90,
+                dailyBalanceAdjustment: 438
+            )
+        )
+        let controller = UIHostingController(
+            rootView: TodayEnergySeriesLegendView(legend: legend)
+                .frame(width: 321, alignment: .leading)
+        )
+        let singleRowController = UIHostingController(
+            rootView: TodayEnergySeriesLegendView(legend: TodayEnergyChartLegend(
+                typicalIntakeTitle: nil,
+                forecastTitle: "Prognose",
+                balanceTitle: "= Bilanz"
+            ))
+            .frame(width: 321, alignment: .leading)
+        )
+
+        let size = controller.sizeThatFits(in: CGSize(width: 321, height: 1_000))
+        let singleRowSize = singleRowController.sizeThatFits(
+            in: CGSize(width: 321, height: 1_000)
+        )
+
+        #expect(size.height > singleRowSize.height)
+        #expect(size.height <= singleRowSize.height * 2 + 7)
     }
 
     private func makeTrend(

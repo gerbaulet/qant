@@ -15,6 +15,90 @@ private enum EnergyChartLegendLineStyle {
     }
 }
 
+struct TodayEnergySeriesLegendView: View {
+    let legend: TodayEnergyChartLegend
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                legendItem(title: "+ Aufnahme", color: .blue)
+                legendItem(title: "− Verbrauch", color: .purple)
+                legendItem(title: legend.balanceTitle, color: .green)
+                if let typicalIntakeTitle = legend.typicalIntakeTitle {
+                    legendItem(
+                        title: typicalIntakeTitle,
+                        color: .orange,
+                        lineStyle: .dotted
+                    )
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 14) {
+                    legendItem(title: "+ Aufnahme", color: .blue)
+                    legendItem(title: "− Verbrauch", color: .purple)
+                }
+                HStack(spacing: 14) {
+                    legendItem(title: legend.balanceTitle, color: .green)
+                    if let typicalIntakeTitle = legend.typicalIntakeTitle {
+                        legendItem(
+                            title: typicalIntakeTitle,
+                            color: .orange,
+                            lineStyle: .dotted
+                        )
+                    }
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    legendItem(title: "+ Aufnahme", color: .blue)
+                    legendItem(title: "− Verbrauch", color: .purple)
+                    if let typicalIntakeTitle = legend.typicalIntakeTitle {
+                        legendItem(
+                            title: typicalIntakeTitle,
+                            color: .orange,
+                            lineStyle: .dotted
+                        )
+                    }
+                }
+                legendItem(title: legend.balanceTitle, color: .green)
+            }
+        }
+        .font(.caption)
+    }
+
+    private func legendItem(
+        title: String,
+        color: Color,
+        lineStyle: EnergyChartLegendLineStyle = .solid
+    ) -> some View {
+        EnergyChartLegendItem(title: title, color: color, lineStyle: lineStyle)
+    }
+}
+
+private struct EnergyChartLegendItem: View {
+    let title: String
+    let color: Color
+    var lineStyle: EnergyChartLegendLineStyle = .solid
+
+    var body: some View {
+        let segments = lineStyle.segments
+        HStack(spacing: 5) {
+            HStack(spacing: segments.spacing) {
+                ForEach(0..<segments.count, id: \.self) { _ in
+                    Capsule()
+                        .fill(color)
+                        .frame(width: segments.width, height: 3)
+                }
+            }
+            .frame(width: 18, alignment: .leading)
+            Text(title)
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+}
+
 struct TodayDashboardView: View {
     let snapshot: TodayDashboardSnapshot
     let weeklySummary: WeeklyNutritionSummary?
@@ -376,49 +460,7 @@ struct TodayDashboardView: View {
     }
 
     private func energySeriesLegend(_ legend: TodayEnergyChartLegend) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) {
-                energyChartLegend(title: "+ Aufnahme", color: .blue)
-                energyChartLegend(title: "− Verbrauch", color: .purple)
-                energyChartLegend(title: legend.balanceTitle, color: .green)
-                if let typicalIntakeTitle = legend.typicalIntakeTitle {
-                    energyChartLegend(
-                        title: typicalIntakeTitle,
-                        color: .orange,
-                        lineStyle: .dotted
-                    )
-                }
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 14) {
-                    energyChartLegend(title: "+ Aufnahme", color: .blue)
-                    energyChartLegend(title: "− Verbrauch", color: .purple)
-                }
-                HStack(spacing: 14) {
-                    energyChartLegend(title: legend.balanceTitle, color: .green)
-                    if let typicalIntakeTitle = legend.typicalIntakeTitle {
-                        energyChartLegend(
-                            title: typicalIntakeTitle,
-                            color: .orange,
-                            lineStyle: .dotted
-                        )
-                    }
-                }
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                energyChartLegend(title: "+ Aufnahme", color: .blue)
-                energyChartLegend(title: "− Verbrauch", color: .purple)
-                energyChartLegend(title: legend.balanceTitle, color: .green)
-                if let typicalIntakeTitle = legend.typicalIntakeTitle {
-                    energyChartLegend(
-                        title: typicalIntakeTitle,
-                        color: .orange,
-                        lineStyle: .dotted
-                    )
-                }
-            }
-        }
-        .font(.caption)
+        TodayEnergySeriesLegendView(legend: legend)
     }
 
     private func energyChartLegend(
@@ -426,19 +468,7 @@ struct TodayDashboardView: View {
         color: Color,
         lineStyle: EnergyChartLegendLineStyle = .solid
     ) -> some View {
-        let segments = lineStyle.segments
-        return HStack(spacing: 5) {
-            HStack(spacing: segments.spacing) {
-                ForEach(0..<segments.count, id: \.self) { _ in
-                    Capsule()
-                        .fill(color)
-                        .frame(width: segments.width, height: 3)
-                }
-            }
-            .frame(width: 18, alignment: .leading)
-            Text(title)
-                .foregroundStyle(color)
-        }
+        EnergyChartLegendItem(title: title, color: color, lineStyle: lineStyle)
     }
 
     private func energyBalanceTable(_ balance: DailyEnergyBalance?) -> some View {
