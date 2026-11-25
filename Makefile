@@ -3,7 +3,7 @@
 IOS_DIR := apps/ios
 SERVER_DIR := apps/server
 
-.PHONY: help ios-help server-help
+.PHONY: help codex-worktree-test ios-help server-help
 
 help: ## Show monorepo development commands.
 	@printf '%s\n' \
@@ -18,8 +18,12 @@ help: ## Show monorepo development commands.
 		'  make server-test' \
 		'  make server-docker-build' \
 		'  make server-config' \
+		'  make codex-worktree-test' \
 		'' \
 		'Run make ios-help or make server-help for every application target.'
+
+codex-worktree-test: ## Test isolated Codex worktree integration.
+	./scripts/test-codex-worktree.sh
 
 ios-help:
 	+$(MAKE) -C "$(IOS_DIR)" help

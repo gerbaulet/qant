@@ -107,6 +107,31 @@ Phase ungefragt erneut implementieren.
 - Vor Änderungen `git status` prüfen. Bereits vorhandene Änderungen gehören
   dem Nutzer; nicht überschreiben, zurücksetzen oder ungefragt in eigene
   Commits aufnehmen.
+- Mehrere unabhängige Codex-Chats dürfen parallel arbeiten. Der primäre
+  Checkout auf `main` dient dabei ausschließlich als sauberer
+  Integrations-Checkout; Codeänderungen niemals direkt dort vornehmen.
+- Jeder Chat mit einem Änderungsauftrag erstellt vor der ersten Dateiänderung
+  mit `scripts/codex-worktree.sh create <task-slug>` einen eigenen Worktree und
+  arbeitet anschließend ausschließlich im ausgegebenen Pfad. Keine fremden
+  Worktrees, Branches oder Sperren verändern oder entfernen.
+- Ein fachlicher Arbeitspunkt entspricht einem Worktree und einem fokussierten
+  Commit. Für einen weiteren unabhängigen Commit den ersten Punkt vollständig
+  integrieren und aufräumen und danach einen neuen Worktree erstellen.
+- Vor dem Commit die passenden Tests und den vollständigen Diff prüfen. Danach
+  im Worktree `scripts/codex-worktree.sh prepare` ausführen, die betroffenen
+  Tests auf dem rebasierten Stand erneut ausführen und schließlich
+  `scripts/codex-worktree.sh finish` aufrufen.
+- `finish` serialisiert parallele Integrationen, übernimmt den Commit per
+  Fast-Forward in den lokalen Branch `main` und entfernt danach den eigenen
+  Worktree sowie seinen temporären Branch. Meldet es einen vorübergehenden
+  Konflikt, weil `main` zwischenzeitlich fortgeschritten oder die Sperre belegt
+  ist, `prepare`, Tests und `finish` selbstständig wiederholen.
+- Rebase-Konflikte selbst auflösen, wenn die fachlich richtige Auflösung aus
+  Auftrag, Code und Tests eindeutig hervorgeht. Andernfalls `main` unverändert
+  lassen, den Worktree behalten und den konkreten Konflikt melden.
+- Niemals in einem detached `HEAD` committen. Für Worktrees ausschließlich das
+  Skript verwenden und weder `git worktree remove --force`,
+  `git worktree prune` noch `git branch -D` ausführen.
 - Standard für abgeschlossene Implementierungsarbeit ist ein kleiner,
   fokussierter Commit pro fachlichem Punkt beziehungsweise Iteration.
 - Gibt der Nutzer mehrere Punkte vor, jeden Punkt vollständig umsetzen, testen
@@ -126,5 +151,6 @@ Phase ungefragt erneut implementieren.
 Ein Punkt ist erst fertig, wenn Implementierung, passende Tests und eine
 Prüfung des Git-Diffs abgeschlossen sind. Bei mehreren verlangten Commits muss
 jeder Commit genau seinen Punkt enthalten. In der Abschlussmeldung kurz nennen,
-was geändert und getestet wurde, welche Commits erstellt wurden und ob eine
-Anwendung installiert, gestartet, deployed oder gepusht wurde.
+was geändert und getestet wurde, welcher finale Commit auf `main` erstellt
+wurde, ob Worktree und temporärer Branch erfolgreich entfernt wurden und ob
+eine Anwendung installiert, gestartet, deployed oder gepusht wurde.
