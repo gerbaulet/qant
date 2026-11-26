@@ -97,8 +97,8 @@ struct NutritionTrendsContainer: View {
 
     private var rangePicker: some View {
         Picker("Zeitraum", selection: $range) {
-            Text("7 Tage").tag(NutritionTrendRange.week)
             Text("30 Tage").tag(NutritionTrendRange.month)
+            Text("3 Monate").tag(NutritionTrendRange.threeMonths)
             Text("12 Monate").tag(NutritionTrendRange.year)
         }
         .pickerStyle(.segmented)

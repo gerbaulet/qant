@@ -77,17 +77,17 @@ struct NutritionTrendsBuilderTests {
         #expect(snapshot.periodComparison.current.average(for: .energy) == 483)
     }
 
-    @Test("Week, month, and year use rolling calendar-day windows")
+    @Test("Month, three months, and year use rolling calendar-day windows")
     func rollingRangeIntervals() {
         let reference = date(2026, 8, 23, 12)
-
-        let week = snapshot(for: reference, range: .week)
-        #expect(week.interval.start == date(2026, 8, 17))
-        #expect(week.interval.end == date(2026, 8, 24))
 
         let month = snapshot(for: reference, range: .month)
         #expect(month.interval.start == date(2026, 7, 25))
         #expect(month.interval.end == date(2026, 8, 24))
+
+        let threeMonths = snapshot(for: reference, range: .threeMonths)
+        #expect(threeMonths.interval.start == date(2026, 5, 26))
+        #expect(threeMonths.interval.end == date(2026, 8, 24))
 
         let year = snapshot(for: reference, range: .year)
         #expect(year.interval.start == date(2025, 8, 24))

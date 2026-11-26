@@ -294,14 +294,6 @@ struct EnergyBalanceBuilderTests {
     func rollingTrendIntervals() throws {
         let reference = date(2026, 8, 23, 12)
 
-        let week = try #require(NutritionTrendsBuilder.dateInterval(
-            for: reference,
-            range: .week,
-            calendar: calendar
-        ))
-        #expect(week.start == date(2026, 8, 17))
-        #expect(week.end == date(2026, 8, 24))
-
         let month = try #require(NutritionTrendsBuilder.dateInterval(
             for: reference,
             range: .month,
@@ -309,6 +301,14 @@ struct EnergyBalanceBuilderTests {
         ))
         #expect(month.start == date(2026, 7, 25))
         #expect(month.end == date(2026, 8, 24))
+
+        let threeMonths = try #require(NutritionTrendsBuilder.dateInterval(
+            for: reference,
+            range: .threeMonths,
+            calendar: calendar
+        ))
+        #expect(threeMonths.start == date(2026, 5, 26))
+        #expect(threeMonths.end == date(2026, 8, 24))
 
         let year = try #require(NutritionTrendsBuilder.dateInterval(
             for: reference,

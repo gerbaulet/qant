@@ -218,6 +218,10 @@ final class QuantUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Auswertung"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.descendants(matching: .any)["insights.range"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["30 Tage"].exists)
+        XCTAssertTrue(app.buttons["3 Monate"].exists)
+        XCTAssertTrue(app.buttons["12 Monate"].exists)
+        XCTAssertFalse(app.buttons["7 Tage"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["balance.setupHealth"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["trends.comparisonCard"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["insights.section"].exists)

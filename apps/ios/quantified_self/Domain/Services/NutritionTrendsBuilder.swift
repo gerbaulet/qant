@@ -9,6 +9,7 @@ enum NutritionTrendRange: String, CaseIterable, Identifiable, Sendable {
     case day
     case week
     case month
+    case threeMonths
     case year
 
     var id: Self { self }
@@ -18,6 +19,7 @@ enum NutritionTrendRange: String, CaseIterable, Identifiable, Sendable {
         case .day: 1
         case .week: 7
         case .month: 30
+        case .threeMonths: 90
         case .year: 365
         }
     }
