@@ -190,7 +190,7 @@ private struct TodayDashboardContainer: View {
         }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
-            await refreshCurrentDayEnergy()
+            await refreshRecentEnergy()
         }
     }
 
@@ -336,7 +336,7 @@ private struct TodayDashboardContainer: View {
         )
     }
 
-    private func refreshCurrentDayEnergy() async {
+    private func refreshRecentEnergy() async {
         guard healthMetrics.hasRequestedEnergyAccess else { return }
         let calendar = Calendar.autoupdatingCurrent
         guard let dayInterval = calendar.dateInterval(of: .day, for: .now),
@@ -348,8 +348,7 @@ private struct TodayDashboardContainer: View {
         await healthMetrics.loadEnergy(
             from: reconciliationStart,
             to: dayInterval.end,
-            calendar: calendar,
-            force: true
+            calendar: calendar
         )
     }
 

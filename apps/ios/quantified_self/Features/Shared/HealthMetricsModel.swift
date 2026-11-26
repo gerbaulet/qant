@@ -5,6 +5,7 @@ import Observation
 @MainActor
 final class HealthMetricsModel {
     static let recentEnergyReconciliationDayCount = 7
+    static let currentEnergyRefreshInterval: TimeInterval = 15 * 60
 
     private(set) var energyStatus: HealthDataStatus
     private(set) var energyExpenditures: [DailyEnergyExpenditure] = []
@@ -16,6 +17,7 @@ final class HealthMetricsModel {
     private(set) var isLoadingWeight = false
     private var loadedEnergyInterval: DateInterval?
     private var lastCurrentDayEnergyLoadDate: Date?
+    private var lastRecentEnergyReconciliationDate: Date?
     private var loadedWeightInterval: DateInterval?
 
     var hasRequestedEnergyAccess: Bool {
@@ -135,6 +137,13 @@ final class HealthMetricsModel {
                 calendar: calendar
             ) != nil {
                 lastCurrentDayEnergyLoadDate = loadDate
+            }
+            if let reconciliationInterval = recentEnergyReconciliationInterval(
+                referenceDate: loadDate,
+                calendar: calendar
+            ), queryInterval.start <= reconciliationInterval.start,
+               queryInterval.end >= reconciliationInterval.end {
+                lastRecentEnergyReconciliationDate = loadDate
             }
             if let loadedEnergyInterval {
                 self.loadedEnergyInterval = DateInterval(
@@ -275,34 +284,28 @@ final class HealthMetricsModel {
         }
 
         let referenceDate = now()
-        guard currentDayIntersection(
+        guard let currentDayInterval = currentDayIntersection(
             with: requestedInterval,
             referenceDate: referenceDate,
             calendar: calendar
-        ) != nil else { return nil }
-        guard let lastCurrentDayLoadDate,
-              let currentHour = calendar.dateInterval(of: .hour, for: referenceDate)?.start,
-              let loadedHour = calendar.dateInterval(
-                of: .hour,
-                for: lastCurrentDayLoadDate
-              )?.start else {
+        ) else { return nil }
+
+        if lastRecentEnergyReconciliationDate.map({
+            !calendar.isDate($0, inSameDayAs: referenceDate)
+        }) ?? true {
             return recentEnergyReconciliationInterval(
-                within: requestedInterval,
                 referenceDate: referenceDate,
                 calendar: calendar
-            )
+            )?.intersection(with: requestedInterval)
         }
-        return loadedHour == currentHour
-            ? nil
-            : recentEnergyReconciliationInterval(
-                within: requestedInterval,
-                referenceDate: referenceDate,
-                calendar: calendar
-            )
+
+        guard let lastCurrentDayLoadDate,
+              referenceDate.timeIntervalSince(lastCurrentDayLoadDate) >=
+                Self.currentEnergyRefreshInterval else { return nil }
+        return currentDayInterval
     }
 
     private func recentEnergyReconciliationInterval(
-        within interval: DateInterval,
         referenceDate: Date,
         calendar: Calendar
     ) -> DateInterval? {
@@ -314,10 +317,7 @@ final class HealthMetricsModel {
               ) else {
             return nil
         }
-        let start = max(interval.start, reconciliationStart)
-        let end = min(interval.end, currentDay.end)
-        guard start < end else { return nil }
-        return DateInterval(start: start, end: end)
+        return DateInterval(start: reconciliationStart, end: currentDay.end)
     }
 
     private func currentDayIntersection(

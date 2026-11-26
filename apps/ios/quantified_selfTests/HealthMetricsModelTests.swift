@@ -35,8 +35,8 @@ struct HealthMetricsModelTests {
         #expect(model.energyStatus == .noData)
     }
 
-    @Test("The current Health day refreshes after the hour changes")
-    func refreshesCurrentDayAfterHourChange() async {
+    @Test("The current Health day refreshes after the minimum interval")
+    func refreshesCurrentDayAfterMinimumInterval() async {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let day = calendar.date(from: DateComponents(
@@ -61,10 +61,7 @@ struct HealthMetricsModelTests {
             start: calendar.date(byAdding: .day, value: -7, to: day)!,
             end: calendar.date(byAdding: .day, value: 1, to: day)!
         )
-        let reconciliationInterval = DateInterval(
-            start: calendar.date(byAdding: .day, value: -6, to: day)!,
-            end: interval.end
-        )
+        let currentDayInterval = calendar.dateInterval(of: .day, for: now)!
 
         await model.loadEnergy(
             from: interval.start,
@@ -79,7 +76,15 @@ struct HealthMetricsModelTests {
         #expect(provider.queryCount == 1)
         #expect(model.energyExpenditures.isEmpty)
 
-        now = calendar.date(byAdding: .hour, value: 1, to: now)!
+        now = now.addingTimeInterval(HealthMetricsModel.currentEnergyRefreshInterval - 1)
+        await model.loadEnergy(
+            from: interval.start,
+            to: interval.end,
+            calendar: calendar
+        )
+        #expect(provider.queryCount == 1)
+
+        now = now.addingTimeInterval(1)
         await model.loadEnergy(
             from: interval.start,
             to: interval.end,
@@ -87,7 +92,7 @@ struct HealthMetricsModelTests {
         )
 
         #expect(provider.queryCount == 2)
-        #expect(provider.queriedIntervals == [interval, reconciliationInterval])
+        #expect(provider.queriedIntervals == [interval, currentDayInterval])
         #expect(model.energyExpenditures == [expenditure])
         #expect(model.energyStatus == .available)
     }
@@ -128,8 +133,8 @@ struct HealthMetricsModelTests {
         #expect(provider.queryCount == 2)
     }
 
-    @Test("Daily and hourly Health data refresh atomically after the hour changes")
-    func refreshesCurrentEnergyAfterHourChange() async {
+    @Test("Daily and hourly Health data refresh atomically after the minimum interval")
+    func refreshesCurrentEnergyAfterMinimumInterval() async {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let day = calendar.date(from: DateComponents(
@@ -157,10 +162,7 @@ struct HealthMetricsModelTests {
             start: calendar.date(byAdding: .day, value: -7, to: day)!,
             end: calendar.date(byAdding: .day, value: 1, to: day)!
         )
-        let reconciliationInterval = DateInterval(
-            start: calendar.date(byAdding: .day, value: -6, to: day)!,
-            end: interval.end
-        )
+        let currentDayInterval = calendar.dateInterval(of: .day, for: now)!
 
         await model.loadEnergy(
             from: interval.start,
@@ -174,7 +176,7 @@ struct HealthMetricsModelTests {
         )
         #expect(provider.queryCount == 1)
 
-        now = calendar.date(byAdding: .hour, value: 1, to: now)!
+        now = now.addingTimeInterval(HealthMetricsModel.currentEnergyRefreshInterval)
         await model.loadEnergy(
             from: interval.start,
             to: interval.end,
@@ -182,8 +184,50 @@ struct HealthMetricsModelTests {
         )
 
         #expect(provider.queryCount == 2)
-        #expect(provider.queriedIntervals == [interval, reconciliationInterval])
+        #expect(provider.queriedIntervals == [interval, currentDayInterval])
         #expect(model.hourlyEnergyExpenditures == [expenditure])
+    }
+
+    @Test("Recent Health history reconciles once on a new day")
+    func reconcilesRecentHistoryOnNewDay() async {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let day = calendar.date(from: DateComponents(
+            year: 2026,
+            month: 11,
+            day: 16
+        ))!
+        var now = calendar.date(byAdding: .hour, value: 8, to: day)!
+        let provider = StubHealthEnergyProvider(results: [[], []])
+        let preferences = StubHealthAccessPreferences(hasRequestedEnergyAccess: true)
+        let model = HealthMetricsModel(
+            energyProvider: provider,
+            preferences: preferences,
+            now: { now }
+        )
+        let interval = DateInterval(
+            start: calendar.date(byAdding: .day, value: -14, to: day)!,
+            end: calendar.date(byAdding: .day, value: 2, to: day)!
+        )
+
+        await model.loadEnergy(
+            from: interval.start,
+            to: interval.end,
+            calendar: calendar
+        )
+        now = calendar.date(byAdding: .day, value: 1, to: now)!
+        await model.loadEnergy(
+            from: interval.start,
+            to: interval.end,
+            calendar: calendar
+        )
+
+        let nextDay = calendar.startOfDay(for: now)
+        let reconciliationInterval = DateInterval(
+            start: calendar.date(byAdding: .day, value: -6, to: nextDay)!,
+            end: calendar.date(byAdding: .day, value: 1, to: nextDay)!
+        )
+        #expect(provider.queriedIntervals == [interval, reconciliationInterval])
     }
 
     @Test("Weight queries are cached and personal calibration can be toggled")
