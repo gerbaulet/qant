@@ -62,15 +62,6 @@ struct MealCaptureView: View {
                     }
 
                     if !isQuickCapture {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Speichern") { save() }
-                                .fontWeight(.semibold)
-                                .disabled(isSaving || isImportingImages)
-                                .accessibilityIdentifier("meal.save")
-                        }
-                    }
-
-                    if !isQuickCapture {
                         ToolbarItemGroup(placement: .keyboard) {
                             Spacer()
                             Button("Fertig") {
@@ -133,6 +124,11 @@ struct MealCaptureView: View {
                     Text("Fotos, Kommentar und geänderter Zeitpunkt werden nicht gespeichert.")
                 }
         }
+        .safeAreaInset(edge: .bottom) {
+            if !isQuickCapture {
+                captureActions
+            }
+        }
         .interactiveDismissDisabled(isSaving || hasUnsavedChanges)
         .overlay(alignment: .top) {
             if hasUnsavedChanges, !isSaving {
@@ -141,6 +137,39 @@ struct MealCaptureView: View {
                     .accessibilityIdentifier("meal.dismissHandle")
             }
         }
+    }
+
+    private var captureActions: some View {
+        VStack(spacing: 10) {
+            Button {
+                save(mode: .analyzeNow)
+            } label: {
+                Label("Jetzt analysieren", systemImage: "sparkles")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(isSaving || isImportingImages)
+            .accessibilityIdentifier("meal.save")
+
+            if MealCaptureSaveMode.describeLater.isAvailable(imageCount: attachedImages.count) {
+                Button {
+                    save(mode: .describeLater)
+                } label: {
+                    Label("Speichern, später beschreiben", systemImage: "bookmark")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(isSaving || isImportingImages)
+                .accessibilityIdentifier("meal.saveForLater")
+            }
+        }
+        .padding(.horizontal, QuantLayout.pageInset)
+        .padding(.vertical, 12)
+        .background(.bar)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("meal.captureActions")
     }
 
     @ViewBuilder
@@ -368,8 +397,9 @@ struct MealCaptureView: View {
         }
     }
 
-    private func save(shouldAnalyze: Bool = true) {
+    private func save(mode: MealCaptureSaveMode) {
         guard !isSaving else { return }
+        guard mode.isAvailable(imageCount: attachedImages.count) else { return }
         isSaving = true
 
         Task {
@@ -385,10 +415,10 @@ struct MealCaptureView: View {
                     comment: comment,
                     category: .unspecified,
                     images: storedImages,
-                    analysisState: shouldAnalyze ? .pending : .awaitingDescription
+                    analysisState: mode.analysisState
                 ))
                 dismiss()
-                if shouldAnalyze {
+                if mode.startsAnalysis {
                     await MealAnalysisQueue.shared.analyze(
                         meal,
                         in: modelContext,
@@ -418,7 +448,7 @@ struct MealCaptureView: View {
             return
         }
         timestamp = .now
-        save(shouldAnalyze: false)
+        save(mode: .describeLater)
     }
 
     private func openSettings() {

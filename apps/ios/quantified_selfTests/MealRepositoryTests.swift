@@ -87,8 +87,8 @@ struct MealRepositoryTests {
         #expect(created.category == .unspecified)
     }
 
-    @Test("A quick capture waits for a description before analysis")
-    func quickCaptureDescription() throws {
+    @Test("A deferred capture waits for a description before analysis")
+    func deferredCaptureDescription() throws {
         let container = try makeContainer()
         let context = container.mainContext
         let repository = SwiftDataMealRepository(context: context)

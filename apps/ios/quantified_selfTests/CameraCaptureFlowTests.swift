@@ -15,6 +15,21 @@ struct CameraCaptureFlowTests {
         #expect(CameraCaptureFlow.forCapture(openedFromShortcut: false) == .confirmBeforeUsing)
     }
 
+    @Test("Immediate capture saves as pending and starts analysis")
+    func immediateSaveMode() {
+        #expect(MealCaptureSaveMode.analyzeNow.analysisState == .pending)
+        #expect(MealCaptureSaveMode.analyzeNow.startsAnalysis)
+        #expect(MealCaptureSaveMode.analyzeNow.isAvailable(imageCount: 0))
+    }
+
+    @Test("Deferred capture requires a photo and waits for a description")
+    func deferredSaveMode() {
+        #expect(MealCaptureSaveMode.describeLater.analysisState == .awaitingDescription)
+        #expect(!MealCaptureSaveMode.describeLater.startsAnalysis)
+        #expect(!MealCaptureSaveMode.describeLater.isAvailable(imageCount: 0))
+        #expect(MealCaptureSaveMode.describeLater.isAvailable(imageCount: 1))
+    }
+
     @MainActor
     @Test("Camera captures start with the flash disabled")
     func cameraFlashStartsDisabled() {

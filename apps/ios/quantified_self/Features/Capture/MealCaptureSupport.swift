@@ -41,6 +41,26 @@ nonisolated enum CameraCaptureFlow: Equatable {
     }
 }
 
+nonisolated enum MealCaptureSaveMode: Equatable {
+    case analyzeNow
+    case describeLater
+
+    var analysisState: AnalysisState {
+        switch self {
+        case .analyzeNow: .pending
+        case .describeLater: .awaitingDescription
+        }
+    }
+
+    var startsAnalysis: Bool {
+        self == .analyzeNow
+    }
+
+    func isAvailable(imageCount: Int) -> Bool {
+        self == .analyzeNow || imageCount > 0
+    }
+}
+
 struct PendingMealImageThumbnail: View {
     let image: PendingMealImage
     let onRemove: () -> Void

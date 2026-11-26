@@ -127,6 +127,8 @@ final class QuantUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["meal.timestamp"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["meal.categoryDisclosure"].exists)
         XCTAssertFalse(app.staticTexts["Art der Mahlzeit"].exists)
+        XCTAssertEqual(app.buttons["meal.save"].label, "Jetzt analysieren")
+        XCTAssertFalse(app.buttons["meal.saveForLater"].exists)
 
         let captureScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         captureScreenshot.name = "Meal capture"

@@ -50,6 +50,9 @@ struct MealReviewView: View {
         self.onDelete = onDelete
         self.onDuplicate = onDuplicate
         _editedTimestamp = State(initialValue: meal.timestamp)
+        _descriptionText = State(
+            initialValue: meal.analysisState == .awaitingDescription ? meal.userComment ?? "" : ""
+        )
         _successMessage = State(initialValue: showsDuplicateConfirmation ? "Mahlzeit dupliziert" : nil)
         _portionAdjustment = State(initialValue: PortionAdjustmentDraft(
             multiplier: meal.activeRevision?.normalizedPortionMultiplier ?? 1,
