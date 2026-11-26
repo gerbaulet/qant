@@ -62,6 +62,17 @@ struct MealCaptureView: View {
                     }
 
                     if !isQuickCapture {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Speichern") {
+                                save(mode: .analyzeNow)
+                            }
+                            .fontWeight(.semibold)
+                            .disabled(isSaving || isImportingImages)
+                            .accessibilityIdentifier("meal.save")
+                        }
+                    }
+
+                    if !isQuickCapture {
                         ToolbarItemGroup(placement: .keyboard) {
                             Spacer()
                             Button("Fertig") {
@@ -124,11 +135,6 @@ struct MealCaptureView: View {
                     Text("Fotos, Kommentar und geänderter Zeitpunkt werden nicht gespeichert.")
                 }
         }
-        .safeAreaInset(edge: .bottom) {
-            if !isQuickCapture {
-                captureActions
-            }
-        }
         .interactiveDismissDisabled(isSaving || hasUnsavedChanges)
         .overlay(alignment: .top) {
             if hasUnsavedChanges, !isSaving {
@@ -137,39 +143,6 @@ struct MealCaptureView: View {
                     .accessibilityIdentifier("meal.dismissHandle")
             }
         }
-    }
-
-    private var captureActions: some View {
-        VStack(spacing: 10) {
-            Button {
-                save(mode: .analyzeNow)
-            } label: {
-                Label("Jetzt analysieren", systemImage: "sparkles")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(isSaving || isImportingImages)
-            .accessibilityIdentifier("meal.save")
-
-            if MealCaptureSaveMode.describeLater.isAvailable(imageCount: attachedImages.count) {
-                Button {
-                    save(mode: .describeLater)
-                } label: {
-                    Label("Speichern, später beschreiben", systemImage: "bookmark")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .disabled(isSaving || isImportingImages)
-                .accessibilityIdentifier("meal.saveForLater")
-            }
-        }
-        .padding(.horizontal, QuantLayout.pageInset)
-        .padding(.vertical, 12)
-        .background(.bar)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("meal.captureActions")
     }
 
     @ViewBuilder
@@ -182,16 +155,26 @@ struct MealCaptureView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
-                    photosCard
-                    commentCard
-                    detailsCard
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
+                        photosCard
+                        commentCard
+                            .id("meal.captureCommentCard")
+                        detailsCard
+                    }
+                    .padding(.horizontal, QuantLayout.pageInset)
+                    .padding(.vertical, QuantLayout.sectionSpacing)
                 }
-                .padding(.horizontal, QuantLayout.pageInset)
-                .padding(.vertical, QuantLayout.sectionSpacing)
+                .scrollDismissesKeyboard(.interactively)
+                .task(id: commentIsFocused) {
+                    guard commentIsFocused else { return }
+                    try? await Task.sleep(for: .milliseconds(250))
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo("meal.captureCommentCard", anchor: .center)
+                    }
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
         }
     }
 
@@ -212,6 +195,21 @@ struct MealCaptureView: View {
                 Text("Gewicht, Portionsgröße oder besondere Zutaten helfen bei der Analyse.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+
+                if MealCaptureSaveMode.describeLater.isAvailable(imageCount: attachedImages.count) {
+                    Button {
+                        commentIsFocused = false
+                        save(mode: .describeLater)
+                    } label: {
+                        Label("Später beschreiben", systemImage: "bookmark")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .disabled(isSaving || isImportingImages)
+                    .accessibilityHint("Speichert die Mahlzeit ohne Analyse")
+                    .accessibilityIdentifier("meal.saveForLater")
+                }
             }
         }
     }

@@ -127,7 +127,7 @@ final class QuantUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["meal.timestamp"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["meal.categoryDisclosure"].exists)
         XCTAssertFalse(app.staticTexts["Art der Mahlzeit"].exists)
-        XCTAssertEqual(app.buttons["meal.save"].label, "Jetzt analysieren")
+        XCTAssertEqual(app.buttons["meal.save"].label, "Speichern")
         XCTAssertFalse(app.buttons["meal.saveForLater"].exists)
 
         let captureScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
@@ -139,6 +139,9 @@ final class QuantUITests: XCTestCase {
         XCTAssertTrue(commentField.waitForExistence(timeout: 2))
         app.swipeUp()
         commentField.tap()
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
+        XCTAssertLessThanOrEqual(commentField.frame.maxY, keyboard.frame.minY)
         commentField.typeText("UI-Test Mahlzeit")
 
         app.buttons["meal.save"].tap()
