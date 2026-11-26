@@ -252,16 +252,20 @@ private struct TodayDashboardContainer: View {
             for: date,
             calendar: calendar
         )
-        let calibrationInterval = healthMetrics.personalCalibrationEnabled
-            ? WeightBalanceComparisonBuilder.calibrationInterval(
-                endingAt: date,
-                calendar: calendar
-            )
-            : nil
-        if healthMetrics.hasRequestedEnergyAccess, let forecastInterval {
+        let calibrationInterval = HealthMetricsQueryPlanner.calibrationInterval(
+            endingAt: date,
+            enabled: healthMetrics.personalCalibrationEnabled,
+            hasRequestedWeightAccess: healthMetrics.hasRequestedWeightAccess,
+            calendar: calendar
+        )
+        let energyInterval = HealthMetricsQueryPlanner.covering([
+            forecastInterval,
+            calibrationInterval,
+        ])
+        if healthMetrics.hasRequestedEnergyAccess, let energyInterval {
             await healthMetrics.loadEnergy(
-                from: min(calibrationInterval?.start ?? forecastInterval.start, forecastInterval.start),
-                to: forecastInterval.end,
+                from: energyInterval.start,
+                to: energyInterval.end,
                 calendar: calendar
             )
         }

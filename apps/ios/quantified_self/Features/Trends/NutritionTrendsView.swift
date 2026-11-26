@@ -138,24 +138,37 @@ struct NutritionTrendsContainer: View {
               refreshID != lastBalanceRefreshID,
               let interval = balanceInterval(for: date) else { return }
         let calendar = Calendar.autoupdatingCurrent
-        let calibrationInterval = WeightBalanceComparisonBuilder.calibrationInterval(
+        let calibrationInterval = HealthMetricsQueryPlanner.calibrationInterval(
             endingAt: date,
+            enabled: healthMetrics.personalCalibrationEnabled,
+            hasRequestedWeightAccess: healthMetrics.hasRequestedWeightAccess,
             calendar: calendar
         )
         let forecastInterval = EnergyExpenditureForecastBuilder.historyInterval(
             for: date,
             calendar: calendar
         )
-        let queryStart = min(interval.start, calibrationInterval.start)
-        if healthMetrics.hasRequestedEnergyAccess {
+        let energyInterval = HealthMetricsQueryPlanner.covering([
+            interval,
+            forecastInterval,
+            calibrationInterval,
+        ])
+        let weightInterval = HealthMetricsQueryPlanner.covering([
+            interval,
+            calibrationInterval,
+        ])
+        if healthMetrics.hasRequestedEnergyAccess, let energyInterval {
             await healthMetrics.loadEnergy(
-                from: queryStart,
-                to: interval.end,
+                from: energyInterval.start,
+                to: energyInterval.end,
                 calendar: calendar
             )
         }
-        if healthMetrics.hasRequestedWeightAccess {
-            await healthMetrics.loadWeights(from: queryStart, to: interval.end)
+        if healthMetrics.hasRequestedWeightAccess, let weightInterval {
+            await healthMetrics.loadWeights(
+                from: weightInterval.start,
+                to: weightInterval.end
+            )
         }
         guard !Task.isCancelled else { return }
         let nextBalances = EnergyBalanceBuilder.makeBalances(
@@ -165,7 +178,7 @@ struct NutritionTrendsContainer: View {
             now: date,
             calendar: calendar
         )
-        let historyInterval = DateInterval(start: queryStart, end: interval.end)
+        let historyInterval = weightInterval ?? interval
         let historicalBalances = EnergyBalanceBuilder.makeBalances(
             within: historyInterval,
             meals: meals,
