@@ -22,7 +22,6 @@ struct WeightChartPoint: Identifiable, Sendable, Equatable {
 enum WeightComparisonReadiness: Sendable, Equatable {
     case ready
     case needsWeights(current: Int, required: Int, spanDays: Int, requiredSpanDays: Int)
-    case needsBalanceDays(current: Int, required: Int)
 }
 
 enum PersonalCalibrationStatus: Sendable, Equatable {
@@ -37,7 +36,6 @@ enum PersonalCalibrationStatus: Sendable, Equatable {
     )
     case unavailable(reason: String)
     case ready(
-        factor: Double,
         dailyBalanceAdjustmentKilocalories: Double,
         uncappedDailyBalanceAdjustmentKilocalories: Double
     )
@@ -47,20 +45,12 @@ struct WeightBalanceComparison: Sendable, Equatable {
     let interval: DateInterval
     let dailyWeights: [WeightMeasurement]
     let observedTrend: [WeightChartPoint]
-    let expectedTrend: [WeightChartPoint]
     let observedChangeKilograms: Double?
-    let expectedChangeKilograms: Double?
-    let evaluableBalanceDayCount: Int
     let readiness: WeightComparisonReadiness
     let calibrationStatus: PersonalCalibrationStatus
 
-    var usesPersonalCalibration: Bool {
-        if case .ready = calibrationStatus { return true }
-        return false
-    }
-
     var dailyBalanceAdjustmentKilocalories: Double? {
-        guard case let .ready(_, adjustment, _) = calibrationStatus else { return nil }
+        guard case let .ready(adjustment, _) = calibrationStatus else { return nil }
         return adjustment
     }
 }

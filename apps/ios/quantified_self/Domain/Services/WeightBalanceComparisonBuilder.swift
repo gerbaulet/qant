@@ -3,7 +3,6 @@ import Foundation
 enum WeightBalanceComparisonBuilder {
     static let minimumComparisonWeightCount = 4
     static let minimumComparisonWeightSpanDays = 19
-    static let minimumComparisonBalanceDayCount = 19
     static let minimumCalibrationWeightCount = 12
     static let minimumCalibrationWeightSpanDays = 42
     static let minimumCalibrationBalanceDayCount = 42
@@ -32,43 +31,15 @@ enum WeightBalanceComparisonBuilder {
             ).day ?? 0,
             0
         )
-        let firstNutritionDay = balances.compactMap { balance -> Date? in
-            guard balance.date >= requestedComparisonStart,
-                  balance.date <= today,
-                  balance.intakeKilocalories != nil else { return nil }
-            return calendar.startOfDay(for: balance.date)
-        }
-        .min()
-        let normalizedComparisonStart = max(
-            requestedComparisonStart,
-            firstNutritionDay ?? requestedComparisonStart
-        )
-        let comparisonSpanDays = max(
-            calendar.dateComponents(
-                [.day],
-                from: normalizedComparisonStart,
-                to: today
-            ).day ?? 0,
-            0
-        )
         let requiredWeightSpanDays = min(
             minimumComparisonWeightSpanDays,
             selectedSpanDays
         )
-        let requiredBalanceDayCount = min(
-            minimumComparisonBalanceDayCount,
-            selectedSpanDays
-        )
-        let interval = DateInterval(start: normalizedComparisonStart, end: today)
+        let interval = DateInterval(start: requestedComparisonStart, end: today)
         let dailyWeights = dailyMedians(
-            measurements.filter { $0.date >= normalizedComparisonStart && $0.date <= now },
+            measurements.filter { $0.date >= requestedComparisonStart && $0.date <= now },
             calendar: calendar
         )
-        let comparisonBalances = balances.filter {
-            $0.date >= normalizedComparisonStart &&
-                $0.date < today &&
-                $0.completeness == .complete
-        }
         let calibrationStatus = makeCalibrationStatus(
             measurements: measurements,
             balances: balances,
@@ -87,11 +58,6 @@ enum WeightBalanceComparisonBuilder {
                 spanDays: weightSpan,
                 requiredSpanDays: requiredWeightSpanDays
             )
-        } else if comparisonBalances.count < requiredBalanceDayCount {
-            readiness = .needsBalanceDays(
-                current: comparisonBalances.count,
-                required: requiredBalanceDayCount
-            )
         } else {
             readiness = .ready
         }
@@ -101,43 +67,34 @@ enum WeightBalanceComparisonBuilder {
                 interval: interval,
                 dailyWeights: dailyWeights,
                 observedTrend: [],
-                expectedTrend: [],
                 observedChangeKilograms: nil,
-                expectedChangeKilograms: nil,
-                evaluableBalanceDayCount: comparisonBalances.count,
                 readiness: readiness,
                 calibrationStatus: calibrationStatus
             )
         }
 
-        let observedStart = line.value(on: normalizedComparisonStart, calendar: calendar)
-        let observedEnd = line.value(on: today, calendar: calendar)
-        let dailyAdjustmentKilocalories: Double?
-        if case let .ready(_, adjustment, _) = calibrationStatus {
-            dailyAdjustmentKilocalories = adjustment
-        } else {
-            dailyAdjustmentKilocalories = nil
+        guard let firstWeightDate = dailyWeights.first?.date,
+              let lastWeightDate = dailyWeights.last?.date else {
+            return WeightBalanceComparison(
+                interval: interval,
+                dailyWeights: dailyWeights,
+                observedTrend: [],
+                observedChangeKilograms: nil,
+                readiness: readiness,
+                calibrationStatus: calibrationStatus
+            )
         }
-        let expectedTrend = makeExpectedTrend(
-            startDate: normalizedComparisonStart,
-            endDate: today,
-            startingWeight: observedStart,
-            balances: comparisonBalances,
-            dailyAdjustmentKilocalories: dailyAdjustmentKilocalories,
-            calendar: calendar
-        )
+        let observedStart = line.value(on: firstWeightDate, calendar: calendar)
+        let observedEnd = line.value(on: lastWeightDate, calendar: calendar)
 
         return WeightBalanceComparison(
             interval: interval,
             dailyWeights: dailyWeights,
             observedTrend: [
-                WeightChartPoint(date: normalizedComparisonStart, kilograms: observedStart),
-                WeightChartPoint(date: today, kilograms: observedEnd),
+                WeightChartPoint(date: firstWeightDate, kilograms: observedStart),
+                WeightChartPoint(date: lastWeightDate, kilograms: observedEnd),
             ],
-            expectedTrend: expectedTrend,
-            observedChangeKilograms: line.slopeKilogramsPerDay * Double(comparisonSpanDays),
-            expectedChangeKilograms: expectedTrend.last.map { $0.kilograms - observedStart },
-            evaluableBalanceDayCount: comparisonBalances.count,
+            observedChangeKilograms: line.slopeKilogramsPerDay * Double(weightSpan),
             readiness: readiness,
             calibrationStatus: calibrationStatus
         )
@@ -243,7 +200,6 @@ enum WeightBalanceComparisonBuilder {
             )
         }
 
-        let rawFactor = observedChange / predictedChange
         let recordedDailyBalance = recordedBalanceSum / Double(recordedBalances.count)
         let observedDailyBalance = line.slopeKilogramsPerDay * kilocaloriesPerKilogram
         let rawDailyAdjustment = observedDailyBalance - recordedDailyBalance
@@ -255,44 +211,9 @@ enum WeightBalanceComparisonBuilder {
             maximumDailyBalanceAdjustmentKilocalories
         )
         return .ready(
-            factor: min(max(rawFactor, 0.6), 1.4),
             dailyBalanceAdjustmentKilocalories: boundedDailyAdjustment,
             uncappedDailyBalanceAdjustmentKilocalories: rawDailyAdjustment
         )
-    }
-
-    private static func makeExpectedTrend(
-        startDate: Date,
-        endDate: Date,
-        startingWeight: Double,
-        balances: [DailyEnergyBalance],
-        dailyAdjustmentKilocalories: Double?,
-        calendar: Calendar
-    ) -> [WeightChartPoint] {
-        let balancesByDay = Dictionary(
-            balances.compactMap { balance in
-                PersonalEnergyBalanceCalculator.balanceKilocalories(
-                    for: balance,
-                    dailyAdjustmentKilocalories: dailyAdjustmentKilocalories
-                ).map {
-                    (calendar.startOfDay(for: balance.date), $0)
-                }
-            },
-            uniquingKeysWith: { _, newest in newest }
-        )
-        var points = [WeightChartPoint(date: startDate, kilograms: startingWeight)]
-        var weight = startingWeight
-        var day = startDate
-        while day < endDate {
-            if let balance = balancesByDay[day] {
-                weight += balance / kilocaloriesPerKilogram
-            }
-            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: day),
-                  nextDay > day else { break }
-            day = nextDay
-            points.append(WeightChartPoint(date: min(day, endDate), kilograms: weight))
-        }
-        return points
     }
 
     private static func spanDays(

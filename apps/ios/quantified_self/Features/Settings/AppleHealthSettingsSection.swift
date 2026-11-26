@@ -97,7 +97,7 @@ struct AppleHealthSettingsSection: View {
         } header: {
             Text("Apple Health")
         } footer: {
-            Text("Quant liest Aktivitäts-, Ruhe- und Gewichtsdaten nur mit deiner Zustimmung. Die persönliche Kalibrierung vergleicht den Gewichtstrend mit der Energiebilanz, verändert aber keine Mahlzeiten oder Ziele. Alle Health-Daten bleiben auf diesem Gerät und werden weder an OpenRouter gesendet noch in iCloud gespeichert.")
+            Text("Quant liest Aktivitäts-, Ruhe- und Gewichtsdaten nur mit deiner Zustimmung. Die persönliche Kalibrierung leitet aus deinem längerfristigen Gewichts- und Bilanzverlauf eine Korrektur der dargestellten Energiebilanz ab, verändert aber keine Mahlzeiten oder Ziele. Alle Health-Daten bleiben auf diesem Gerät und werden weder an OpenRouter gesendet noch in iCloud gespeichert.")
         }
     }
 

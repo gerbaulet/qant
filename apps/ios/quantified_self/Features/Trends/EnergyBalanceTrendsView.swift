@@ -151,20 +151,13 @@ struct EnergyBalanceTrendsView: View {
 
                 if let comparison = readyWeightComparison {
                     Divider()
-                    HStack(spacing: 24) {
-                        weightValue(
-                            title: "Gewichtstrend",
-                            value: comparison.observedChangeKilograms
-                        )
-                        weightValue(
-                            title: personalDailyAdjustment == nil
-                                ? "Aus Bilanz erwartet"
-                                : "Aus angepasster Bilanz",
-                            value: comparison.expectedChangeKilograms
-                        )
-                    }
-                    Text(weightInterpretation(comparison))
+                    weightValue(
+                        title: "Gewichtstrend",
+                        value: comparison.observedChangeKilograms
+                    )
+                    Text("Beobachteter Trend aus deinen verfügbaren Apple-Health-Gewichtsdaten im gewählten Zeitraum.")
                         .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
 
                 Text(interpretationText)
@@ -189,7 +182,7 @@ struct EnergyBalanceTrendsView: View {
                             "Persönliche Korrektur",
                             value: "\(signedKilocalories(adjustment))/Tag"
                         )
-                        Text("Quant addiert die Korrektur zu jedem vollständigen Tag. Ein positiver Wert verschiebt die Bilanz in Richtung Überschuss, ein negativer in Richtung Defizit. Die erwartete Gewichtsänderung verwendet dieselben angepassten Tageswerte. Erfasste Mahlzeiten und Health-Werte bleiben unverändert.")
+                        Text("Quant addiert die Korrektur zu jedem vollständigen Tag. Ein positiver Wert verschiebt die Bilanz in Richtung Überschuss, ein negativer in Richtung Defizit. Erfasste Mahlzeiten und Health-Werte bleiben unverändert.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -229,15 +222,29 @@ struct EnergyBalanceTrendsView: View {
             if let comparison = weightComparison {
                 switch comparison.readiness {
                 case .ready:
-                    if comparison.usesPersonalCalibration {
-                        Text("Die persönliche Kalibrierung verwendet bis zu 12 Monate deines Gewichts- und Bilanzverlaufs und bleibt daher beim Wechsel des angezeigten Zeitraums gleich.")
-                            .foregroundStyle(.secondary)
-                    }
+                    EmptyView()
                 case let .needsWeights(current, required, spanDays, requiredSpanDays):
                     Text("Gewichtstrend wird aufgebaut: \(current)/\(required) Gewichtstage, \(spanDays)/\(requiredSpanDays) Tage abgedeckt.")
                         .foregroundStyle(.secondary)
-                case let .needsBalanceDays(current, required):
-                    Text("Bilanzvergleich wird aufgebaut: \(current)/\(required) vollständige Tage.")
+                }
+                switch comparison.calibrationStatus {
+                case .disabled:
+                    EmptyView()
+                case let .collecting(
+                    weightCount,
+                    requiredWeightCount,
+                    balanceDayCount,
+                    requiredBalanceDayCount,
+                    spanDays,
+                    requiredSpanDays
+                ):
+                    Text("Persönliche Kalibrierung wird aufgebaut: \(weightCount)/\(requiredWeightCount) Gewichtstage, \(balanceDayCount)/\(requiredBalanceDayCount) vollständige Bilanztage und \(spanDays)/\(requiredSpanDays) Tage abgedeckt.")
+                        .foregroundStyle(.secondary)
+                case let .unavailable(reason):
+                    Text(reason)
+                        .foregroundStyle(.secondary)
+                case .ready:
+                    Text("Die persönliche Korrektur wird aus bis zu 12 Monaten deines Gewichts- und Bilanzverlaufs abgeleitet. Weil der Gewichtstrend in die Kalibrierung einfließt, berechnet Quant daraus keine separate Gewichtserwartung.")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -285,21 +292,6 @@ struct EnergyBalanceTrendsView: View {
             return "Im gewählten Zeitraum lag im Mittel ein geschätztes Defizit vor. Entscheidend ist der längerfristige Verlauf."
         }
         return "Im gewählten Zeitraum lag im Mittel ein geschätzter Überschuss vor. Entscheidend ist der längerfristige Verlauf."
-    }
-
-    private func weightInterpretation(_ comparison: WeightBalanceComparison) -> String {
-        guard let observed = comparison.observedChangeKilograms,
-              let expected = comparison.expectedChangeKilograms else {
-            return "Für eine Einordnung fehlen noch auswertbare Gewichtsdaten."
-        }
-        let difference = observed - expected
-        if abs(difference) <= 0.5 {
-            return "Dein Gewichtstrend passt ungefähr zur berechneten Bilanz."
-        }
-        if difference < 0 {
-            return "Dein Gewicht sank stärker beziehungsweise stieg weniger als aus der Bilanz erwartet."
-        }
-        return "Dein Gewicht sank weniger beziehungsweise stieg stärker als aus der Bilanz erwartet."
     }
 
     private var chartAccessibilityValue: String {

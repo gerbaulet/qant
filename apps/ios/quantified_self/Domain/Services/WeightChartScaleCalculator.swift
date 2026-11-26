@@ -8,8 +8,7 @@ enum WeightChartScaleCalculator {
         for comparison: WeightBalanceComparison
     ) -> ClosedRange<Double>? {
         let values = comparison.dailyWeights.map(\.kilograms) +
-            comparison.observedTrend.map(\.kilograms) +
-            comparison.expectedTrend.map(\.kilograms)
+            comparison.observedTrend.map(\.kilograms)
         let finiteValues = values.filter(\.isFinite)
         guard let minimum = finiteValues.min(),
               let maximum = finiteValues.max() else { return nil }

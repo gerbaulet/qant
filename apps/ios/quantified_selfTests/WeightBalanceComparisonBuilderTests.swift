@@ -49,32 +49,8 @@ struct WeightBalanceComparisonBuilderTests {
         #expect(comparison.readiness == .ready)
     }
 
-    @Test("The standard expectation converts complete energy balance days into kilograms")
-    func standardExpectedChange() throws {
-        let now = date(2026, 11, 11)
-        let weights = stride(from: -28, through: 0, by: 4).map { offset in
-            WeightMeasurement(
-                date: day(offset, from: now),
-                kilograms: 80 + Double(offset) * -0.02
-            )
-        }
-        let comparison = WeightBalanceComparisonBuilder.makeComparison(
-            measurements: weights,
-            balances: balances(from: -28, count: 28, relativeTo: now, dailyBalance: -550),
-            comparisonStart: day(-28, from: now),
-            now: now,
-            calendar: calendar,
-            calibrationEnabled: false
-        )
-
-        let expected = try #require(comparison.expectedChangeKilograms)
-        #expect(abs(expected - -2) < 0.0001)
-        #expect(comparison.calibrationStatus == .disabled)
-        #expect(!comparison.usesPersonalCalibration)
-    }
-
     @Test("Personal calibration uses a fixed year of overlapping history")
-    func personalCalibration() throws {
+    func personalCalibration() {
         let now = date(2026, 11, 11)
         let historicalWeights = stride(from: -80, through: -4, by: 4).map { offset in
             WeightMeasurement(
@@ -99,7 +75,6 @@ struct WeightBalanceComparisonBuilderTests {
         )
 
         guard case let .ready(
-            factor,
             dailyBalanceAdjustmentKilocalories,
             uncappedDailyBalanceAdjustmentKilocalories
         ) =
@@ -107,12 +82,8 @@ struct WeightBalanceComparisonBuilderTests {
             Issue.record("Expected a ready personal calibration")
             return
         }
-        #expect(abs(factor - 0.8) < 0.001)
         #expect(abs(dailyBalanceAdjustmentKilocalories - 154) < 0.001)
         #expect(abs(uncappedDailyBalanceAdjustmentKilocalories - 154) < 0.001)
-        #expect(comparison.usesPersonalCalibration)
-        let expected = try #require(comparison.expectedChangeKilograms)
-        #expect(abs(expected - (-2.8 * factor)) < 0.001)
     }
 
     @Test("Personal calibration ignores weights before the first complete balance day")
@@ -155,14 +126,12 @@ struct WeightBalanceComparisonBuilderTests {
         )
 
         guard case let .ready(
-            factor,
             dailyBalanceAdjustmentKilocalories,
             uncappedDailyBalanceAdjustmentKilocalories
         ) = comparison.calibrationStatus else {
             Issue.record("Expected a ready personal calibration")
             return
         }
-        #expect(abs(factor - 1) < 0.001)
         #expect(abs(dailyBalanceAdjustmentKilocalories) < 0.001)
         #expect(abs(uncappedDailyBalanceAdjustmentKilocalories) < 0.001)
     }
@@ -192,8 +161,8 @@ struct WeightBalanceComparisonBuilderTests {
         #expect(spanDays == 24)
     }
 
-    @Test("Nineteen balance days enable comparison while eighteen remain insufficient")
-    func minimumComparisonBalanceDays() {
+    @Test("A ready weight trend does not depend on complete balance days")
+    func weightTrendIsIndependentOfBalanceDays() {
         let now = date(2026, 11, 11)
         let weights = [-19, -14, -5, 0].map { offset in
             WeightMeasurement(date: day(offset, from: now), kilograms: 80)
@@ -208,28 +177,15 @@ struct WeightBalanceComparisonBuilderTests {
         )
         #expect(readyComparison.readiness == .ready)
 
-        let provisionalFirstDay = DailyEnergyBalance(
-            date: day(-19, from: now),
-            intakeKilocalories: 1_500,
-            activeKilocalories: 400,
-            restingKilocalories: 1_600,
-            completeness: .provisionalIntake,
-            isCurrentDay: false
-        )
-        let collectingComparison = WeightBalanceComparisonBuilder.makeComparison(
+        let comparisonWithoutBalances = WeightBalanceComparisonBuilder.makeComparison(
             measurements: weights,
-            balances: [provisionalFirstDay] + balances(
-                from: -18,
-                count: 18,
-                relativeTo: now,
-                dailyBalance: -500
-            ),
+            balances: [],
             comparisonStart: day(-28, from: now),
             now: now,
             calendar: calendar,
             calibrationEnabled: false
         )
-        #expect(collectingComparison.readiness == .needsBalanceDays(current: 18, required: 19))
+        #expect(comparisonWithoutBalances.readiness == .ready)
     }
 
     @Test("Four weight days enable comparison while three remain insufficient")
@@ -333,15 +289,17 @@ struct WeightBalanceComparisonBuilderTests {
         #expect(comparison.dailyWeights.map(\.date) == [-6, -4, -2, 0].map {
             day($0, from: now)
         })
-        #expect(comparison.evaluableBalanceDayCount == 6)
         #expect(comparison.readiness == .ready)
     }
 
-    @Test("A selected year starts on its first day with nutrition data")
-    func selectedYearStartsWithNutritionData() throws {
+    @Test("A selected year keeps the full measured weight window without extrapolation")
+    func selectedYearUsesMeasuredWeightWindow() throws {
         let now = date(2026, 11, 11)
         let weights = [-100, -20, -15, -5, 0].map { offset in
-            WeightMeasurement(date: day(offset, from: now), kilograms: 80)
+            WeightMeasurement(
+                date: day(offset, from: now),
+                kilograms: 80 + Double(offset) * -0.1
+            )
         }
         let comparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: weights,
@@ -352,14 +310,12 @@ struct WeightBalanceComparisonBuilderTests {
             calibrationEnabled: false
         )
 
-        #expect(comparison.interval.start == day(-20, from: now))
-        #expect(comparison.dailyWeights.map(\.date) == [-20, -15, -5, 0].map {
+        #expect(comparison.interval.start == day(-364, from: now))
+        #expect(comparison.dailyWeights.map(\.date) == [-100, -20, -15, -5, 0].map {
             day($0, from: now)
         })
-        #expect(comparison.expectedTrend.first?.date == day(-20, from: now))
-        #expect(comparison.evaluableBalanceDayCount == 20)
-        let expectedChange = try #require(comparison.expectedChangeKilograms)
-        #expect(abs(expectedChange - (-10_000 / 7_700)) < 0.0001)
+        let observedChange = try #require(comparison.observedChangeKilograms)
+        #expect(abs(observedChange - -10) < 0.0001)
     }
 
     @Test("Personal calibration does not change with the selected display range")
@@ -402,51 +358,6 @@ struct WeightBalanceComparisonBuilderTests {
         }
     }
 
-    @Test("Personal expectation uses the same adjusted balances as the displayed average")
-    func personalExpectationMatchesDisplayedAverage() throws {
-        let now = date(2026, 11, 11)
-        let weights = (-80 ... -1).map { offset in
-            WeightMeasurement(
-                date: day(offset, from: now),
-                kilograms: 80 + Double(offset + 80) * -0.04
-            )
-        }
-        let olderBalances = balances(
-            from: -80,
-            count: 52,
-            relativeTo: now,
-            dailyBalance: -700
-        )
-        let selectedBalances = balances(
-            from: -28,
-            count: 28,
-            relativeTo: now,
-            dailyBalance: -100
-        )
-        let comparison = WeightBalanceComparisonBuilder.makeComparison(
-            measurements: weights,
-            balances: olderBalances + selectedBalances,
-            comparisonStart: day(-28, from: now),
-            now: now,
-            calendar: calendar,
-            calibrationEnabled: true
-        )
-
-        let adjustment = try #require(comparison.dailyBalanceAdjustmentKilocalories)
-        let displayedAverage = try #require(
-            PersonalEnergyBalanceCalculator.averageBalanceKilocalories(
-                for: selectedBalances,
-                dailyAdjustmentKilocalories: adjustment
-            )
-        )
-        let expectedChange = try #require(comparison.expectedChangeKilograms)
-        let changeFromDisplayedAverage = displayedAverage
-            * Double(comparison.evaluableBalanceDayCount)
-            / WeightBalanceComparisonBuilder.kilocaloriesPerKilogram
-
-        #expect(abs(expectedChange - changeFromDisplayedAverage) < 0.0001)
-    }
-
     @Test("Daily personal balance adjustment is conservatively capped")
     func calibrationAdjustmentIsCapped() {
         let now = date(2026, 11, 11)
@@ -468,7 +379,6 @@ struct WeightBalanceComparisonBuilderTests {
         )
 
         guard case let .ready(
-            _,
             dailyBalanceAdjustmentKilocalories,
             uncappedDailyBalanceAdjustmentKilocalories
         ) =
