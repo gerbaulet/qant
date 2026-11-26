@@ -145,11 +145,22 @@ struct ContentView: View {
 }
 
 private struct TodayDashboardContainer: View {
-    private struct RefreshID: Hashable {
+    private struct PresentationRefreshID: Hashable {
         let presentationVersion: NutritionPresentationVersion
         let hour: Date
-        let healthDataVersion: Int
         let forecastStrategy: IntakeForecastStrategy
+    }
+
+    private struct HealthPresentationRefreshID: Hashable {
+        let presentationRefreshID: PresentationRefreshID
+        let healthDataVersion: Int
+    }
+
+    private struct HealthLoadID: Hashable {
+        let hour: Date
+        let hasRequestedEnergyAccess: Bool
+        let hasRequestedWeightAccess: Bool
+        let personalCalibrationEnabled: Bool
     }
 
     @Environment(\.modelContext) private var modelContext
@@ -167,7 +178,9 @@ private struct TodayDashboardContainer: View {
     @State private var energyBalance: DailyEnergyBalance?
     @State private var expenditureForecast: EnergyExpenditureForecast?
     @State private var energyTrend: TodayEnergyTrend?
-    @State private var lastRefreshID: RefreshID?
+    @State private var intakeTrend: DailyCumulativeNutritionTrend?
+    @State private var lastPresentationRefreshID: PresentationRefreshID?
+    @State private var lastHealthPresentationRefreshID: HealthPresentationRefreshID?
     private let imageStorage: any ImageStorageProviding = FileImageStorage()
     private let widgetSynchronizer = WidgetCalorieSnapshotSynchronizer()
 
@@ -179,18 +192,20 @@ private struct TodayDashboardContainer: View {
         NavigationStack(path: $navigationPath) {
             TimelineView(.periodic(from: .now, by: 60 * 60)) { context in
                 dashboardContent
-                    .task(id: refreshID(for: context.date)) {
-                        await refresh(for: context.date)
+                    .task(id: presentationRefreshID(for: context.date)) {
+                        await refreshPresentation(for: context.date)
+                    }
+                    .task(id: healthPresentationRefreshID(for: context.date)) {
+                        await refreshHealthPresentation(for: context.date)
+                    }
+                    .task(id: healthLoadID(for: context.date)) {
+                        await loadHealthData(for: context.date)
                     }
             }
             .navigationDestination(for: UUID.self, destination: mealDestination)
         }
         .onReceive(NotificationCenter.default.publisher(for: .quickCaptureRequested)) { _ in
             navigationPath.removeAll()
-        }
-        .task(id: scenePhase) {
-            guard scenePhase == .active else { return }
-            await refreshRecentEnergy()
         }
     }
 
@@ -233,20 +248,61 @@ private struct TodayDashboardContainer: View {
         }
     }
 
-    private func refreshID(for date: Date) -> RefreshID? {
+    private func presentationRefreshID(for date: Date) -> PresentationRefreshID? {
         guard isActive else { return nil }
         let calendar = Calendar.autoupdatingCurrent
-        return RefreshID(
+        return PresentationRefreshID(
             presentationVersion: NutritionPresentationVersion(meals: meals, goals: goals),
             hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date,
-            healthDataVersion: healthMetrics.dataVersion,
             forecastStrategy: forecastStrategy
         )
     }
 
-    private func refresh(for date: Date) async {
-        guard let refreshID = refreshID(for: date), refreshID != lastRefreshID else { return }
+    private func healthPresentationRefreshID(for date: Date) -> HealthPresentationRefreshID? {
+        guard let presentationRefreshID = presentationRefreshID(for: date),
+              presentationRefreshID == lastPresentationRefreshID,
+              intakeTrend != nil,
+              !healthMetrics.isLoadingEnergy,
+              !healthMetrics.isLoadingWeight else { return nil }
+        return HealthPresentationRefreshID(
+            presentationRefreshID: presentationRefreshID,
+            healthDataVersion: healthMetrics.dataVersion
+        )
+    }
+
+    private func healthLoadID(for date: Date) -> HealthLoadID? {
+        guard isActive, scenePhase == .active else { return nil }
+        let calendar = Calendar.autoupdatingCurrent
+        return HealthLoadID(
+            hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date,
+            hasRequestedEnergyAccess: healthMetrics.hasRequestedEnergyAccess,
+            hasRequestedWeightAccess: healthMetrics.hasRequestedWeightAccess,
+            personalCalibrationEnabled: healthMetrics.personalCalibrationEnabled
+        )
+    }
+
+    private func refreshPresentation(for date: Date) async {
+        guard let refreshID = presentationRefreshID(for: date),
+              refreshID != lastPresentationRefreshID else { return }
         await Task.yield()
+        let calendar = Calendar.autoupdatingCurrent
+        let presentation = TodayDashboardPresentationBuilder.makePresentation(
+            for: date,
+            meals: meals,
+            goals: goals,
+            calendar: calendar,
+            forecastStrategy: forecastStrategy
+        )
+        guard !Task.isCancelled else { return }
+        snapshot = presentation.snapshot
+        weeklySummary = presentation.weeklySummary
+        intakeForecast = presentation.intakeForecast
+        intakeTrend = presentation.intakeTrend
+        lastPresentationRefreshID = refreshID
+    }
+
+    private func loadHealthData(for date: Date) async {
+        guard healthLoadID(for: date) != nil else { return }
         let calendar = Calendar.autoupdatingCurrent
         let forecastInterval = EnergyExpenditureForecastBuilder.historyInterval(
             for: date,
@@ -275,12 +331,23 @@ private struct TodayDashboardContainer: View {
                 to: calibrationInterval.end
             )
         }
-        let presentation = TodayDashboardPresentationBuilder.makePresentation(
+    }
+
+    private func refreshHealthPresentation(for date: Date) async {
+        guard let refreshID = healthPresentationRefreshID(for: date),
+              refreshID != lastHealthPresentationRefreshID,
+              let intakeTrend else { return }
+        await Task.yield()
+        let calendar = Calendar.autoupdatingCurrent
+        let forecastInterval = EnergyExpenditureForecastBuilder.historyInterval(
             for: date,
-            meals: meals,
-            goals: goals,
-            calendar: calendar,
-            forecastStrategy: forecastStrategy
+            calendar: calendar
+        )
+        let calibrationInterval = HealthMetricsQueryPlanner.calibrationInterval(
+            endingAt: date,
+            enabled: healthMetrics.personalCalibrationEnabled,
+            hasRequestedWeightAccess: healthMetrics.hasRequestedWeightAccess,
+            calendar: calendar
         )
         guard !Task.isCancelled else { return }
         let currentExpenditure = healthMetrics.expenditure(for: date, calendar: calendar)
@@ -313,13 +380,10 @@ private struct TodayDashboardContainer: View {
                 calendar: calendar
             )
         }
-        snapshot = presentation.snapshot
-        weeklySummary = presentation.weeklySummary
-        intakeForecast = presentation.intakeForecast
         energyBalance = nextEnergyBalance
         expenditureForecast = nextExpenditureForecast
         energyTrend = TodayEnergyTrendBuilder.makeTrend(
-            intakeTrend: presentation.intakeTrend,
+            intakeTrend: intakeTrend,
             currentExpenditure: currentExpenditure,
             expenditureForecast: nextExpenditureForecast,
             hourlyExpenditures: hourlyExpenditures,
@@ -327,28 +391,12 @@ private struct TodayDashboardContainer: View {
             now: date,
             calendar: calendar
         )
-        lastRefreshID = refreshID
+        lastHealthPresentationRefreshID = refreshID
     }
 
     private var forecastStrategy: IntakeForecastStrategy {
         IntakeForecastPreferences.strategy(
             mealAwareEnabled: mealAwareIntakeForecastEnabled
-        )
-    }
-
-    private func refreshRecentEnergy() async {
-        guard healthMetrics.hasRequestedEnergyAccess else { return }
-        let calendar = Calendar.autoupdatingCurrent
-        guard let dayInterval = calendar.dateInterval(of: .day, for: .now),
-              let reconciliationStart = calendar.date(
-                byAdding: .day,
-                value: -(HealthMetricsModel.recentEnergyReconciliationDayCount - 1),
-                to: dayInterval.start
-              ) else { return }
-        await healthMetrics.loadEnergy(
-            from: reconciliationStart,
-            to: dayInterval.end,
-            calendar: calendar
         )
     }
 

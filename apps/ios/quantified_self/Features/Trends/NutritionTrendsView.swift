@@ -10,14 +10,20 @@ struct NutritionTrendsContainer: View {
     }
 
     private struct BalanceRefreshID: Hashable {
-        let presentationVersion: NutritionPresentationVersion
+        let presentationRefreshID: RefreshID
+        let healthDataVersion: Int
+    }
+
+    private struct HealthLoadID: Hashable {
         let hour: Date
         let range: NutritionTrendRange
-        let healthDataVersion: Int
-        let forecastStrategy: IntakeForecastStrategy
+        let hasRequestedEnergyAccess: Bool
+        let hasRequestedWeightAccess: Bool
+        let personalCalibrationEnabled: Bool
     }
 
     @Environment(HealthMetricsModel.self) private var healthMetrics
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \Meal.timestamp) private var meals: [Meal]
     @Query(sort: \NutritionGoalPeriod.validFrom) private var goals: [NutritionGoalPeriod]
     @AppStorage(IntakeForecastPreferences.mealAwareEnabledKey)
@@ -27,6 +33,7 @@ struct NutritionTrendsContainer: View {
     @State private var balances: [DailyEnergyBalance] = []
     @State private var weightComparison: WeightBalanceComparison?
     @State private var currentDayForecastBalanceKilocalories: Double?
+    @State private var balanceRange: NutritionTrendRange?
     @State private var lastRefreshID: RefreshID?
     @State private var lastBalanceRefreshID: BalanceRefreshID?
     let isActive: Bool
@@ -41,6 +48,9 @@ struct NutritionTrendsContainer: View {
                     }
                     .task(id: balanceRefreshID(for: context.date)) {
                         await refreshBalances(for: context.date)
+                    }
+                    .task(id: healthLoadID(for: context.date)) {
+                        await loadHealthData(for: context.date)
                     }
             }
             .background(Color(.systemGroupedBackground))
@@ -61,11 +71,13 @@ struct NutritionTrendsContainer: View {
             LazyVStack(alignment: .leading, spacing: QuantLayout.sectionSpacing) {
                 rangePicker
                 EnergyBalanceTrendsView(
-                    balances: balances,
+                    balances: balanceRange == range ? balances : [],
                     healthStatus: healthMetrics.energyStatus,
                     weightStatus: healthMetrics.weightStatus,
-                    weightComparison: weightComparison,
-                    currentDayForecastBalanceKilocalories: currentDayForecastBalanceKilocalories,
+                    weightComparison: balanceRange == range ? weightComparison : nil,
+                    currentDayForecastBalanceKilocalories: balanceRange == range
+                        ? currentDayForecastBalanceKilocalories
+                        : nil,
                     onOpenSettings: onOpenSettings
                 )
                 if let snapshot, snapshot.range == range {
@@ -105,14 +117,23 @@ struct NutritionTrendsContainer: View {
     }
 
     private func balanceRefreshID(for date: Date) -> BalanceRefreshID? {
-        guard isActive else { return nil }
-        let calendar = Calendar.autoupdatingCurrent
+        guard let presentationRefreshID = refreshID(for: date),
+              presentationRefreshID == lastRefreshID else { return nil }
         return BalanceRefreshID(
-            presentationVersion: NutritionPresentationVersion(meals: meals, goals: goals),
+            presentationRefreshID: presentationRefreshID,
+            healthDataVersion: healthMetrics.dataVersion
+        )
+    }
+
+    private func healthLoadID(for date: Date) -> HealthLoadID? {
+        guard isActive, scenePhase == .active else { return nil }
+        let calendar = Calendar.autoupdatingCurrent
+        return HealthLoadID(
             hour: calendar.dateInterval(of: .hour, for: date)?.start ?? date,
             range: range,
-            healthDataVersion: healthMetrics.dataVersion,
-            forecastStrategy: forecastStrategy
+            hasRequestedEnergyAccess: healthMetrics.hasRequestedEnergyAccess,
+            hasRequestedWeightAccess: healthMetrics.hasRequestedWeightAccess,
+            personalCalibrationEnabled: healthMetrics.personalCalibrationEnabled
         )
     }
 
@@ -136,7 +157,9 @@ struct NutritionTrendsContainer: View {
     private func refreshBalances(for date: Date) async {
         guard let refreshID = balanceRefreshID(for: date),
               refreshID != lastBalanceRefreshID,
-              let interval = balanceInterval(for: date) else { return }
+              let interval = balanceInterval(for: date),
+              let intakeTrend = snapshot?.dailyCumulativeTrend else { return }
+        await Task.yield()
         let calendar = Calendar.autoupdatingCurrent
         let calibrationInterval = HealthMetricsQueryPlanner.calibrationInterval(
             endingAt: date,
@@ -148,28 +171,10 @@ struct NutritionTrendsContainer: View {
             for: date,
             calendar: calendar
         )
-        let energyInterval = HealthMetricsQueryPlanner.covering([
-            interval,
-            forecastInterval,
-            calibrationInterval,
-        ])
         let weightInterval = HealthMetricsQueryPlanner.covering([
             interval,
             calibrationInterval,
         ])
-        if healthMetrics.hasRequestedEnergyAccess, let energyInterval {
-            await healthMetrics.loadEnergy(
-                from: energyInterval.start,
-                to: energyInterval.end,
-                calendar: calendar
-            )
-        }
-        if healthMetrics.hasRequestedWeightAccess, let weightInterval {
-            await healthMetrics.loadWeights(
-                from: weightInterval.start,
-                to: weightInterval.end
-            )
-        }
         guard !Task.isCancelled else { return }
         let historyInterval = weightInterval ?? interval
         let historicalBalances = EnergyBalanceBuilder.makeBalances(
@@ -191,13 +196,6 @@ struct NutritionTrendsContainer: View {
             calendar: calendar,
             calibrationEnabled: healthMetrics.personalCalibrationEnabled
         )
-        let todayPresentation = TodayDashboardPresentationBuilder.makePresentation(
-            for: date,
-            meals: meals,
-            goals: goals,
-            calendar: calendar,
-            forecastStrategy: forecastStrategy
-        )
         let currentExpenditure = healthMetrics.expenditure(for: date, calendar: calendar)
         let expenditureForecast = forecastInterval.flatMap {
             EnergyExpenditureForecastBuilder.makeForecast(
@@ -210,14 +208,52 @@ struct NutritionTrendsContainer: View {
         }
         let nextCurrentDayForecastBalance = PersonalEnergyBalanceCalculator
             .forecastBalanceKilocalories(
-                intakeKilocalories: todayPresentation.intakeForecast?.energyKilocalories,
+                intakeKilocalories: intakeTrend.forecastPoints.last?.value,
                 expenditureKilocalories: expenditureForecast?.totalKilocalories,
                 dailyAdjustmentKilocalories: nextWeightComparison.dailyBalanceAdjustmentKilocalories
             )
         balances = nextBalances
         weightComparison = nextWeightComparison
         currentDayForecastBalanceKilocalories = nextCurrentDayForecastBalance
+        balanceRange = range
         lastBalanceRefreshID = refreshID
+    }
+
+    private func loadHealthData(for date: Date) async {
+        guard healthLoadID(for: date) != nil,
+              let interval = balanceInterval(for: date) else { return }
+        let calendar = Calendar.autoupdatingCurrent
+        let calibrationInterval = HealthMetricsQueryPlanner.calibrationInterval(
+            endingAt: date,
+            enabled: healthMetrics.personalCalibrationEnabled,
+            hasRequestedWeightAccess: healthMetrics.hasRequestedWeightAccess,
+            calendar: calendar
+        )
+        let energyInterval = HealthMetricsQueryPlanner.covering([
+            interval,
+            EnergyExpenditureForecastBuilder.historyInterval(
+                for: date,
+                calendar: calendar
+            ),
+            calibrationInterval,
+        ])
+        let weightInterval = HealthMetricsQueryPlanner.covering([
+            interval,
+            calibrationInterval,
+        ])
+        if healthMetrics.hasRequestedEnergyAccess, let energyInterval {
+            await healthMetrics.loadEnergy(
+                from: energyInterval.start,
+                to: energyInterval.end,
+                calendar: calendar
+            )
+        }
+        if healthMetrics.hasRequestedWeightAccess, let weightInterval {
+            await healthMetrics.loadWeights(
+                from: weightInterval.start,
+                to: weightInterval.end
+            )
+        }
     }
 
     private var forecastStrategy: IntakeForecastStrategy {
