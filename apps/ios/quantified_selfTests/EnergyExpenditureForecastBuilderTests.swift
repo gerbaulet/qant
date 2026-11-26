@@ -221,6 +221,41 @@ struct EnergyExpenditureForecastBuilderTests {
         #expect(forecast.historicalDayCount == 7)
     }
 
+    @Test("Forecast falls back to daily history when a short current gap has no duration coverage")
+    func forecastsShortGapWithoutCurrentDurationCoverage() throws {
+        let reference = date(2026, 8, 24, 7)
+        let daily = (17...23).map {
+            DailyEnergyExpenditure(
+                date: date(2026, 8, $0),
+                activeKilocalories: 500,
+                restingKilocalories: 1_500
+            )
+        }
+        let current = DailyEnergyExpenditure(
+            date: reference,
+            activeKilocalories: nil,
+            restingKilocalories: 396,
+            restingEnergyCoverage: RestingEnergyCoverage(
+                expectedDuration: 7 * 60 * 60,
+                primaryDuration: 0,
+                iPhoneFallbackDuration: 0
+            )
+        )
+
+        let forecast = try #require(EnergyExpenditureForecastBuilder.makeForecast(
+            for: reference,
+            current: current,
+            dailyExpenditures: daily,
+            hourlyExpenditures: [],
+            calendar: calendar
+        ))
+
+        #expect(forecast.activeKilocalories == 500)
+        #expect(forecast.restingKilocalories == 1_500)
+        #expect(forecast.historicalDayCount == 7)
+        #expect(forecast.method == .dailyMedian)
+    }
+
     @Test("Forecast treats missing current active energy as zero when history is sufficient")
     func forecastsWithoutCurrentActiveEnergy() throws {
         let reference = date(2026, 8, 24, 4)

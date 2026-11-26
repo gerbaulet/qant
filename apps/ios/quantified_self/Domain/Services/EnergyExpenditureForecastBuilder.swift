@@ -39,7 +39,7 @@ enum EnergyExpenditureForecastBuilder {
         calendar: Calendar
     ) -> EnergyExpenditureForecast? {
         guard let currentResting = current?.restingKilocalories,
-              current?.restingEnergyCoverage?.isUsableForLiveFeatures != false else {
+              permitsHistoricalForecast(using: current?.restingEnergyCoverage) else {
             return nil
         }
         let currentActive = current?.activeKilocalories ?? 0
@@ -119,7 +119,8 @@ enum EnergyExpenditureForecastBuilder {
             )
         }
 
-        if remainderDays.count >= minimumHistoricalDayCount,
+        if current?.restingEnergyCoverage?.isUsableForLiveFeatures != false,
+           remainderDays.count >= minimumHistoricalDayCount,
            let activeRemainder = weightedMedian(remainderDays.map {
                WeightedValue(value: $0.activeKilocalories, weight: $0.weight)
            }),
@@ -148,6 +149,15 @@ enum EnergyExpenditureForecastBuilder {
             historicalDayCount: historicalDays.count,
             method: .dailyMedian
         )
+    }
+
+    private static func permitsHistoricalForecast(
+        using coverage: RestingEnergyCoverage?
+    ) -> Bool {
+        guard let coverage else { return true }
+        return coverage.expectedDuration > 0 &&
+            !coverage.hasExcessiveGap &&
+            coverage.missingDuration <= RestingEnergyCoverage.liveFeatureMissingDurationLimit
     }
 
     private static func remainingFraction(
