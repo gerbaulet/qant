@@ -37,6 +37,7 @@ struct HealthMetricsModelTests {
 
     @Test("The current Health day refreshes after the minimum interval")
     func refreshesCurrentDayAfterMinimumInterval() async {
+        #expect(HealthMetricsModel.currentEnergyRefreshInterval == 5 * 60)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let day = calendar.date(from: DateComponents(

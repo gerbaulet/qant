@@ -5,7 +5,7 @@ import Observation
 @MainActor
 final class HealthMetricsModel {
     static let recentEnergyReconciliationDayCount = 7
-    static let currentEnergyRefreshInterval: TimeInterval = 15 * 60
+    static let currentEnergyRefreshInterval: TimeInterval = 5 * 60
 
     private(set) var energyStatus: HealthDataStatus
     private(set) var energyExpenditures: [DailyEnergyExpenditure] = []
