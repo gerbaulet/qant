@@ -329,6 +329,8 @@ enum TodayDashboardPresentationBuilder {
             nutrient: .energy,
             meals: meals,
             calendar: calendar,
+            portionMultipliers: portionMultipliers,
+            activeRevisions: activeRevisions,
             forecastStrategy: forecastStrategy
         )
         return TodayDashboardPresentation(

@@ -263,6 +263,33 @@ struct EnergyBalanceBuilderTests {
         #expect(calendar.dateComponents([.hour], from: balances[1].date, to: balances[2].date).hour == 23)
     }
 
+    @Test("A visible range is selected from precomputed balance history")
+    func selectsVisibleRangeFromHistory() {
+        let history = EnergyBalanceBuilder.makeBalances(
+            within: DateInterval(
+                start: date(2026, 11, 1),
+                end: date(2026, 11, 6)
+            ),
+            meals: [],
+            expenditures: [],
+            now: date(2026, 11, 6),
+            calendar: calendar
+        )
+
+        let visible = EnergyBalanceBuilder.selectBalances(
+            from: history,
+            within: DateInterval(
+                start: date(2026, 11, 3),
+                end: date(2026, 11, 5)
+            )
+        )
+
+        #expect(visible.map(\.date) == [
+            date(2026, 11, 3),
+            date(2026, 11, 4),
+        ])
+    }
+
     @Test("Balance trends use the same rolling day windows as nutrition trends")
     func rollingTrendIntervals() throws {
         let reference = date(2026, 8, 23, 12)

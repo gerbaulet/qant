@@ -171,13 +171,6 @@ struct NutritionTrendsContainer: View {
             )
         }
         guard !Task.isCancelled else { return }
-        let nextBalances = EnergyBalanceBuilder.makeBalances(
-            within: interval,
-            meals: meals,
-            expenditures: healthMetrics.expenditures(within: interval),
-            now: date,
-            calendar: calendar
-        )
         let historyInterval = weightInterval ?? interval
         let historicalBalances = EnergyBalanceBuilder.makeBalances(
             within: historyInterval,
@@ -185,6 +178,10 @@ struct NutritionTrendsContainer: View {
             expenditures: healthMetrics.expenditures(within: historyInterval),
             now: date,
             calendar: calendar
+        )
+        let nextBalances = EnergyBalanceBuilder.selectBalances(
+            from: historicalBalances,
+            within: interval
         )
         let nextWeightComparison = WeightBalanceComparisonBuilder.makeComparison(
             measurements: healthMetrics.weights(within: historyInterval),

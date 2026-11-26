@@ -2,6 +2,15 @@ import Foundation
 
 @MainActor
 enum EnergyBalanceBuilder {
+    static func selectBalances(
+        from balances: [DailyEnergyBalance],
+        within interval: DateInterval
+    ) -> [DailyEnergyBalance] {
+        balances.filter {
+            $0.date >= interval.start && $0.date < interval.end
+        }
+    }
+
     static func makeBalances(
         within interval: DateInterval,
         meals: [Meal],

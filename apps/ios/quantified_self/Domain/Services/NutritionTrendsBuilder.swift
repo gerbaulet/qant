@@ -194,7 +194,7 @@ enum NutritionTrendsBuilder {
         )
     }
 
-    private static func makeDailyCumulativeTrend(
+    static func makeDailyCumulativeTrend(
         for date: Date,
         nutrient: NutrientIdentifier,
         meals: [Meal],
