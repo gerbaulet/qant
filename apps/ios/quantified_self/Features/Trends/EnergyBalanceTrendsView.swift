@@ -157,7 +157,9 @@ struct EnergyBalanceTrendsView: View {
                             value: comparison.observedChangeKilograms
                         )
                         weightValue(
-                            title: "Aus Bilanz erwartet",
+                            title: personalDailyAdjustment == nil
+                                ? "Aus Bilanz erwartet"
+                                : "Aus angepasster Bilanz",
                             value: comparison.expectedChangeKilograms
                         )
                     }
@@ -187,7 +189,7 @@ struct EnergyBalanceTrendsView: View {
                             "Persönliche Korrektur",
                             value: "\(signedKilocalories(adjustment))/Tag"
                         )
-                        Text("Die erfassten Mahlzeiten und Health-Werte bleiben unverändert. Die Korrektur wird nur für die dargestellte Bilanz angewendet.")
+                        Text("Quant addiert die Korrektur zu jedem vollständigen Tag. Ein positiver Wert verschiebt die Bilanz in Richtung Überschuss, ein negativer in Richtung Defizit. Die erwartete Gewichtsänderung verwendet dieselben angepassten Tageswerte. Erfasste Mahlzeiten und Health-Werte bleiben unverändert.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -228,7 +230,7 @@ struct EnergyBalanceTrendsView: View {
                 switch comparison.readiness {
                 case .ready:
                     if comparison.usesPersonalCalibration {
-                        Text("Persönliche Kalibrierung aus deinem längerfristigen Gewichts- und Bilanzverlauf ist aktiv.")
+                        Text("Die persönliche Kalibrierung verwendet bis zu 12 Monate deines Gewichts- und Bilanzverlaufs und bleibt daher beim Wechsel des angezeigten Zeitraums gleich.")
                             .foregroundStyle(.secondary)
                     }
                 case let .needsWeights(current, required, spanDays, requiredSpanDays):

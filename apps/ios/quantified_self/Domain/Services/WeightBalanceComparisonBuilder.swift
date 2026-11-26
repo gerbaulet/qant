@@ -112,18 +112,18 @@ enum WeightBalanceComparisonBuilder {
 
         let observedStart = line.value(on: normalizedComparisonStart, calendar: calendar)
         let observedEnd = line.value(on: today, calendar: calendar)
-        let factor: Double
-        if case let .ready(calibratedFactor, _, _) = calibrationStatus {
-            factor = calibratedFactor
+        let dailyAdjustmentKilocalories: Double?
+        if case let .ready(_, adjustment, _) = calibrationStatus {
+            dailyAdjustmentKilocalories = adjustment
         } else {
-            factor = 1
+            dailyAdjustmentKilocalories = nil
         }
         let expectedTrend = makeExpectedTrend(
             startDate: normalizedComparisonStart,
             endDate: today,
             startingWeight: observedStart,
             balances: comparisonBalances,
-            factor: factor,
+            dailyAdjustmentKilocalories: dailyAdjustmentKilocalories,
             calendar: calendar
         )
 
@@ -266,12 +266,15 @@ enum WeightBalanceComparisonBuilder {
         endDate: Date,
         startingWeight: Double,
         balances: [DailyEnergyBalance],
-        factor: Double,
+        dailyAdjustmentKilocalories: Double?,
         calendar: Calendar
     ) -> [WeightChartPoint] {
         let balancesByDay = Dictionary(
             balances.compactMap { balance in
-                balance.balanceKilocalories.map {
+                PersonalEnergyBalanceCalculator.balanceKilocalories(
+                    for: balance,
+                    dailyAdjustmentKilocalories: dailyAdjustmentKilocalories
+                ).map {
                     (calendar.startOfDay(for: balance.date), $0)
                 }
             },
@@ -282,7 +285,7 @@ enum WeightBalanceComparisonBuilder {
         var day = startDate
         while day < endDate {
             if let balance = balancesByDay[day] {
-                weight += balance / kilocaloriesPerKilogram * factor
+                weight += balance / kilocaloriesPerKilogram
             }
             guard let nextDay = calendar.date(byAdding: .day, value: 1, to: day),
                   nextDay > day else { break }

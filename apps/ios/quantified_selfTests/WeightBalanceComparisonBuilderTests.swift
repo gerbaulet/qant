@@ -402,6 +402,51 @@ struct WeightBalanceComparisonBuilderTests {
         }
     }
 
+    @Test("Personal expectation uses the same adjusted balances as the displayed average")
+    func personalExpectationMatchesDisplayedAverage() throws {
+        let now = date(2026, 11, 11)
+        let weights = (-80 ... -1).map { offset in
+            WeightMeasurement(
+                date: day(offset, from: now),
+                kilograms: 80 + Double(offset + 80) * -0.04
+            )
+        }
+        let olderBalances = balances(
+            from: -80,
+            count: 52,
+            relativeTo: now,
+            dailyBalance: -700
+        )
+        let selectedBalances = balances(
+            from: -28,
+            count: 28,
+            relativeTo: now,
+            dailyBalance: -100
+        )
+        let comparison = WeightBalanceComparisonBuilder.makeComparison(
+            measurements: weights,
+            balances: olderBalances + selectedBalances,
+            comparisonStart: day(-28, from: now),
+            now: now,
+            calendar: calendar,
+            calibrationEnabled: true
+        )
+
+        let adjustment = try #require(comparison.dailyBalanceAdjustmentKilocalories)
+        let displayedAverage = try #require(
+            PersonalEnergyBalanceCalculator.averageBalanceKilocalories(
+                for: selectedBalances,
+                dailyAdjustmentKilocalories: adjustment
+            )
+        )
+        let expectedChange = try #require(comparison.expectedChangeKilograms)
+        let changeFromDisplayedAverage = displayedAverage
+            * Double(comparison.evaluableBalanceDayCount)
+            / WeightBalanceComparisonBuilder.kilocaloriesPerKilogram
+
+        #expect(abs(expectedChange - changeFromDisplayedAverage) < 0.0001)
+    }
+
     @Test("Daily personal balance adjustment is conservatively capped")
     func calibrationAdjustmentIsCapped() {
         let now = date(2026, 11, 11)
